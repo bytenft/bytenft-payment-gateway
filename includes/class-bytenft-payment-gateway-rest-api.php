@@ -71,7 +71,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$api_order_status = isset($parameters['order_status']) ? sanitize_text_field($parameters['order_status']) : '';
 
 		// Log incoming request with sanitized parameters
-		$this->logger->info('DFin Sell API Request Received: ' . wp_json_encode($parameters, true), array('source' => 'bytenft-payment-gateway'));
+		$this->logger->info('ByteNFT API Request Received: ' . wp_json_encode($parameters, true), array('source' => 'bytenft-payment-gateway'));
 
 		// Verify API key
 		if (!$this->bytenft_verify_api_key(base64_decode($api_key))) {
