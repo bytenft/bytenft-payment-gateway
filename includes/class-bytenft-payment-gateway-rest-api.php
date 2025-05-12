@@ -38,7 +38,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		// Sanitize the API key parameter early
 		$api_key = sanitize_text_field($api_key);
 
-		// Get DFinSell settings
+		// Get ByteNFT settings
 		$bytenft_sell_settings = get_option('woocommerce_bytenft_payment_gateway_accounts');
 		$bytenft_settings = get_option('woocommerce_bytenft_settings');
 

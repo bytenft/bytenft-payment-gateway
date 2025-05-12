@@ -767,14 +767,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
                     if ($inserted !== false) {
 
-                        wc_get_logger()->info(" DFinSell: Inserted new payment link for order ID $order_id ", ['source' => 'bytenft-payment-gateway']);
+                        wc_get_logger()->info(" ByteNFT: Inserted new payment link for order ID $order_id ", ['source' => 'bytenft-payment-gateway']);
                     } else {
 
-                        wc_get_logger()->error("DFinSell: Failed to insert uuid — WPDB error: " . $wpdb->last_error, ['source' => 'bytenft-payment-gateway']);
+                        wc_get_logger()->error("ByteNFT: Failed to insert uuid — WPDB error: " . $wpdb->last_error, ['source' => 'bytenft-payment-gateway']);
                     }
                 } catch (Exception $e) {
 
-                    wc_get_logger()->error("DFinSell: Exception during payment link handling: " . $e->getMessage(), ['source' => 'bytenft-payment-gateway']);
+                    wc_get_logger()->error("ByteNFT: Exception during payment link handling: " . $e->getMessage(), ['source' => 'bytenft-payment-gateway']);
                 }
                 // =====================/ end code for payment link /
                 if (!empty($lock_key)) {
@@ -1383,7 +1383,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
         // Log API request details
         //wc_get_logger()->info('Request Data: ' . json_encode($emailData), ['source' => 'bytenft-payment-gateway']);
 
-        // Send data to DFinSell API
+        // Send data to ByteNFT API
         $response = wp_remote_post($byteNftApiUrl, [
             'method' => 'POST',
             'timeout' => 30,
@@ -1410,7 +1410,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
         // Check if the API response has errors
         if (!empty($response_data['error'])) {
-            wc_get_logger()->error('DFinSell API Error: ' . json_encode($response_data), ['source' => 'bytenft-payment-gateway']);
+            wc_get_logger()->error('ByteNFT API Error: ' . json_encode($response_data), ['source' => 'bytenft-payment-gateway']);
             return false;
         }
 
