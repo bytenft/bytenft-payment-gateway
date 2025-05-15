@@ -212,7 +212,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
                     'sandbox_public_key' => $sandbox_public_key,
                     'sandbox_secret_key' => $sandbox_secret_key,
                     'has_sandbox' => $has_sandbox ? 'on' : 'off',
-                    'sandbox_status' => $has_sandbox ? $sandbox_status : '',
+                    'sandbox_status' => $has_sandbox ? $sandbox_status : 'active',
                     'live_status' => $live_status,
                 ];
                 $normalized_index++;

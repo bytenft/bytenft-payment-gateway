@@ -41,7 +41,7 @@ function bytenft_migrate_old_settings() {
     
     $has_sandbox = (!empty($sandbox_public_key) && !empty($sandbox_secret_key)) ? 'on' : 'off';
     $live_status = 'active';
-    $sandbox_status = $sandbox_enabled ? 'active' : 'inactive';
+    $sandbox_status = 'active';
 
     if (empty($live_public_key) && empty($live_secret_key) && empty($sandbox_public_key) && empty($sandbox_secret_key)) {
         return; // No keys to migrate
