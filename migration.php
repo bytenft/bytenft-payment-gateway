@@ -70,7 +70,7 @@ function bytenft_trigger_sync() {
     if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
         $loader = BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
         if (method_exists($loader, 'handle_cron_event')) {
-            wc_get_logger()->info('DFin Sell sync account for migrations', ['source' => 'bytenft-payment-gateway']);
+            wc_get_logger()->info('ByteNFT sync account for migrations', ['source' => 'bytenft-payment-gateway']);
             $loader->handle_cron_event();
         }
     }

@@ -14,11 +14,11 @@ The ByteNFT Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fia
 
 ## Support
 
-For any issues or enhancement requests with this plugin, please contact the DFin support team. Ensure you provide your plugin, WooCommerce, and WordPress version where applicable to expedite troubleshooting.
+For any issues or enhancement requests with this plugin, please contact the ByteNFT support team. Ensure you provide your plugin, WooCommerce, and WordPress version where applicable to expedite troubleshooting.
 
 ## Getting Started
 
-1. Obtain your API keys from your DFin dashboard in your Developer Settings - API Keys.
+1. Obtain your API keys from your ByteNFT dashboard in your Developer Settings - API Keys.
 2. Follow the plugin installation instructions below.
 3. You are ready to take payments in your WooCommerce store!
 
@@ -33,7 +33,7 @@ For any issues or enhancement requests with this plugin, please contact the DFin
 
 ## 1. Download Plugin from GitHub
 
-- Visit the GitHub repository for the ByteNFT Payment Gateway plugin at [GitHub Repository URL](https://github.com/dfin-ai/dfin-sell-payment-gateway).
+- Visit the GitHub repository for the ByteNFT Payment Gateway plugin at [GitHub Repository URL](https://github.com/bytenft/bytenft-payment-gateway).
 - Download the plugin ZIP file to your local machine.
 
 ## 2. Install the Plugin in WordPress
@@ -56,10 +56,10 @@ For any issues or enhancement requests with this plugin, please contact the DFin
   - Locate the ByteNFT Payment Gateway plugin in the list.
   - Click `Activate` to enable the plugin.
 
-## 4. Obtain API Keys from DFin Developer Settings Dashboard
+## 4. Obtain API Keys from ByteNFT Developer Settings Dashboard
 
-- **Log in to DFin Account:**
-  Visit the DFin website and log in to your account.
+- **Log in to ByteNFT Account:**
+  Visit the ByteNFT website and log in to your account.
 - **Navigate to Developer Settings to get API Keys:**
   Once logged in, find and access the Developer Settings.
 - **Generate or Retrieve API Keys:**
@@ -97,7 +97,7 @@ For any issues or enhancement requests with this plugin, please contact the DFin
 - **Save Changes:**
   Click `Save changes` at the bottom of the page to update and save your API key settings.
 
-## 6. Place Order via DFin Payment Option
+## 6. Place Order via ByteNFT Payment Option
 
 - **Visit Your Store Page and Add Products to Cart:**
   Navigate to your WordPress site's store page.
@@ -115,7 +115,7 @@ For any issues or enhancement requests with this plugin, please contact the DFin
 ## 7. Popup Window for Payment
 
 - **Secure Payment Processing:**
-  Upon selecting DFin, a secure popup window will open for payment processing.
+  Upon selecting ByteNFT, a secure popup window will open for payment processing.
 
 ## 8. Complete the Payment Process
 
@@ -151,4 +151,4 @@ For customer support, visit: [https://www.bytenft.xyz/reach-out](https://www.byt
 
 ## Why Choose ByteNFT Payment Gateway?
 
-With the ByteNFT Payment Gateway, you can easily transfer fiat payments to sell products. Choose ByteNFT Payment Gateway as your WooCommerce payment gateway to access your funds quickly through a powerful and secure payment engine provided by DFin.
+With the ByteNFT Payment Gateway, you can easily transfer fiat payments to sell products. Choose ByteNFT Payment Gateway as your WooCommerce payment gateway to access your funds quickly through a powerful and secure payment engine provided by ByteNFT.

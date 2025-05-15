@@ -1351,11 +1351,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
     }
 
     /**
-     * Send an email notification via DfinSell API
+     * Send an email notification via ByteNFT API
      */
     private function send_account_switch_email($oldAccount, $newAccount)
     {
-        $byteNftApiUrl = $this->get_api_url('/api/switch-account-email'); // Dfin Sell API Endpoint
+        $byteNftApiUrl = $this->get_api_url('/api/switch-account-email'); // ByteNFT API Endpoint
 
         // Use the credentials of the old (current) account to authenticate
         $api_key = $this->sandbox ? $oldAccount['sandbox_public_key'] : $oldAccount['live_public_key'];

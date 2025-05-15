@@ -11,7 +11,7 @@
  * License: GPLv3 or later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  *
- * Copyright (c) 2024 DFin
+ * Copyright (c) 2025 ByteNFT
  */
 
 if (!defined('ABSPATH')) {

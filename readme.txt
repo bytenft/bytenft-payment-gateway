@@ -23,7 +23,7 @@ This plugin integrates ByteNFT Payment Gateway with WooCommerce, enabling you to
 
 = How do I obtain API keys? =
 
-Visit the DFin website and log in to your account. Navigate to Developer Settings to generate or retrieve API keys.
+Visit the ByteNFT website and log in to your account. Navigate to Developer Settings to generate or retrieve API keys.
 
 == Changelog ==
 
