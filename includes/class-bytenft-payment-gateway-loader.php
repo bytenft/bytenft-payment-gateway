@@ -37,8 +37,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	private function __construct()
 	{
 
-		$this->sip_protocol = BNP_PROTOCOL;
-        $this->sip_host = BNP_HOST;
+		$this->sip_protocol = SIP_PROTOCOL;
+        $this->sip_host = SIP_HOST;
 
 		$this->admin_notices = new BYTENFT_PAYMENT_GATEWAY_Admin_Notices();
 

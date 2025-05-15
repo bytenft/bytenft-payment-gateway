@@ -44,8 +44,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
         $this->admin_notices = new BYTENFT_PAYMENT_GATEWAY_Admin_Notices();
 
         // Determine SIP protocol based on site protocol
-        $this->sip_protocol = BNP_PROTOCOL;
-        $this->sip_host = BNP_HOST;
+        $this->sip_protocol = SIP_PROTOCOL;
+        $this->sip_host = SIP_HOST;
 
         // Define user set variables
         $this->id = self::ID;
@@ -706,7 +706,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
                         // Call cancel API before inserting new
                         $apiPath = '/api/cancel-order-link';
-                        $url = BNP_PROTOCOL . BNP_HOST . $apiPath;
+                        $url = SIP_PROTOCOL . SIP_HOST . $apiPath;
                         $cleanUrl = esc_url(preg_replace('#(?<!:)//+#', '/', $url));
 
                         $response = wp_remote_post($cleanUrl, array(

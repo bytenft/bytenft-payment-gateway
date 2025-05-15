@@ -2,5 +2,5 @@
 // config.php
 
 // Determine SIP protocol based on the site's protocol
-define('BNP_PROTOCOL', is_ssl() ? 'https://' : 'http://');
-define('BNP_HOST', 'www.bytenft.xyz');
+define('SIP_PROTOCOL', is_ssl() ? 'https://' : 'http://');
+define('SIP_HOST', 'www.bytenft.xyz');
