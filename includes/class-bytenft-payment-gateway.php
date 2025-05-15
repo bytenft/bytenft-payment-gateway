@@ -228,12 +228,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
         if (empty($errors)) {
             update_option('woocommerce_bytenft_payment_gateway_accounts', $valid_accounts);
             $this->admin_notices->bytenft_add_notice('settings_success', 'notice notice-success', __('Settings saved successfully.', 'bytenft-payment-gateway'));
-            if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
-                $loader = BYTENFT_PAYMENT_GATEWAY_Loader::get_instance(); // Use the static method
-                if (method_exists($loader, 'handle_cron_event')) {
-                    $loader->handle_cron_event(); // Perform sync immediately
-                }
-            }
+
         } else {
             foreach ($errors as $error) {
                 $this->admin_notices->bytenft_add_notice('settings_error', 'notice notice-error', $error);
@@ -356,7 +351,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
                     <?php if (!empty($option_value)): ?>
                         <div class="bytenft-sync-account">
                             <span id="bytenft-sync-status"></span>
-                            <button class="button" class="bytenft-sync-accounts" id="bytenft-sync-accounts"><span><i class="fa fa-refresh" aria-hidden="true"></i></span> <?php esc_html_e('Sync Accounts', 'bytenft-payment-gateway'); ?></button>
                         </div>
                     <?php endif; ?>
 
@@ -387,16 +381,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
                                     <div class="action-button">
                                         <div class="account-status-block" style="float: right;">
-                                            <span class="account-status-label 
-									    <?php echo esc_attr($sandbox_enabled ? 'sandbox-status' : 'live-status'); ?> 
-									    <?php echo esc_attr(strtolower($sandbox_enabled ? ($sandbox_status ?? '') : ($live_status ?? ''))); ?>">
-                                                <?php
-                                                if ($sandbox_enabled) {
-                                                    echo esc_html__('Sandbox Account Status: ', 'bytenft-payment-gateway') . esc_html(ucfirst($sandbox_status));
-                                                } else {
-                                                    echo esc_html__('Live Account Status: ', 'bytenft-payment-gateway') . esc_html(ucfirst($live_status));
-                                                } ?>
-                                            </span>
+
                                         </div>
                                         <button type="button" class="delete-account-btn">
                                             <i class="fa fa-trash" aria-hidden="true"></i>

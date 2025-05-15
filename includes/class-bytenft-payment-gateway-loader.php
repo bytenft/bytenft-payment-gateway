@@ -56,15 +56,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		register_activation_hook(BYTENFT_PAYMENT_GATEWAY_FILE, 'bytenft_activation_check');
 
 	
-		// Schedule the cron job on plugin activation
-		register_activation_hook(BYTENFT_PAYMENT_GATEWAY_FILE, [$this, 'activate_cron_job']);
-
-		// Clear the cron job on plugin deactivation
-		register_deactivation_hook(BYTENFT_PAYMENT_GATEWAY_FILE, [$this, 'deactivate_cron_job']);
+		
 		register_deactivation_hook(BYTENFT_PAYMENT_GATEWAY_FILE, 'bytenft_clear_all_caches');
 		add_action('wp_ajax_bytenft_manual_sync', [$this, 'bytenft_manual_sync_callback']);
         //add_action('wp_ajax_nopriv_bytenft_manual_sync', [$this, 'bytenft_manual_sync_callback']);
-		add_filter('cron_schedules' , [$this, 'bytenft_add_cron_interval']);
+		
 		add_action('bytenft_cron_event', [$this, 'handle_cron_event']);
 	}
 	
@@ -379,24 +375,7 @@ public function bytenft_add_cron_interval($schedules) {
     return $schedules;
 }
 
-function activate_cron_job() {
-    wc_get_logger()->info("activate cron job function", ['source' => 'bytenft-payment-gateway']);
 
-    // Clear existing scheduled event if it exists
-    $timestamp = wp_next_scheduled('bytenft_cron_event');
-    if ($timestamp) {
-        wp_unschedule_event($timestamp, 'bytenft_cron_event');
-    }
-
-    // Schedule with new interval
-    wp_schedule_event(time(), 'every_two_hours', 'bytenft_cron_event');
-}
-
- function deactivate_cron_job()
-{
-	wc_get_logger()->info("deactivate cron job function", ['source' => 'bytenft-payment-gateway']);
-    wp_clear_scheduled_hook('bytenft_cron_event');
-}
 
 
 public function handle_cron_event()

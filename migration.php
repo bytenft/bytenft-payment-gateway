@@ -62,7 +62,7 @@ function bytenft_migrate_old_settings() {
     ];
 
     update_option('woocommerce_bytenft_payment_gateway_accounts', serialize($new_accounts));
-    bytenft_trigger_sync();
+    
 }
 
 
