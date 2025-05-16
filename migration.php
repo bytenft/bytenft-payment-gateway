@@ -19,8 +19,7 @@ function bytenft_migrate_old_settings() {
             }, $beta_accounts);
 
             // Save updated accounts back
-            update_option('woocommerce_bytenft_payment_gateway_accounts', serialize($enhanced_accounts));
-            bytenft_trigger_sync();
+            update_option('woocommerce_bytenft_payment_gateway_accounts', serialize($enhanced_accounts));            
             return; // Migration complete for beta
         }
     }
@@ -64,18 +63,6 @@ function bytenft_migrate_old_settings() {
     update_option('woocommerce_bytenft_payment_gateway_accounts', serialize($new_accounts));
     
 }
-
-
-function bytenft_trigger_sync() {
-    if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
-        $loader = BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
-        if (method_exists($loader, 'handle_cron_event')) {
-            wc_get_logger()->info('ByteNFT sync account for migrations', ['source' => 'bytenft-payment-gateway']);
-            $loader->handle_cron_event();
-        }
-    }
-}
-
 
 // Hook migration to plugin activation
 register_activation_hook(BYTENFT_PAYMENT_GATEWAY_FILE, 'bytenft_migrate_old_settings');
