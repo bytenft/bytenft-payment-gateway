@@ -1409,14 +1409,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
         }
 
         $mode = $this->sandbox ? 'sandbox' : 'live';
-        $status_key = $mode . '_status';
+       
         $public_key = $mode . '_public_key';
         $secret_key = $mode . '_secret_key';
 
         // Filter out used accounts and check correct mode status & keys
-        $available_accounts = array_filter($settings, function ($account) use ($used_accounts, $status_key, $public_key, $secret_key) {
+      $available_accounts = array_filter($settings, function ($account) use ($used_accounts, $public_key, $secret_key) {
             return !in_array($account['title'], $used_accounts)
-                && isset($account[$status_key]) && $account[$status_key] === 'active'
                 && !empty($account[$public_key]) && !empty($account[$secret_key]);
         });
 
