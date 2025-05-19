@@ -50,7 +50,6 @@ function cancel_bytenft_unpaid_order_action($order_id) {
 		wc_get_logger()->error('Cancel order Error: Order ID is missing.', ['source' => 'bytenft-payment-gateway']);
         return;
     }
-    wc_get_logger()->info('WooCommerce hook triggered with Order ID: ' .$order_id, ['source' => 'bytenft-payment-gateway']);
 
 	$order = wc_get_order($order_id);
 	if (!$order_id || !is_numeric($order_id)) {
@@ -59,9 +58,7 @@ function cancel_bytenft_unpaid_order_action($order_id) {
             WHERE post_type = 'shop_order_placehold'
             ORDER BY ID DESC
             LIMIT 1
-        ");
-		wc_get_logger()->info('Auto-fetched latest unpaid order ID: ' . $order_id, ['source' => 'bytenft-payment-gateway']);
-
+        ");	
     }
 	$order = wc_get_order($order_id);
 	if (!$order) {
@@ -70,15 +67,16 @@ function cancel_bytenft_unpaid_order_action($order_id) {
     }
 	else
 	{
-		//$pending_time = $order->get_meta('_pending_order_time');
+				//$pending_time = $order->get_meta('_pending_order_time');
 		$pending_time = get_post_meta($order_id, '_pending_order_time', true);
    		$pending_time = is_numeric($pending_time) ? (int) $pending_time : 0; // Ensure it's an integer
 		// Check if the order is still unpaid and the timeout has passed
 		if ($order->has_status('pending') && (time() - $pending_time) >= (30 * 60)) {
+			wc_get_logger()->info('Auto-fetched latest unpaid order ID: ' . $order_id, ['source' => 'bytenft-payment-gateway']);
 			$order->update_status('cancelled', 'Order automatically cancelled due to unpaid timeout.');
 			//$order->reduce_order_stock(); // Release the stock
 			wc_reduce_stock_levels($order_id);
-		}
+		
 		// ========================== start code for expiring payment link ==========================
 		//  Get latest payment URL for this order from custom table
         $table_name = esc_sql($wpdb->prefix . 'order_payment_link'); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -99,7 +97,7 @@ function cancel_bytenft_unpaid_order_action($order_id) {
 		$apiPath = '/api/cancel-order-link';
 
 		// Concatenate the base URL and path
-		$url = SIP_PROTOCOL . SIP_HOST . $apiPath;
+		$url = BNFT_PROTOCOL . BNFT_HOST . $apiPath;
 
 		// Remove any double slashes in the URL except for the 'http://' or 'https://'
 		$cleanUrl = esc_url(preg_replace('#(?<!:)//+#', '/', $url));
@@ -127,6 +125,7 @@ function cancel_bytenft_unpaid_order_action($order_id) {
 		    $response_json = is_array($response_body) || is_object($response_body) ? json_encode($response_body) : $response_body;
 		    wc_get_logger()->info('Cancel API Response: ' . $response_json, ['source' => 'bytenft-payment-gateway']);
 		}
+	}
 		// ==============/ end code for payment link expirty / =============================
 
 	}

@@ -10,8 +10,6 @@ function bytenft_migrate_old_settings() {
         if (is_array($beta_accounts) && !empty($beta_accounts)) {
             // Enhance each account to ensure all required keys exist
             $enhanced_accounts = array_map(function ($account) {
-                $account['live_status'] = $account['live_status'] ?? 'active';
-                $account['sandbox_status'] = $account['sandbox_status'] ?? 'active';
                 $account['has_sandbox'] = (!empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key'])) ? 'on' : 'off';
                 $account['priority'] = $account['priority'] ?? 1;
                 $account['title'] = $account['title'] ?? 'Default Account';
@@ -39,8 +37,7 @@ function bytenft_migrate_old_settings() {
     $sandbox_enabled = isset($old_settings['sandbox']) && $old_settings['sandbox'] === 'yes';
     
     $has_sandbox = (!empty($sandbox_public_key) && !empty($sandbox_secret_key)) ? 'on' : 'off';
-    $live_status = 'active';
-    $sandbox_status = 'active';
+
 
     if (empty($live_public_key) && empty($live_secret_key) && empty($sandbox_public_key) && empty($sandbox_secret_key)) {
         return; // No keys to migrate
@@ -55,8 +52,7 @@ function bytenft_migrate_old_settings() {
             'sandbox_public_key' => $sandbox_public_key,
             'sandbox_secret_key' => $sandbox_secret_key,
             'has_sandbox' => $has_sandbox,
-            'live_status' => $live_status,
-            'sandbox_status' => $sandbox_status,
+
         ]
     ];
 

@@ -37,8 +37,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	private function __construct()
 	{
 
-		$this->sip_protocol = SIP_PROTOCOL;
-        $this->sip_host = SIP_HOST;
+		$this->sip_protocol = BNFT_PROTOCOL;
+        $this->sip_host = BNFT_HOST;
 
 		$this->admin_notices = new BYTENFT_PAYMENT_GATEWAY_Admin_Notices();
 
@@ -58,10 +58,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	
 		
 		register_deactivation_hook(BYTENFT_PAYMENT_GATEWAY_FILE, 'bytenft_clear_all_caches');
-		add_action('wp_ajax_bytenft_manual_sync', [$this, 'bytenft_manual_sync_callback']);
-        //add_action('wp_ajax_nopriv_bytenft_manual_sync', [$this, 'bytenft_manual_sync_callback']);
-		
-		add_action('bytenft_cron_event', [$this, 'handle_cron_event']);
+
 	}
 	
 
@@ -194,7 +191,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	 */
 	public function bytenft_check_payment_status($order_id)
 	{
-	    // Get the order details
+	  // Get the order details
 	    $order = wc_get_order($order_id);
 
 	    if (!$order) {
@@ -361,183 +358,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	
 		wp_die();
 	}
-
-	/**
-     * Add custom cron schedules.
-     */
-
-
-public function bytenft_add_cron_interval($schedules) {
-    $schedules['every_two_hours'] = array(
-        'interval' => 2 * 60 * 60, // 2 hours in seconds = 7200
-        'display'  => __('Every Two Hours', 'bytenft-payment-gateway')
-    );
-    return $schedules;
-}
-
-
-
-
-public function handle_cron_event()
-{
-    wc_get_logger()->info("Sync started via API.", ['source' => 'bytenft-payment-gateway']);
-
-    $accounts = get_option('woocommerce_bytenft_payment_gateway_accounts');
-	if (is_string($accounts)) {
-		$unserialized = maybe_unserialize($accounts);
-		$accounts = is_array($unserialized) ? $unserialized : [];
-	}
-	
-       
-    if (!$accounts || !is_array($accounts)) {
-        wc_get_logger()->info("No accounts found or invalid format:".$accounts , ['source' => 'bytenft-payment-gateway']);
-        return;
-    }
-
-    $accountsData = [];
-    $bearerToken = null;
-
-    foreach ($accounts as &$account) {
-        $isSandboxEnabled = isset($account['has_sandbox']) && $account['has_sandbox'] === 'on';
-
-        // Prepare both live and sandbox entries
-        if (!empty($account['live_public_key']) && !empty($account['live_secret_key'])) {
-            $accountsData[] = [
-                'account_name' => $account['title'],
-                'public_key'   => $account['live_public_key'],
-                'secret_key'   => $account['live_secret_key'],
-                'mode'         => 'live',
-            ];
-
-
-        }
-
-        if ($isSandboxEnabled && !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key'])) {
-            $accountsData[] = [
-                'account_name' => $account['title'],
-                'public_key'   => $account['sandbox_public_key'],
-                'secret_key'   => $account['sandbox_secret_key'],
-                'mode'         => 'sandbox',
-            ];
-        }
-    }
-
-
-
-    $url = esc_url($this->sip_protocol . $this->sip_host . '/api/sync-account-status');
-    $response = wp_remote_post($url, [
-        'headers' => [
-            'Content-Type'  => 'application/json',
-        ],
-        'body' => json_encode(['accounts' => $accountsData]),
-        'timeout' => 15,
-    ]);
-
-    if (is_wp_error($response)) {
-        wc_get_logger()->info("API error for bulk request.", ['source' => 'bytenft-payment-gateway']);
-        return;
-    }
-
-    $response_body = wp_remote_retrieve_body($response);
-    $response_data = json_decode($response_body, true);
-   
-    $updated = false;
-	$statusSummary = [];
-    if (!empty($response_data['statuses'])) {
-        foreach ($response_data['statuses'] as $statusData) {
-            if (
-                isset($statusData['mode'], $statusData['public_key'], $statusData['status']) &&
-                !empty($statusData['status'])
-            ) {
-                foreach ($accounts as &$account) {
-                    if (
-                        $statusData['mode'] === 'live' &&
-                        $account['live_public_key'] === $statusData['public_key']
-                    ) {
-                        $account['live_status'] = $statusData['status'];
-                        $updated = true;
-						$statusSummary[] = [
-							'title'  => $account['title'] ?? 'N/A',
-							'mode'   => $statusData['mode'],
-							'status' => $statusData['status'],
-						];
-                    }
-
-                    if (
-                        $statusData['mode'] === 'sandbox' &&
-                        $account['sandbox_public_key'] === $statusData['public_key']
-                    ) {
-                        $account['sandbox_status'] = $statusData['status'];
-                        $updated = true;
-						$statusSummary[] = [
-							'title'  => $account['title'] ?? 'N/A',
-							'mode'   => $statusData['mode'],
-							'status' => $statusData['status'],
-						];
-                    }
-                }
-            }
-        }
-    }
-	if (!empty($statusSummary)) {
-		wc_get_logger()->info('Byte NFT sync account Response: ' . json_encode($statusSummary), ['source' => 'bytenft-payment-gateway']);
-	}
-    if ($updated) {
-        update_option('woocommerce_bytenft_payment_gateway_accounts', $accounts);
-        wc_get_logger()->info("Sync completed successfully via API.", ['source' => 'bytenft-payment-gateway']);
-    } else {
-        wc_get_logger()->info("Cron ran but no statuses were updated", ['source' => 'bytenft-payment-gateway']);
-    }
-}
-
-function bytenft_manual_sync_callback() {
-     
-	// Verify nonce first
-	if (!check_ajax_referer('bytenft_sync_nonce', 'nonce', false)) {
-		wc_get_logger()->error('Nonce verification failed', ['source' => 'bytenft-payment-gateway']);
-		wp_send_json_error([
-			'message' => __('Security check failed. Please refresh the page and try again.', 'bytenft-payment-gateway')
-		], 400);
-		wp_die();
-	}
-
-	// Check user capabilities
-	if (!current_user_can('manage_woocommerce')) {
-		wc_get_logger()->error('Permission denied for user: ' . get_current_user_id(), ['source' => 'bytenft-payment-gateway']);
-		wp_send_json_error([
-			'message' => __('You do not have permission to perform this action.', 'bytenft-payment-gateway')
-		], 403);
-		wp_die();
-	}
-
-	wc_get_logger()->info("Manual sync initiated", ['source' => 'bytenft-payment-gateway']);
-	
-	try {
-		// Start output buffering to capture any unexpected output
-		ob_start();
-		
-		$this->handle_cron_event();
-		$output = ob_get_clean();
-		
-		if (!empty($output)) {
-			wc_get_logger()->notice("Unexpected output during sync: " . $output, ['source' => 'bytenft-payment-gateway']);
-		}
-		
-		wp_send_json_success([
-			'message' => __('Accounts synchronized successfully.', 'bytenft-payment-gateway'),
-			'timestamp' => current_time('mysql')
-		]);
-		
-	} catch (Exception $e) {
-		wc_get_logger()->error("Sync error: " . $e->getMessage(), ['source' => 'bytenft-payment-gateway']);
-		wp_send_json_error([
-			'message' => __('Sync failed: ', 'bytenft-payment-gateway') . $e->getMessage(),
-			'code' => $e->getCode()
-		], 500);
-	}
-	
-	wp_die(); // Always include this
-}
 
 
 }

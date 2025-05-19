@@ -44,8 +44,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
         $this->admin_notices = new BYTENFT_PAYMENT_GATEWAY_Admin_Notices();
 
         // Determine SIP protocol based on site protocol
-        $this->sip_protocol = SIP_PROTOCOL;
-        $this->sip_host = SIP_HOST;
+        $this->sip_protocol = BNFT_PROTOCOL;
+        $this->sip_host     = BNFT_HOST;
 
         // Define user set variables
         $this->id = self::ID;
@@ -200,10 +200,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
                         }
                     }
                 }
-                // Add the 'status' field, defaulting to 'active' for new accounts
-                $sandbox_status = isset($account['sandbox_status']) ? sanitize_text_field($account['sandbox_status']) : 'active';
-                $live_status = isset($account['live_status']) ? sanitize_text_field($account['live_status']) : 'active';
-                // Store valid account
+             
                 $valid_accounts[$normalized_index] = [
                     'title' => $account_title,
                     'priority' => $priority,
@@ -212,8 +209,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
                     'sandbox_public_key' => $sandbox_public_key,
                     'sandbox_secret_key' => $sandbox_secret_key,
                     'has_sandbox' => $has_sandbox ? 'on' : 'off',
-                    'sandbox_status' => $has_sandbox ? $sandbox_status : 'active',
-                    'live_status' => $live_status,
                 ];
                 $normalized_index++;
             }
@@ -360,19 +355,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
                     <?php else: ?>
                         <?php foreach (array_values($option_value) as $index => $account): ?>
                             <?php
-                            $live_status = (!empty($account['live_status'])) ? $account['live_status'] : '';
-                            $sandbox_status = (!empty($account['sandbox_status'])) ? $account['sandbox_status'] : 'unknown';
-                            ?>
+                          ?>
                             <div class="bytenft-account" data-index="<?php echo esc_attr($index); ?>">
-                                <input type="hidden" name="accounts[<?php echo esc_attr($index); ?>][live_status]"
-                                    value="<?php echo esc_attr($account['live_status'] ?? ''); ?>">
-                                <input type="hidden" name="accounts[<?php echo esc_attr($index); ?>][sandbox_status]"
-                                    value="<?php echo esc_attr($account['sandbox_status'] ?? ''); ?>">
-                                <div class="title-blog">
-
-                                    <h4>
-
-                                        <span class="account-name-display">
+                                 <div class="title-blog">
+                                        <h4>
+                                    <span class="account-name-display">
                                             <?php echo !empty($account['title']) ? esc_html($account['title']) : esc_html__('Untitled Account', 'bytenft-payment-gateway'); ?>
                                         </span>
                                         &nbsp;<i class="fa fa-caret-down account-toggle-btn" aria-hidden="true"></i>
@@ -706,7 +693,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
                         // Call cancel API before inserting new
                         $apiPath = '/api/cancel-order-link';
-                        $url = SIP_PROTOCOL . SIP_HOST . $apiPath;
+                        $url = BNFT_PROTOCOL . BNFT_HOST . $apiPath;
                         $cleanUrl = esc_url(preg_replace('#(?<!:)//+#', '/', $url));
 
                         $response = wp_remote_post($cleanUrl, array(
@@ -1303,18 +1290,18 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
             foreach ($accounts as $account) {
                 // If in sandbox mode, check sandbox status and keys
                 if ($this->sandbox) {
-                    if (isset($account['sandbox_status']) && $account['sandbox_status'] === 'active') {
+                  
                         if (!empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key'])) {
                             $valid_accounts[] = $account;
                         }
-                    }
+               
                 }
                 // If in live mode, check live status and keys
                 else {
-                    if (isset($account['live_status']) && $account['live_status'] === 'active') {
+                   
                         if (!empty($account['live_public_key']) && !empty($account['live_secret_key'])) {
                             $valid_accounts[] = $account;
-                        }
+                        
                     }
                 }
             }
