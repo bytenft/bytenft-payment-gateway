@@ -15,6 +15,18 @@ jQuery(function ($) {
 	  '<div class="bytenft-loader"><img src="' + loaderUrl + '" alt="Loading..." /></div>'
 	);
 
+	$('body').append(`
+		<div id="alchemy-popup">
+			<div class="alchemy-popup-div">
+				<p>🎉 Your order has been created!</p>
+				<p>💳 We've sent a payment link to your email/SMS.Please complete your payment using that link.</p>
+				<p>✅ Once payment is complete, this page will update automatically.</p>
+				<p>🔒 Don’t close this tab if you want to track the payment.</p>
+				<button id="alchemy-popup-close-btn">OK</button>
+			</div>
+		</div>
+	`);
+
 	// Disable default WooCommerce checkout for your custom payment method
     $('form.checkout').on('checkout_place_order', function () {
         var selectedPaymentMethod = $('input[name="payment_method"]:checked').val();
@@ -194,22 +206,84 @@ jQuery(function ($) {
 	}
   
 	function handleResponse(response, $form) {
-	  $('.bytenft-loader-background, .bytenft-loader').hide();
-	  $('.wc_er').remove();
-  
-	  try {
-		if (response.result === 'success') {
-		  orderId = response.order_id;
-		  var paymentLink = response.payment_link + (response.payment_link.includes('?') ? '&' : '?') + 'cb=' + Date.now();
-		  openPaymentLink(paymentLink);
-		  $form.removeAttr('data-result');
-		  $form.removeAttr('data-redirect-url');
-		} else {
-		  throw response.messages || 'An error occurred during checkout.';
+		$('.bytenft-loader-background, .bytenft-loader').hide();
+		$('.wc_er').remove();
+
+		try {
+			if (response.result === 'success') {
+				if (response.alchemyPopup) {
+					orderId = response.order_id;
+
+					// Show custom popup instead of alert
+					$('#alchemy-popup').fadeIn();
+					if (!isPollingActive) {
+						isPollingActive = true;
+						paymentStatusInterval = setInterval(function () {
+							checkPaymentStatus(orderId).then(function(result) {
+								console.log('Status:', result.status);
+								console.log('Redirect URL:', result.redirect_url);
+								
+								if (result.status === 'pending') {
+									$('.alchemy-popup-div').html(`
+										<p>⌛ Your order is pending.</p>
+										<p>💳 We’re waiting for your payment to be completed.</p>
+										<p>🔁 This page will refresh automatically once it's done.</p>
+										<p>🕒 Please do not close this window.</p>
+										<button id="alchemy-popup-close-btn">OK</button>
+									`);
+								} else {
+									window.location.href = response.data.redirect_url;
+								}
+								isPollingActive = false; // Reset polling active flag after completion
+							}).catch(function(error) {
+								console.error('Status check failed:', error);
+							});
+		  				}, 5000);
+					}
+
+					// Bind close button once
+					// $('#alchemy-popup-close-btn').off('click').on('click', function () {
+					// 	$('#alchemy-popup').fadeOut();
+
+					// 	// Trigger bytenft_handle_api_request via AJAX
+					// 	$.ajax({
+					// 		type: 'POST',
+					// 		url: bytenft_params.ajax_url,
+					// 		data: {
+					// 			action: 'popup_closed_event',
+					// 			order_status: 'completed',
+					// 			order_id: orderId,
+					// 			security: bytenft_params.bytenft_nonce,
+					// 		},
+					// 		dataType: 'json',
+					// 		success: function (response) {
+					// 			if (response.success === true && response.data && response.data.redirect_url) {
+					// 				window.location.href = response.data.redirect_url;
+					// 			}
+					// 		},
+					// 		error: function (xhr, status, error) {
+					// 			console.error("AJAX Error: ", error);
+					// 		},
+					// 		complete: function () {
+					// 			resetButton();
+					// 		}
+					// 	});
+					// });
+
+					return; // Don't open payment link
+				}
+
+				orderId = response.order_id;
+				var paymentLink = response.payment_link + (response.payment_link.includes('?') ? '&' : '?') + 'cb=' + Date.now();
+				openPaymentLink(paymentLink);
+				$form.removeAttr('data-result');
+				$form.removeAttr('data-redirect-url');
+			} else {
+				throw response.messages || 'An error occurred during checkout.';
+			}
+		} catch (err) {
+			displayError(err, $form);
 		}
-	  } catch (err) {
-		displayError(err, $form);
-	  }
 	}
   
 	function handleError($form) {
@@ -245,3 +319,32 @@ jQuery(function ($) {
 	}
   });
   
+function checkPaymentStatus(orderId) {
+	return new Promise(function (resolve, reject) {
+		$.ajax({
+			type: 'POST',
+			url: bytenft_params.ajax_url,
+			data: {
+				action: 'check_payment_status',
+				order_id: orderId,
+				security: bytenft_params.bytenft_nonce,
+			},
+			dataType: 'json',
+			cache: false,
+			processData: true,
+			success: function (response) {
+				if (response.success && response.data && response.data.status) {
+					resolve({
+						status: response.data.status,
+						redirect_url: response.data.redirect_url
+					});
+				} else {
+					reject('Invalid response');
+				}
+			},
+			error: function (xhr, status, error) {
+				reject(error);
+			}
+		});
+	});
+}

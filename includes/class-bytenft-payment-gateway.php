@@ -776,6 +776,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
                 return [
                     'payment_link' => $payment_link_with_version,
                     'result' => 'success',
+					'alchemyPopup' => $response_data['data']['payment_provider'] == 'alchemypay',
                 ];
             }
 

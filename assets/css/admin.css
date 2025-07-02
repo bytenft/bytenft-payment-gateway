@@ -179,3 +179,35 @@
 .bytenft-sync-account .error{
 	color: #dc3545; 
 }
+
+#alchemy-popup {
+	display: none !important;
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.5);
+	z-index: 10000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-family: Arial, sans-serif;
+}
+
+#alchemy-popup .alchemy-popup-div{
+	background: #fff;
+	padding: 30px 25px;
+	border-radius: 12px;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+	max-width: 400px;
+	width: 90%;
+	text-align: center;
+	position: relative;
+}
+#alchemy-popup-close-btn{
+	padding: 10px 20px;
+	background-color: #0073aa;
+	color: white;
+	border: none;
+	border-radius: 5px;
+	cursor: pointer;
+	font-size: 15px;
+}
