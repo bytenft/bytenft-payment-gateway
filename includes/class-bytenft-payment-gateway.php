@@ -677,6 +677,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$pay_id = $response_data['data']['pay_id'] ?? '';
 				if (!empty($pay_id)) {
 					$order->update_meta_data('_bytenft_pay_id', $pay_id);
+					$order->update_meta_data('_bytenft_public_key', $public_key);
+					$order->update_meta_data('_bytenft_secret_key', $secret_key);
 					$order->save(); // ✅ This ensures meta is written to DB
 				}
 

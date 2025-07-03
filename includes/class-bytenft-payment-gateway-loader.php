@@ -176,84 +176,49 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// Call the function to check payment status with the validated order ID
 		return $this->bytenft_check_payment_status($order_id);
 	}
-	
+
 	public function bytenft_check_payment_status($order_id)
 	{
 	    global $wpdb;
 
 	    $logger_context = ['source' => 'bytenft-payment-gateway', 'order_id' => $order_id];
+
+	    // 1. Get order
 	    $order = wc_get_order($order_id);
 	    if (!$order) {
 	        wc_get_logger()->error("Order not found", $logger_context);
 	        return new WP_REST_Response(['error' => 'Order not found'], 404);
 	    }
 
-	    $order_id = intval($order_id);
+	    $payment_return_url = esc_url($order->get_checkout_order_received_url());
 
-	    // 1. Get pay_id (uuid) from wp_order_payment_link table
-	    $table = $wpdb->prefix . 'order_payment_link';
-	    $pay_id = $wpdb->get_var(
-	        $wpdb->prepare(
-	            "SELECT uuid FROM {$table} WHERE order_id = %d ORDER BY id DESC LIMIT 1",
-	            $order_id
-	        )
-	    );
+	    // 2. Get stored payment data
+	    $pay_id     = base64_decode($order->get_meta('_bytenft_pay_id'));
+	    $public_key = $order->get_meta('_bytenft_public_key');
+	    $secret_key = $order->get_meta('_bytenft_secret_key');
 
-	    wc_get_logger()->warning("pay_id for order #{$order_id}: {$pay_id}", $logger_context);
-
-	    if (empty($pay_id)) {
-	        wc_get_logger()->warning("Missing _bytenft_pay_id for order #{$order_id}", $logger_context);
+	    if (empty($pay_id) || empty($public_key) || empty($secret_key)) {
+	        wc_get_logger()->warning("Missing stored payment metadata.", $logger_context);
 	        return new WP_REST_Response([
 	            'success' => false,
-	            'error' => 'Missing pay_id for the order.',
-	            'order_id' => $order_id,
+	            'error' => 'Missing payment data for the order.',
 	        ], 400);
 	    }
 
-	    $payment_return_url = esc_url($order->get_checkout_order_received_url());
-
-	    // 2. Short-circuit if already finalized
+	    // 3. Skip if already in final state
 	    if ($order->is_paid()) {
-	        wc_get_logger()->info("Order is already paid", $logger_context);
+	        wc_get_logger()->info("Order already paid", $logger_context);
 	        wp_send_json_success(['status' => 'success', 'redirect_url' => $payment_return_url]);
 	    }
+
 	    if ($order->has_status(['failed', 'canceled', 'refunded'])) {
 	        wc_get_logger()->info("Order is in final state: " . $order->get_status(), $logger_context);
 	        wp_send_json_success(['status' => $order->get_status(), 'redirect_url' => $payment_return_url]);
 	    }
 
-	    // 3. Get sandbox mode from settings
-	    $gateway_settings = get_option('woocommerce_bytenft_payment_gateway_settings', []);
-	    $is_sandbox = isset($gateway_settings['sandbox']) && $gateway_settings['sandbox'] === 'yes';
-
-	    // 4. Match correct account
-	    $accounts = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
-	    if (is_string($accounts)) {
-	        $accounts = maybe_unserialize($accounts);
-	    }
-
-	    $account = false;
-	    foreach ($accounts as $acc) {
-	        $order_public_key = $order->get_meta('_bytenft_public_key');
-	        if (
-	            ($is_sandbox && !empty($acc['sandbox_public_key']) && $acc['sandbox_public_key'] === $order_public_key) ||
-	            (!$is_sandbox && !empty($acc['live_public_key']) && $acc['live_public_key'] === $order_public_key)
-	        ) {
-	            $account = $acc;
-	            break;
-	        }
-	    }
-
-	    if (!$account) {
-	        wc_get_logger()->warning("Unable to match account for pay_id", $logger_context);
-	        wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url]);
-	    }
-
-	    $public_key = $is_sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
-	    $secret_key = $is_sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
-
-	    // 5. Build and send status request
+	    // 4. Call status API
 	    $url = trailingslashit($this->base_url) . 'api/orders/' . $pay_id . '/status';
+
 	    $response = wp_remote_get($url, [
 	        'timeout' => 20,
 	        'headers' => [
@@ -262,26 +227,24 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	        ],
 	    ]);
 
+	    // 5. Handle error
 	    if (is_wp_error($response)) {
-	        wc_get_logger()->error("HTTP error while checking payment status: " . $response->get_error_message(), $logger_context);
+	        wc_get_logger()->error("HTTP error while checking status: " . $response->get_error_message(), $logger_context);
 	        wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url]);
 	    }
 
 	    $response_body = wp_remote_retrieve_body($response);
 	    $status_data = json_decode($response_body, true);
 
+	    // 6. Validate response
 	    if (!isset($status_data['status']) || $status_data['status'] !== 'success' || !isset($status_data['data']['payment_status'])) {
-	        wc_get_logger()->error("Unexpected API response for Pay ID: $pay_id", [
-	            'source' => 'bytenft-payment-gateway',
-	            'response' => $status_data,
-	        ]);
 	        wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url]);
 	    }
 
 	    $payment_status = strtolower($status_data['data']['payment_status']);
 	    wc_get_logger()->info("Payment status for $pay_id: $payment_status", $logger_context);
 
-	    // 6. Update order status
+	    // 7. Update WooCommerce order status
 	    if ($payment_status === 'success') {
 	        $order->payment_complete();
 	        wp_send_json_success(['status' => 'success', 'redirect_url' => $payment_return_url]);
@@ -297,7 +260,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	        wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url]);
 	    }
 
-	    // 7. Default fallback
+	    // 8. Fallback
 	    wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url]);
 	}
 
