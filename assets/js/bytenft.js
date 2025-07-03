@@ -245,9 +245,6 @@ jQuery(function ($) {
 					<li>Do not close this window until payment is completed.</li>
 					<li>We’re checking the status automatically in the background.</li>
 				</ul>
-				<p>
-					If the payment window didn’t open, <a id="bytenft-manual-link" href="#" target="_blank">click here to open it manually</a>.
-				</p>
 			</div>
 		</div>`;
 	$('body').append(paymentLinkModal);
