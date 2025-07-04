@@ -691,55 +691,69 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$table_exists = wp_cache_get($cache_key, $cache_group);
 
 				if (false === $table_exists) {
-				    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
-				    $table_exists = $wpdb->get_var(
-				        $wpdb->prepare("SHOW TABLES LIKE %s", $table_name)
-				    );
+                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
+                    $table_exists = $wpdb->get_var(
+                        $wpdb->prepare("SHOW TABLES LIKE %s", $table_name)
+                    );
 
 				    // Cache result for 1 hour
-				    wp_cache_set($cache_key, $table_exists, $cache_group, HOUR_IN_SECONDS);
-				}
+                    wp_cache_set($cache_key, $table_exists, $cache_group, HOUR_IN_SECONDS);
+                }
 
-				if ($table_exists !== $table_name) {
-				    // Create the table if not exists
-				    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+                // Always run dbDelta to ensure missing columns are created
+                require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-				    $charset_collate = $wpdb->get_charset_collate();
+                $charset_collate = $wpdb->get_charset_collate();
 
-				    $create_sql = "CREATE TABLE $table_name (
-				        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-				        order_id BIGINT UNSIGNED NOT NULL,
-				        uuid VARCHAR(100) NOT NULL,
-				        payment_link TEXT NOT NULL,
-				        customer_email VARCHAR(191),
-				        amount DECIMAL(18,2),
-				        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-				    ) $charset_collate;";
+                $create_sql = "CREATE TABLE $table_name (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    order_id BIGINT UNSIGNED NOT NULL UNIQUE,  -- ✅ This makes REPLACE work
+                    uuid VARCHAR(100) NOT NULL,
+                    payment_link TEXT NOT NULL,
+                    customer_email VARCHAR(191),
+                    amount DECIMAL(18,2),
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                ) $charset_collate;";
 
-				    dbDelta($create_sql);
+                $wpdb->query("ALTER TABLE $table_name ADD UNIQUE KEY order_id (order_id)");
 
-				    wc_get_logger()->info("Created missing `$table_name` table.", [
-				        'source' => 'bytenft-payment-gateway',
-				        'context' => ['table' => $table_name],
-				    ]);
-				}
+                dbDelta($create_sql);
 
-				// Prepare amount
-				$formatted_amount = number_format((float) ($response_data['data']['amount'] ?? 0), 2, '.', '');
+                // Optionally log table creation or update
+                if ($table_exists !== $table_name) {
+                    wc_get_logger()->info("Created or updated `$table_name` table.", [
+                        'source' => 'bytenft-payment-gateway',
+                        'context' => ['table' => $table_name],
+                    ]);
+                }
 
-				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Insert is safely prepared with format specifiers
-				$wpdb->insert(
-				    $table_name,
-				    [
-				        'order_id'       => $order_id,
-				        'uuid'           => sanitize_text_field($pay_id),
-				        'payment_link'   => esc_url_raw($response_data['data']['payment_link'] ?? ''),
-				        'customer_email' => sanitize_email($response_data['data']['customer_email'] ?? ''),
-				        'amount'         => $formatted_amount,
-				        'created_at'     => current_time('mysql', 1),
-				    ],
-				    ['%d', '%s', '%s', '%s', '%s', '%s']
-				);
+                // Prepare amount
+                $formatted_amount = number_format((float) ($response_data['data']['amount'] ?? 0), 2, '.', '');
+                $uuid           = sanitize_text_field($pay_id);
+                $payment_link   = esc_url_raw($response_data['data']['payment_link'] ?? '');
+                $customer_email = sanitize_email($response_data['data']['customer_email'] ?? '');
+                $amount         = number_format((float) ($response_data['data']['amount'] ?? 0), 2, '.', '');
+                $created_at     = current_time('mysql', 1);
+
+                // Check if order_id already exists
+                $existing = $wpdb->get_var(
+                    $wpdb->prepare("SELECT COUNT(*) FROM $table_name WHERE order_id = %d", $order_id)
+                );
+
+                if (!$existing) {
+                    $inserted = $wpdb->insert(
+                        $table_name,
+                        [
+                            'order_id'       => $order_id,
+                            'uuid'           => $uuid,
+                            'payment_link'   => $payment_link,
+                            'customer_email' => $customer_email,
+                            'amount'         => $amount,
+                            'created_at'     => $created_at,
+                        ],
+                        ['%d', '%s', '%s', '%s', '%s', '%s']
+                    );
+                }
 
 				wc_get_logger()->info('Stored order payment link to DB.', [
 				    'source'  => 'bytenft-payment-gateway',
@@ -1479,7 +1493,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$available_accounts = array_filter($settings, function ($account) use ($used_accounts, $status_key, $public_key, $secret_key) {
 			return !in_array($account[$public_key], $used_accounts, true)
-				&& isset($account[$status_key]) && $account[$status_key] === 'active'
+				&& isset($account[$status_key]) && ($account[$status_key] === 'Active' || $account[$status_key] === 'active')
 				&& !empty($account[$public_key]) && !empty($account[$secret_key]);
 		});
 
