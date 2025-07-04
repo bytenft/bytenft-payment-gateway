@@ -236,16 +236,19 @@ jQuery(function ($) {
 
 	const paymentLinkModal = `
 		<div id="bytenft-payment-popup" style="display:none;">
-			<div class="bytenft-modal-content">
-				<h2>Complete Your Payment</h2>
-				<p>
-					We've sent you a secure payment link via email. Please check your new browser tab or window to complete the payment process.
-				</p>
-				<ul>
-					<li>Do not close this window until payment is completed.</li>
-					<li>We’re checking the status automatically in the background.</li>
-				</ul>
-			</div>
+		  <div class="bytenft-modal-content">
+		    <h3>Complete Your Payment</h3>
+		    <p>
+		      We've sent a secure payment link to your <b>Email Address</b>. Please open your inbox and follow the link to complete your payment.
+		    </p>
+		    <ul>
+		      <li>Check your inbox (and spam folder just in case).</li>
+		      <li>Don’t close this window, we’re checking the payment status automatically.</li>
+		    </ul>
+		    <p>
+		      Once your payment is successful, this page will update on its own.
+		    </p>
+		  </div>
 		</div>`;
 	$('body').append(paymentLinkModal);
 

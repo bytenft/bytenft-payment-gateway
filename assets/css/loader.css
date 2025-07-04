@@ -57,6 +57,17 @@
   align-items: center;
   justify-content: center;
 }
+
+#bytenft-payment-popup h3{
+    font-size: 28px;
+    font-weight: 500;
+}
+#bytenft-payment-popup p, #bytenft-payment-popup ul li{
+    font-size: 16px;
+	color:#4e4b4b;
+    font-weight: 400;
+}
+
 .bytenft-modal-content {
   background: #fff;
   padding: 30px;
