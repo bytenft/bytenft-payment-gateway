@@ -76,6 +76,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_filter('woocommerce_admin_order_preview_line_items', [$this, 'bytenft_add_custom_label_to_order_row'], 10, 2);
 
 		add_filter('woocommerce_available_payment_gateways', [$this, 'hide_custom_payment_gateway_conditionally']);
+
+		add_action('wp_ajax_check_if_order_pending', 'check_if_order_pending_callback');
+		add_action('wp_ajax_nopriv_check_if_order_pending', 'check_if_order_pending_callback');
 	}
 
 	private function get_api_url($endpoint)
@@ -529,13 +532,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				return ['result' => 'fail'];
 			}
 
-			/* ==========================================================
-			   CHECK MERCHANT STATUS BEFORE USING ACCOUNT
-			   ----------------------------------------------------------
-			   Ensures the current account (merchant) is active and 
-			   approved before proceeding. Skips account if inactive.
-			   ========================================================== */
-
 			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
 
 			$accStatusApiUrl = $this->get_api_url('/api/check-merchant-status');
@@ -667,6 +663,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$response_data = json_decode(wp_remote_retrieve_body($response), true);
 
+			wc_get_logger()->warning("Raw response body: " . wp_remote_retrieve_body($response), $logger_context);
+
+
 			if (!empty($response_data['status']) && $response_data['status'] === 'success' && !empty($response_data['data']['payment_link'])) {
 				if ($last_failed_account) {
 					wc_get_logger()->info("Sending email before returning success to: '{$last_failed_account['title']}'", ['source' => 'bytenft-payment-gateway']);
@@ -679,10 +678,28 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$order->update_meta_data('_bytenft_pay_id', $pay_id);
 					$order->update_meta_data('_bytenft_public_key', $public_key);
 					$order->update_meta_data('_bytenft_secret_key', $secret_key);
-					$order->save(); // ✅ This ensures meta is written to DB
+					$order->save();
 				}
 
 				$table_name = $wpdb->prefix . 'order_payment_link';
+
+				$existing_link = $wpdb->get_row(
+				    $wpdb->prepare("SELECT * FROM $table_name WHERE order_id = %d", $order_id),
+				    ARRAY_A
+				);
+
+				if (!empty($existing_link['payment_link'])) {
+				    // Log reuse
+				    wc_get_logger()->info("Order {$order_id} already has a payment link. Returning existing payment link.", $logger_context);
+
+				    return [
+				        'result'       => 'success',
+				        'payment_link' => esc_url($existing_link['payment_link']),
+				        'order_id'     => $order_id,
+				        'reuse'        => true,
+				    ];
+				}
+
 
 				// Add simple cache to avoid hitting DB on every request
 				$cache_key    = 'bytenft_table_exists_' . md5($table_name);
@@ -828,6 +845,38 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return ['result' => 'fail'];
 		}
 	}
+
+	public function is_order_payment_pending($order_id) {
+		global $wpdb;
+
+		$order = wc_get_order($order_id);
+		if (!$order || $order->get_status() !== 'pending') {
+			return false;
+		}
+
+		$pay_id = $order->get_meta('_bytenft_pay_id');
+		if (empty($pay_id)) {
+			return false;
+		}
+
+		$table_name = $wpdb->prefix . 'order_payment_link';
+		$row = $wpdb->get_row(
+			$wpdb->prepare("SELECT * FROM $table_name WHERE order_id = %d", $order_id),
+			ARRAY_A
+		);
+
+		if (!empty($row) && !empty($row['payment_link'])) {
+			return [
+				'payment_link' => esc_url($row['payment_link']),
+				'uuid'         => sanitize_text_field($row['uuid']),
+				'email'        => sanitize_email($row['customer_email']),
+				'amount'       => $row['amount'],
+			];
+		}
+
+		return false;
+	}
+
 
 	// Display the "Test Order" tag in admin order details
 	public function bytenft_display_test_order_tag($order)
