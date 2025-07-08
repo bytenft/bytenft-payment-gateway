@@ -54,6 +54,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('wp_ajax_bytenft_manual_sync', [$this, 'bytenft_manual_sync_callback']);
 		add_filter('cron_schedules', [$this, 'bytenft_add_cron_interval']);
 		add_action('bytenft_cron_event', [$this, 'handle_cron_event']);
+
+		add_action('wp_ajax_send_payment_link', [$this, 'bytenft_send_payment_link']);
+		add_action('wp_ajax_nopriv_send_payment_link', [$this, 'bytenft_send_payment_link']);
 	}
 
 
@@ -300,7 +303,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// Proceed only if the order status is 'pending'
 		if ($order->get_status() === 'pending') {
 			// Call the DFin Sell to update status
-			$transactionStatusApiUrl = $this->get_api_url('/api/update-txn-status');
+			$transactionStatusApiUrl = $this->get_api_url('/api	');
 			$response = wp_remote_post($transactionStatusApiUrl, [
 				'method'    => 'POST',
 				'body'      => wp_json_encode(['order_id' => $order_id, 'payment_token' => $payment_token]),
@@ -611,4 +614,64 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		wp_die(); // Always include this
 	}
+
+	function bytenft_send_payment_link() {
+		$email = sanitize_email($_POST['email']);
+		$phone = sanitize_text_field($_POST['phone']);
+		$payment_link = esc_url_raw($_POST['payment_link']);
+		$order_id = sanitize_text_field($_POST['order_id']);
+
+		if (empty($email) && empty($phone)) {
+			wp_send_json_error(['message' => 'Please provide email or phone.']);
+		}
+
+		// 👇 Prepare the payload to send to your external API
+		$payload = [
+			'email' => $email,
+			'phone' => $phone,
+			'payment_link' => $payment_link,
+			'order_id' => $order_id,
+		];
+
+
+	    // 1. Get order
+	    $order = wc_get_order($order_id);
+	    if (!$order) {
+	        wc_get_logger()->error("Order not found");
+	        return new WP_REST_Response(['error' => 'Order not found'], 404);
+	    }
+
+	    // 2. Get stored payment data
+	    $public_key = $order->get_meta('_bytenft_public_key');
+	    $secret_key = $order->get_meta('_bytenft_secret_key');
+		
+	    // 4. Call status API
+	    $url = trailingslashit($this->base_url) . 'api/re-send/payment-link';
+
+	    $response = wp_remote_post($url, [
+	        'timeout' => 20,
+	        'headers' => [
+	            'Authorization' => 'Bearer ' . sanitize_text_field($public_key),
+	            'x-api-secret'  => sanitize_text_field($secret_key),
+	        ],
+			'body' => json_encode($payload),
+	    ]);
+
+		if (is_wp_error($response)) {
+			wp_send_json_error(['message' => 'Failed to connect to API.']);
+		}
+
+		$status_code = wp_remote_retrieve_response_code($response);
+		$response_data = json_decode(wp_remote_retrieve_body($response), true);
+		
+		if ($status_code === 200 && !empty($response_data['success'])) {
+			wp_send_json_success(['message' => 'Link sent successfully.']);
+		}
+
+		// Handle API error
+		wp_send_json_error([
+			'message' => $body['message'] ?? 'Failed to send payment link via API.',
+		]);
+	}
+
 }

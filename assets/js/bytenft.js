@@ -6,7 +6,7 @@ jQuery(function ($) {
 	let originalButtonText = '';
 	let pollingInterval = null;
 	let pollingActive = false;
-	paymentLink = null;
+	payment_link = null;
 
 	// Append loader
 	const loaderUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
@@ -117,7 +117,7 @@ jQuery(function ($) {
 	}
 
 	function openPopup(paymentLink) {
-		paymentLink = paymentLink;
+		payment_link = paymentLink;
 		$('#bytenft-manual-link').attr('href', paymentLink);
 		$('#bytenft-qr-img').attr('src', "https://image-charts.com/chart?chs=120x120&cht=qr&chl="+paymentLink+"&choe=UTF-8");
 		$('#bytenft-payment-popup').fadeIn();
@@ -205,7 +205,8 @@ jQuery(function ($) {
 				action: 'send_payment_link',
 				email: email,
 				phone: phone,
-				payment_link: paymentLink,
+				payment_link: payment_link,
+				order_id: orderId,
 			},
 			beforeSend: function () {
 				$('#bytenft-send-link-btn').text('Sending...');

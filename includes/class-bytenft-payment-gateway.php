@@ -80,9 +80,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_action('wp_ajax_check_if_order_pending', 'check_if_order_pending_callback');
 		add_action('wp_ajax_nopriv_check_if_order_pending', 'check_if_order_pending_callback');
 		add_action('wp_footer', [$this, 'render_bytenft_payment_popup']);
-		
-		add_action('wp_ajax_send_payment_link', 'bytenft_send_payment_link');
-		add_action('wp_ajax_nopriv_send_payment_link', 'bytenft_send_payment_link');
 	}
 
 	private function get_api_url($endpoint)
@@ -1670,64 +1667,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		return true;
 	}
-
-	function bytenft_send_payment_link() {
-		$email = sanitize_email($_POST['email']);
-		$phone = sanitize_text_field($_POST['phone']);
-		$payment_link = esc_url_raw($_POST['payment_link']);
-
-		echo $email;
-		echo $phone;
-		echo $payment_link;
-		echo 11;
-		die;
-		if (empty($payment_link)) {
-			wp_send_json_error(['message' => 'Payment link is missing.']);
-		}
-
-		if (empty($email) && empty($phone)) {
-			wp_send_json_error(['message' => 'Please provide email or phone.']);
-		}
-
-		// 👇 Prepare the payload to send to your external API
-		$payload = [
-			'email' => $email,
-			'phone' => $phone,
-			'payment_link' => $payment_link,
-		];
-
-		// 🔐 Optional: Add your API token/key if required
-		$headers = [
-			'Content-Type'  => 'application/json',
-			'Authorization' => 'Bearer YOUR_API_KEY_HERE', // if needed
-		];
-
-		// 🌐 URL to your external API (Laravel/other)
-		$api_url = 'https://your-api.example.com/api/send-payment-link';
-
-		$response = wp_remote_post($api_url, [
-			'headers' => $headers,
-			'body'    => json_encode($payload),
-			'timeout' => 15,
-		]);
-
-		if (is_wp_error($response)) {
-			wp_send_json_error(['message' => 'Failed to connect to API.']);
-		}
-
-		$status_code = wp_remote_retrieve_response_code($response);
-		$body = json_decode(wp_remote_retrieve_body($response), true);
-
-		if ($status_code === 200 && !empty($body['success'])) {
-			wp_send_json_success(['message' => 'Link sent successfully.']);
-		}
-
-		// Handle API error
-		wp_send_json_error([
-			'message' => $body['message'] ?? 'Failed to send payment link via API.',
-		]);
-	}
-
 
 	public function render_bytenft_payment_popup()
 	{
