@@ -91,3 +91,59 @@
   text-align: left;
   margin: 15px 0;
 }
+
+#bytenft-payment-popup{
+  text-align: center;
+}
+#bytenft-payment-popup h3{
+  color: #191C51;
+  font-size: 20px;
+  font-weight: 500;
+  margin: 10px;
+}
+#bytenft-payment-popup p{
+  color: #3C4043;
+  font-size: 13px;
+  font-weight: 500;
+}
+#bytenft-payment-popup ul li{
+  color: #6B6B6B;
+  font-size: 13px;
+  font-weight: 400;
+}
+#bytenft-payment-popup .bytenft-payment-text p{
+  border-top: 1px dashed #B3B8BD;
+  color: #000;
+  font-size: 14px;
+  font-weight: 500;
+  margin-top: 20px;
+  padding-top: 10px;
+}
+#bytenft-payment-popup .stop-process-btn{
+  background: #141025;
+  color: #fff;
+  font-size: 13px;
+  border-radius: 5px;
+  padding: 12px 20px;
+  display: block;
+  width: fit-content;
+  margin: auto;
+  margin-top: 20px;
+}
+
+#bytenft-payment-popup input {
+	padding: 10px;
+	border: 1px solid #ccc;
+	border-radius: 6px;
+	font-size: 14px;
+}
+
+.bytenft-send-link-btn {
+	background: #0073aa;
+	color: white;
+	padding: 10px 20px;
+	border: none;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 14px;
+}

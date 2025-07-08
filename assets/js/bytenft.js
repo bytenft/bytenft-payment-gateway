@@ -6,6 +6,7 @@ jQuery(function ($) {
 	let originalButtonText = '';
 	let pollingInterval = null;
 	let pollingActive = false;
+	paymentLink = null;
 
 	// Append loader
 	const loaderUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
@@ -116,7 +117,9 @@ jQuery(function ($) {
 	}
 
 	function openPopup(paymentLink) {
+		paymentLink = paymentLink;
 		$('#bytenft-manual-link').attr('href', paymentLink);
+		$('#bytenft-qr-img').attr('src', "https://image-charts.com/chart?chs=120x120&cht=qr&chl="+paymentLink+"&choe=UTF-8");
 		$('#bytenft-payment-popup').fadeIn();
 
 		$('#bytenft-cancel-order').off('click').on('click', function () {
@@ -174,37 +177,6 @@ jQuery(function ($) {
 		pollingActive = false;
 	}
 
-	// Append Modals
-	$('body').append(`
-		<div id="bytenft-payment-popup" style="display:none;">
-			<div class="bytenft-modal-content">
-				<h3>Complete Your Payment</h3>
-				<p>We've sent a secure payment link to your <b>Email Address</b>. Please open your inbox and follow the link to complete your payment.</p>
-				<ul>
-					<li>Check your inbox (and spam folder just in case).</li>
-					<li>Don’t close this window, we’re checking the payment status automatically.</li>
-				</ul>
-				<p>Once your payment is successful, this page will update on its own.</p>
-				<button id="bytenft-close-payment-popup" class="button">Close</button>
-
-			</div>
-		</div>
-	`);
-
-	$('body').append(`
-		<div id="bytenft-pending-popup" style="display:none;">
-			<div class="bytenft-modal-content">
-				<h3>Payment Already In Progress</h3>
-				<p>You already have a payment in progress. Please check your email for the payment link and complete the process.</p>
-				<ul>
-					<li>Check your inbox or spam folder for the email.</li>
-					<li>If you've already paid, this page will update automatically.</li>
-				</ul>
-				<button id="bytenft-close-pending-popup" class="button">Close</button>
-			</div>
-		</div>
-	`);
-
 	$(document).on('click', '#bytenft-close-payment-popup', function () {
 		$('#bytenft-payment-popup').fadeOut();
 		stopPolling();
@@ -215,6 +187,43 @@ jQuery(function ($) {
 		$('#bytenft-pending-popup').fadeOut();
 		stopPolling();
 		resetButton(); // ✅ Reset place order button
+	});
+
+	$('#bytenft-send-link-btn').on('click', function () {
+		const email = $('#bytenft-email-input').val().trim();
+		const phone = $('#bytenft-phone-input').val().trim();
+
+		if (!email && !phone) {
+			alert('Please enter an email or phone number.');
+			return;
+		}
+
+		$.ajax({
+			url: bytenft_params.ajax_url,
+			method: 'POST',
+			data: {
+				action: 'send_payment_link',
+				email: email,
+				phone: phone,
+				payment_link: paymentLink,
+			},
+			beforeSend: function () {
+				$('#bytenft-send-link-btn').text('Sending...');
+			},
+			success: function (res) {
+				if (res.success) {
+					alert('Payment link sent successfully!');
+				} else {
+					alert(res.data.message || 'Failed to send payment link.');
+				}
+			},
+			error: function () {
+				alert('An error occurred.');
+			},
+			complete: function () {
+				$('#bytenft-send-link-btn').text('Send');
+			}
+		});
 	});
 
 });

@@ -79,6 +79,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		add_action('wp_ajax_check_if_order_pending', 'check_if_order_pending_callback');
 		add_action('wp_ajax_nopriv_check_if_order_pending', 'check_if_order_pending_callback');
+		add_action('wp_footer', [$this, 'render_bytenft_payment_popup']);
+		
+		add_action('wp_ajax_send_payment_link', 'bytenft_send_payment_link');
+		add_action('wp_ajax_nopriv_send_payment_link', 'bytenft_send_payment_link');
 	}
 
 	private function get_api_url($endpoint)
@@ -696,7 +700,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				        'result'       => 'success',
 				        'payment_link' => esc_url($existing_link['payment_link']),
 				        'order_id'     => $order_id,
-				        'reuse'        => true,
+				        'reuse'        => false,
 				    ];
 				}
 
@@ -821,6 +825,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				return [
 					'payment_link' => esc_url($response_data['data']['payment_link']),
 					'result' => 'success',
+					'payment_provider' => $response_data['data']['payment_provider'],
 				];
 			}
 
@@ -1665,4 +1670,113 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		return true;
 	}
+
+	function bytenft_send_payment_link() {
+		$email = sanitize_email($_POST['email']);
+		$phone = sanitize_text_field($_POST['phone']);
+		$payment_link = esc_url_raw($_POST['payment_link']);
+
+		echo $email;
+		echo $phone;
+		echo $payment_link;
+		echo 11;
+		die;
+		if (empty($payment_link)) {
+			wp_send_json_error(['message' => 'Payment link is missing.']);
+		}
+
+		if (empty($email) && empty($phone)) {
+			wp_send_json_error(['message' => 'Please provide email or phone.']);
+		}
+
+		// 👇 Prepare the payload to send to your external API
+		$payload = [
+			'email' => $email,
+			'phone' => $phone,
+			'payment_link' => $payment_link,
+		];
+
+		// 🔐 Optional: Add your API token/key if required
+		$headers = [
+			'Content-Type'  => 'application/json',
+			'Authorization' => 'Bearer YOUR_API_KEY_HERE', // if needed
+		];
+
+		// 🌐 URL to your external API (Laravel/other)
+		$api_url = 'https://your-api.example.com/api/send-payment-link';
+
+		$response = wp_remote_post($api_url, [
+			'headers' => $headers,
+			'body'    => json_encode($payload),
+			'timeout' => 15,
+		]);
+
+		if (is_wp_error($response)) {
+			wp_send_json_error(['message' => 'Failed to connect to API.']);
+		}
+
+		$status_code = wp_remote_retrieve_response_code($response);
+		$body = json_decode(wp_remote_retrieve_body($response), true);
+
+		if ($status_code === 200 && !empty($body['success'])) {
+			wp_send_json_success(['message' => 'Link sent successfully.']);
+		}
+
+		// Handle API error
+		wp_send_json_error([
+			'message' => $body['message'] ?? 'Failed to send payment link via API.',
+		]);
+	}
+
+
+	public function render_bytenft_payment_popup()
+	{
+		if (!is_checkout()) {
+			return;
+		}
+
+		$completePaymentIcon = plugins_url('../assets/images/complete_payment_icon.png', __FILE__);
+		?>
+		<div id="bytenft-payment-popup" style="display: none;">
+			<div class="bytenft-modal-content">
+				<img src="<?php echo esc_url($completePaymentIcon); ?>" alt="success" width="85" height="60" class="mt-3" />
+				<h3>Complete Your Payment</h3>
+				<p>
+					We've sent you a secure payment link via email. Please check your new browser tab or window to complete the payment process.
+				</p>
+				<ul>
+					<li>Do not close this window until payment is completed.</li>
+					<li>We’re checking the status automatically in the background.</li>
+				</ul>
+				<!-- Optional Link Sharing -->
+				<div class="bytenft-payment-text">
+					<p>If you want to send the link to another device, enter email or phone number below:</p>
+					<div class="bytenft-input-group">
+						<input type="email" id="bytenft-email-input" placeholder="Enter Email" />
+						<span class="bytenft-or-divider">OR</span>
+						<input type="tel" id="bytenft-phone-input" placeholder="Enter Phone Number" />
+						<button id="bytenft-send-link-btn" class="bytenft-send-link-btn">Send</button>
+					</div>
+				</div>
+				<div>
+					<img src="" id="bytenft-qr-img" alt="QR Code">
+				</div>
+				<a href="" class="stop-process-btn">Stop Process</a>
+			</div>
+		</div>
+
+		<div id="bytenft-pending-popup" style="display:none;">
+			<div class="bytenft-modal-content">
+				<h3>Payment Already In Progress</h3>
+				<p>You already have a payment in progress. Please check your email for the payment link and complete the process.</p>
+				<ul>
+					<li>Check your inbox or spam folder for the email.</li>
+					<li>If you've already paid, this page will update automatically.</li>
+				</ul>
+				<button id="bytenft-close-pending-popup" class="button">Close</button>
+			</div>
+		</div>
+		<?php
+	}
+
 }
