@@ -1673,105 +1673,97 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		if (!is_checkout()) {
 			return;
 		}
-
-		$completePaymentIcon = plugins_url('../assets/images/email-icon.png', __FILE__);
 		?>
 		<div id="bytenft-payment-popup" class="px-5 py-5" style="display: none;">
 			<button class="close">X</button>
 			<div class="bytenft-modal-content">
 				<div>
-				<h3>Complete Your Payment</h3>
-				<div class="option-sec">
-					<div>
-					<h6><span class="option-lable mr-1">Option 1</span> Email Link</h6>
-					</div>
-					<div class="email-info">
-					<img src="<?php echo esc_url(plugins_url('../assets/images/email-icon.png', __FILE__)); ?>" alt="success" width="33" height="30" />
-					<p>We’ve sent a secure payment link to <b style="color: #000;">kenzi.lawson@example.com</b>. Please check
-						your inbox to continue.</p>
-					</div>
-				</div>
-				<div class="box-sec">
-					<div class="box_item option-sec">
-					<div class="">
+					<h3>Complete Your Payment</h3>
+					<div class="option-sec">
 						<div>
-						<h6><span class="option-lable mr-1">Option 2</span> Scan QR code</h6>
+							<h6><span class="option-lable mr-1">Option 1</span> Email Link</h6>
 						</div>
-						<div class="qr-code">
-						<img src="<?php echo esc_url(plugins_url('../assets/images/qr_code.png', __FILE__)); ?>" id="bytenft-qr-img" alt="QR Code" width="94" height="100" />
+						<div class="email-info">
+							<img src="<?php echo esc_url(plugins_url('../assets/images/email-icon.png', __FILE__)); ?>" alt="success" width="33" height="30" />
+							<p>We’ve sent a secure payment link to <b style="color: #000;">kenzi.lawson@example.com</b>. Please check your inbox to continue.</p>
 						</div>
-						<p class="qr-text">Scan the QR code to continue on another device</p>
 					</div>
-					</div>
-					<div class="box_item option-sec">
-					<div class="">
-						<div>
-						<h6><span class="option-lable mr-1">Option 3</span> Send Link Again</h6>
-						</div>
-						<p class="send-link-text">You can send the link to a different email or phone number.</p>
-						<div class="">
-						<div class="tabs">
-							<div class="switch_tab tab active" data-tab="phone">Phone Number</div>
-							<div class="switch_tab tab" data-tab="email">Email</div>
-						</div>
-						<div id="phone-input">
-							<label for="phone">Phone Number</label>
-							<div class="input-group">
-								<input type="number" placeholder="Enter phone number" class="form-control" name="phone">
-								<span class="input-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/Flag.png', __FILE__)); ?>" width="23" height="13" /> </span>
+					<div class="box-sec">
+						<div class="box_item option-sec">
+							<div class="">
+								<div>
+									<h6><span class="option-lable mr-1">Option 2</span> Scan QR code</h6>
+								</div>
+								<div class="qr-code">
+									<img src="<?php echo esc_url(plugins_url('../assets/images/qr_code.png', __FILE__)); ?>" id="bytenft-qr-img" alt="QR Code" width="94" height="100" />
+								</div>
+								<p class="qr-text">Scan the QR code to continue on another device</p>
 							</div>
 						</div>
-						<div id="email-input" style="display: none;">
-							<label for="email">Email</label>
-							<div class="input-group">
-								<input type="email" placeholder="Enter Email" class="form-control" name="email">
-								<span class="input-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/Vector_email.png', __FILE__)); ?>" width="15" height="10" /> </span>
+						<div class="box_item option-sec">
+							<div class="">
+								<div>
+									<h6><span class="option-lable mr-1">Option 3</span> Send Link Again</h6>
+								</div>
+								<p class="send-link-text">You can send the link to a different email or phone number.</p>
+								<div class="">
+									<div class="tabs">
+										<div class="switch_tab tab active" data-tab="phone">Phone Number</div>
+										<div class="switch_tab tab" data-tab="email">Email</div>
+									</div>
+									<div id="phone-input">
+										<label for="phone">Phone Number</label>
+										<div class="input-group">
+											<input type="number" placeholder="Enter phone number" class="form-control" name="phone">
+											<span class="input-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/Flag.png', __FILE__)); ?>" width="23" height="13" /> </span>
+										</div>
+									</div>
+									<div id="email-input" style="display: none;">
+										<label for="email">Email</label>
+										<div class="input-group">
+											<input type="email" placeholder="Enter Email" class="form-control" name="email">
+											<span class="input-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/Vector_email.png', __FILE__)); ?>" width="15" height="10" /> </span>
+										</div>
+									</div>
+									<button class="stop-process-btn" id="bytenft-send-link-btn">Send Link</button>
+								</div>
 							</div>
 						</div>
-						<button class="stop-process-btn" id="bytenft-send-link-btn">Send Link</button>
-
-						</div>
 					</div>
+					<div class="footer-note">
+						Don’t close this window-we’re checking the payment status automatically.
 					</div>
 				</div>
-
-				<div class="footer-note">
-					Don’t close this window-we’re checking the payment status automatically.
-				</div>
-				</div>
-
 				<div>
-				<h3>Connected to Your Mobile</h3>
-				<p class="subtitle">Please keep this window open while you complete the process<br>on your mobile device.</p>
-				<div class="stepper">
-					<!-- Step 1 -->
-					<div class="step done">
-					<div class="icon"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
-					<div class="step-title">Payment started</div>
-					<div class="step-description">Your payment has been <br />initiated.</div>
-					</div>
+					<h3>Connected to Your Mobile</h3>
+					<p class="subtitle">Please keep this window open while you complete the process<br>on your mobile device.</p>
+					<div class="stepper">
+						<!-- Step 1 -->
+						<div class="step done">
+							<div class="icon"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
+							<div class="step-title">Payment started</div>
+							<div class="step-description">Your payment has been <br />initiated.</div>
+						</div>
 
-					<!-- Step 2 -->
-					<div class="step processing">
-					<div class="icon">
-						<div class="spinner-border"></div>
-					</div>
-					<div class="step-title">Payment Processing</div>
-					<div class="step-description">Transaction in progress<br /> — please wait.</div>
-					</div>
+						<!-- Step 2 -->
+						<div class="step processing">
+							<div class="icon">
+								<div class="spinner-border"></div>
+							</div>
+							<div class="step-title">Payment Processing</div>
+							<div class="step-description">Transaction in progress<br /> — please wait.</div>
+						</div>
 
-					<!-- Step 3 -->
-					<div class="step pending">
-					<div class="icon"><img src="<?php echo esc_url(plugins_url('../assets/images/waiting_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
-					<div class="step-title">Waiting for Approval</div>
-					<div class="step-description">Approval is pending from the<br>merchant side.</div>
+						<!-- Step 3 -->
+						<div class="step pending">
+							<div class="icon"><img src="<?php echo esc_url(plugins_url('../assets/images/waiting_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
+							<div class="step-title">Waiting for Approval</div>
+							<div class="step-description">Approval is pending from the<br>merchant side.</div>
+						</div>
 					</div>
 				</div>
-				</div>
-
 			</div>
-
-			</div>
+		</div>
 
 		<div id="bytenft-pending-popup" style="display:none;">
 			<div class="bytenft-modal-content">
