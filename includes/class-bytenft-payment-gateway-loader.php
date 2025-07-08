@@ -633,7 +633,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			'order_id' => $order_id,
 		];
 
-
 	    // 1. Get order
 	    $order = wc_get_order($order_id);
 	    if (!$order) {

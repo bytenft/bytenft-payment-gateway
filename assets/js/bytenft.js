@@ -190,8 +190,8 @@ jQuery(function ($) {
 	});
 
 	$('#bytenft-send-link-btn').on('click', function () {
-		const email = $('#bytenft-email-input').val().trim();
-		const phone = $('#bytenft-phone-input').val().trim();
+		const email = $('#bytenft-payment-popup input[name=email]').val().trim();
+		const phone = $('#bytenft-payment-popup input[name=phone]').val().trim();
 
 		if (!email && !phone) {
 			alert('Please enter an email or phone number.');
@@ -226,5 +226,24 @@ jQuery(function ($) {
 			}
 		});
 	});
+
+	$(document).on('click', '#bytenft-payment-popup .switch_tab', function () {
+        var tab = $(this).data('tab'); // either 'phone' or 'email'
+
+        // Remove 'active' from all tabs
+        $('.tab').removeClass('active');
+
+        // Add 'active' to clicked tab
+        $(this).addClass('active');
+
+        // Show/hide input blocks
+        if (tab === 'phone') {
+            $('#phone-input').show();
+            $('#email-input').hide();
+        } else if (tab === 'email') {
+            $('#phone-input').hide();
+            $('#email-input').show();
+        }
+    });
 
 });
