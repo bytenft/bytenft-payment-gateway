@@ -697,7 +697,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				        'result'       => 'success',
 				        'payment_link' => esc_url($existing_link['payment_link']),
 				        'order_id'     => $order_id,
-				        'reuse'        => true,
+				        'reuse'        => false,
 				    ];
 				}
 
@@ -823,6 +823,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'payment_link' => esc_url($response_data['data']['payment_link']),
 					'result' => 'success',
 					'payment_provider' => $response_data['data']['payment_provider'],
+					'customer_email' => sanitize_email($response_data['data']['customer_email'] ?? ''),
 				];
 			}
 
@@ -1097,7 +1098,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// Enqueue stylesheets
 			wp_enqueue_style(
 				'bytenft-payment-loader-styles',
-				plugins_url('../assets/css/loader.css', __FILE__),
+				plugins_url('../assets/css/frontend.css', __FILE__),
 				[], // Dependencies (if any)
 				'1.0', // Version number
 				'all' // Media
@@ -1685,7 +1686,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						</div>
 						<div class="email-info">
 							<img src="<?php echo esc_url(plugins_url('../assets/images/email-icon.png', __FILE__)); ?>" alt="success" width="33" height="30" />
-							<p>We’ve sent a secure payment link to <b style="color: #000;">kenzi.lawson@example.com</b>. Please check your inbox to continue.</p>
+							<p>We’ve sent a secure payment link to <b class="bytenft-customer-email" style="color: #000;"></b>. Please check your inbox to continue.</p>
 						</div>
 					</div>
 					<div class="box-sec">
@@ -1735,8 +1736,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					</div>
 				</div>
 				<div>
-					<h3>Connected to Your Mobile</h3>
-					<p class="subtitle">Please keep this window open while you complete the process<br>on your mobile device.</p>
+					<!-- <h3>Connected to Your Mobile</h3>
+					<p class="subtitle">Please keep this window open while you complete the process<br>on your mobile device.</p> -->
 					<div class="stepper">
 						<!-- Step 1 -->
 						<div class="step done">

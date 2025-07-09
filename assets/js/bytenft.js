@@ -84,7 +84,7 @@ jQuery(function ($) {
 				if (response.reuse) {
 					showPendingMessage();
 				} else {
-					openPopup(response.payment_link);
+					openPopup(response.payment_link, response.customer_email);
 				}
 			} else {
 				throw response.messages || 'An error occurred during checkout.';
@@ -116,10 +116,15 @@ jQuery(function ($) {
 		$('.bytenft-loader-background, .bytenft-loader').hide();
 	}
 
-	function openPopup(paymentLink) {
+	function openPopup(paymentLink,customerEmail) {
 		payment_link = paymentLink;
 		$('#bytenft-manual-link').attr('href', paymentLink);
 		$('#bytenft-qr-img').attr('src', "https://image-charts.com/chart?chs=120x120&cht=qr&chl="+paymentLink+"&choe=UTF-8");
+
+		// ✅ Set customer email dynamically
+		if (customerEmail) {
+			$('#bytenft-payment-popup .email-info .bytenft-customer-email').text(customerEmail);
+		}
 		$('#bytenft-payment-popup').fadeIn();
 
 		$('#bytenft-cancel-order').off('click').on('click', function () {
