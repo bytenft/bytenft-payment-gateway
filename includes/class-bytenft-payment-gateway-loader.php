@@ -645,7 +645,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	    $secret_key = $order->get_meta('_bytenft_secret_key');
 		
 	    // 4. Call status API
-	    $url = trailingslashit($this->base_url) . 'api/re-send/payment-link';
+	    $url = trailingslashit($this->base_url) . 'api/payment-link/send';
 
 	    $response = wp_remote_post($url, [
 	        'timeout' => 20,
