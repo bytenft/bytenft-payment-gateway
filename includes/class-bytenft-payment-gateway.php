@@ -238,22 +238,22 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'label' => __('Enable ByteNFT Sell Payment Gateway', 'bytenft-payment-gateway'),
 				'type' => 'checkbox',
 				'description' => '',
-				'default' => 'no',
+				'default' => 'yes',
 			],
 			'title' => [
-				'title' => __('Title', 'bytenft-payment-gateway'),
-				'type' => 'text',
-				'description' => __('This controls the title which the user sees during checkout.', 'bytenft-payment-gateway'),
-				'default' => __('Credit/Debit Card', 'bytenft-payment-gateway'),
-				'desc_tip' => __('Enter the title of the payment gateway as it will appear to customers during checkout.', 'bytenft-payment-gateway'),
-			],
-			'description' => [
-				'title' => __('Description', 'bytenft-payment-gateway'),
-				'type' => 'text',
-				'description' => __('Provide a brief description of the ByteNFT Sell Payment Gateway option.', 'bytenft-payment-gateway'),
-				'default' => 'Description of the ByteNFT Sell Payment Gateway Option.',
-				'desc_tip' => __('Enter a brief description that explains the ByteNFT Sell Payment Gateway option.', 'bytenft-payment-gateway'),
-			],
+                'title' => __('Title', 'bytenft-payment-gateway'),
+                'type' => 'text',
+                'description' => __('This controls the title which the user sees during checkout.', 'bytenft-payment-gateway'),
+                'default' => __('Mastercard credit or debit card (NFT-Backed Checkout)', 'bytenft-payment-gateway'),
+                'desc_tip' => __('Enter the title of the payment gateway as it will appear to customers during checkout.', 'bytenft-payment-gateway'),
+            ],
+            'description' => [
+                'title' => __('Description', 'bytenft-payment-gateway'),
+                'type' => 'text',
+                'description' => __('Provide a brief description of the Byte NFT Payment Gateway option.', 'bytenft-payment-gateway'),
+                'default' => "Your order will be issued as a utility NFT, no crypto or wallet setup required. Simply pay with your credit card, and the NFT will automatically be redeemed for the product you've purchased.",
+                'desc_tip' => __('Enter a brief description that explains the Byte NFT Payment Gateway option.', 'bytenft-payment-gateway'),
+            ],
 			'instructions' => [
 				'title' => __('Instructions', 'bytenft-payment-gateway'),
 				'type' => 'title',
@@ -301,7 +301,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'label' => __('Enable consent checkbox on checkout page', 'bytenft-payment-gateway'),
 				'type' => 'checkbox',
 				'description' => __('Check this box to show the consent checkbox on the checkout page. Uncheck to hide it.', 'bytenft-payment-gateway'),
-				'default' => 'yes',
+				'default' => 'no',
 			],
 		];
 
@@ -1715,7 +1715,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 										<label for="phone">Phone Number</label>
 										<div class="input-group">
 											<input type="number" placeholder="Enter phone number" class="form-control" name="phone">
-											<span class="input-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/Flag.png', __FILE__)); ?>" width="23" height="13" /> </span>
+											<span class="input-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/flag.png', __FILE__)); ?>" width="23" height="13" /> </span>
 										</div>
 									</div>
 									<div id="email-input" style="display: none;">
