@@ -338,11 +338,6 @@
   line-height: 1.4;
 }
 
-.thank-you-msg {
-  text-align: center;
-  margin-top: 30px;
-}
-
 @media (max-width: 600px) {
   #bytenft-payment-popup .stepper {
     flex-direction: column;
@@ -363,4 +358,30 @@
   #bytenft-payment-popup .box-sec {
     flex-direction: column;
   }
+}
+
+#bytenft-payment-popup .thank-you-msg{
+  background: #FAFAFA;
+  border-radius: 15px;
+  text-align: center;
+  margin-top: 50px;
+  padding: 50px 20px;
+}
+#bytenft-payment-popup .thank-you-msg h4{
+  font-size: 18px;
+  font-weight: 600;
+  color: #000;
+  margin-top: 20px;
+}
+#bytenft-payment-popup .thank-you-msg p{
+  font-size: 12px;
+  font-weight: 500;
+  color: #4D4D4D;
+  padding-top: 16px;
+  line-height: 20px;
+}
+
+#bytenft-payment-popup .failed .icon {
+  background-color: #E23A45;
+  color: white;
 }

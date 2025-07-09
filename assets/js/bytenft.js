@@ -162,12 +162,34 @@ jQuery(function ($) {
 				dataType: 'json',
 				success: (statusResponse) => {
 					const status = statusResponse?.data?.status;
+					const popup = $("#bytenft-payment-popup");
+
+					if (status == 'success') {
+						popup.find('.payment-link-div').hide();
+						popup.find('.thank-you-msg, .success-sec').show();
+						popup.find('.payment-processing .icon').hide();
+						popup.find('.payment-approve').removeClass('pending').addClass('done');
+						popup.find('.payment-processing').removeClass('processing').removeClass('pending').addClass('done');
+					} else if (status == 'failed') {
+						popup.find('.payment-processing .icon').hide();
+						popup.find('.payment-processing .success-sec').show();
+						popup.find('.payment-failed').show();
+						popup.find('.payment-processing').removeClass('processing').removeClass('pending').addClass('done');
+						popup.find('.payment-approve').hide();
+					} else if (statusResponse.data.is_transaction) {
+						popup.find('.payment-processing').removeClass('pending').addClass('processing');
+						popup.find('.payment-processing .icon').hide();
+						popup.find('.payment-processing .loader-sec').show();
+					}
+					
 					if (status === 'success' || status === 'failed') {
-						stopPolling();
-						onComplete?.();
-						if (statusResponse.data.redirect_url) {
-							window.location.href = statusResponse.data.redirect_url;
-						}
+						setTimeout(() => {
+							stopPolling();
+							onComplete?.();
+							if (statusResponse.data.redirect_url) {
+								window.location.href = statusResponse.data.redirect_url;
+							}
+						}, 3000);
 					}
 				},
 				error: (xhr, status, error) => {

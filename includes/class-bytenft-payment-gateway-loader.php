@@ -239,9 +239,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	    $response_body = wp_remote_retrieve_body($response);
 	    $status_data = json_decode($response_body, true);
 
+		$is_transaction = $status_data['data']['is_transaction'];
+		$is_transaction = true;
 	    // 6. Validate response
 	    if (!isset($status_data['status']) || $status_data['status'] !== 'success' || !isset($status_data['data']['payment_status'])) {
-	        wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url]);
+	        wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url, 'is_transaction' => $is_transaction]);
 	    }
 
 	    $payment_status = strtolower($status_data['data']['payment_status']);
@@ -250,21 +252,21 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	    // 7. Update WooCommerce order status
 	    if ($payment_status === 'success') {
 	        $order->payment_complete();
-	        wp_send_json_success(['status' => 'success', 'redirect_url' => $payment_return_url]);
+	        wp_send_json_success(['status' => 'success', 'redirect_url' => $payment_return_url, 'is_transaction' => $is_transaction]);
 	    }
 
 	    if (in_array($payment_status, ['failed', 'cancelled', 'canceled'])) {
 	        $order->update_status('failed', __('Payment failed via API status check', 'bytenft-payment-gateway'));
-	        wp_send_json_success(['status' => 'failed', 'redirect_url' => $payment_return_url]);
+	        wp_send_json_success(['status' => 'failed', 'redirect_url' => $payment_return_url, 'is_transaction' => $is_transaction]);
 	    }
 
 	    if (in_array($payment_status, ['pending', 'on-hold'])) {
 	        $order->update_status('pending', __('Awaiting payment confirmation.', 'bytenft-payment-gateway'));
-	        wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url]);
+	        wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url, 'is_transaction' => $is_transaction]);
 	    }
 
 	    // 8. Fallback
-	    wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url]);
+	    wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url, 'is_transaction' => $is_transaction]);
 	}
 
 

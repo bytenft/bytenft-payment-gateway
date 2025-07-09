@@ -1678,7 +1678,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		<div id="bytenft-payment-popup" class="px-5 py-5" style="display: none;">
 			<button class="close">X</button>
 			<div class="bytenft-modal-content">
-				<div>
+				<div class="payment-link-div">
 					<h3>Complete Your Payment</h3>
 					<div class="option-sec">
 						<div>
@@ -1740,27 +1740,40 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					<p class="subtitle">Please keep this window open while you complete the process<br>on your mobile device.</p> -->
 					<div class="stepper">
 						<!-- Step 1 -->
-						<div class="step done">
+						<div class="step done payment-started">
 							<div class="icon"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
 							<div class="step-title">Payment started</div>
 							<div class="step-description">Your payment has been <br />initiated.</div>
 						</div>
 
 						<!-- Step 2 -->
-						<div class="step processing">
-							<div class="icon">
-								<div class="spinner-border"></div>
-							</div>
+						<div class="step pending payment-processing">
+							<div class="icon waiting-sec"><img src="<?php echo esc_url(plugins_url('../assets/images/waiting_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
+							<div class="icon success-sec" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
+							<div class="icon loader-sec" style="display: none;"><div class="spinner-border"></div></div>
 							<div class="step-title">Payment Processing</div>
 							<div class="step-description">Transaction in progress<br /> — please wait.</div>
 						</div>
 
 						<!-- Step 3 -->
-						<div class="step pending">
-							<div class="icon"><img src="<?php echo esc_url(plugins_url('../assets/images/waiting_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
+						<div class="step pending payment-approve">
+							<div class="icon waiting-sec"><img src="<?php echo esc_url(plugins_url('../assets/images/waiting_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
+							<div class="icon success-sec" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
 							<div class="step-title">Waiting for Approval</div>
 							<div class="step-description">Approval is pending from the<br>merchant side.</div>
 						</div>
+						
+						<!-- Step 4 -->
+						<!-- <div class="step failed payment-failed" style="display: none;">
+							<div class="icon"><img src="<?php echo esc_url(plugins_url('../assets/images/failed_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
+							<div class="step-title">Payment Failed</div>
+							<div class="step-description">Payment process was not successfull.</div>
+						</div> -->
+					</div>
+					<div class="thank-you-msg" style="display: none;">
+						<img src="<?php echo esc_url(plugins_url('../assets/images/success_icon.png', __FILE__)); ?>" width="87" height="59" />
+						<h4>Thank you for your payment!</h4>
+						<p>Your payment has been successfully received. We appreciate <br/>your trust in us.</p>
 					</div>
 				</div>
 			</div>
