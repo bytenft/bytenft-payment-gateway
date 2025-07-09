@@ -133,16 +133,16 @@ jQuery(function ($) {
 			resetButton();
 		});
 
-		startPolling(() => {
-			$('#bytenft-payment-popup').fadeOut();
-		});
+		// startPolling(() => {
+		// 	$('#bytenft-payment-popup').fadeOut();
+		// });
 	}
 
 	function showPendingMessage() {
 		$('#bytenft-pending-popup').fadeIn();
-		startPolling(() => {
-			$('#bytenft-pending-popup').fadeOut();
-		});
+		// startPolling(() => {
+		// 	$('#bytenft-pending-popup').fadeOut();
+		// });
 	}
 
 	function startPolling(onComplete) {
@@ -217,11 +217,17 @@ jQuery(function ($) {
 				$('#bytenft-send-link-btn').text('Sending...');
 			},
 			success: function (res) {
-				if (res.success) {
-					alert('Payment link sent successfully!');
-				} else {
-					alert(res.data.message || 'Failed to send payment link.');
-				}
+				const $msg = $('#bytenft-send-link-msg');
+				$msg.remove(); // remove any old message
+
+				const message = res.success
+					? 'Payment link sent successfully!'
+					: `${res.data.message || 'Failed to send payment link.'}`;
+
+				const color = res.success ? 'green' : 'red';
+
+				$('#bytenft-send-link-btn')
+					.after(`<div id="bytenft-send-link-msg" style="margin-top:8px;color:${color};font-size:14px;">${message}</div>`);
 			},
 			error: function () {
 				alert('An error occurred.');

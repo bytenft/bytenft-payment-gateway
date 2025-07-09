@@ -364,3 +364,7 @@
     flex-direction: column;
   }
 }
+
+#bytenft-send-link-msg {
+	font-weight: 500;
+}
