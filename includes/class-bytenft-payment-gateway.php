@@ -1676,10 +1676,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 		?>
 		<div id="bytenft-payment-popup" class="px-5 py-5" style="display: none;">
-			<button class="close">X</button>
 			<div class="bytenft-modal-content">
+				<button class="close" id="bytenft-close-payment-popup">X</button>
+				<!-- === INITIAL PAYMENT OPTIONS === -->
 				<div class="payment-link-div">
 					<h3>Complete Your Payment</h3>
+
+					<!-- Option 1 -->
 					<div class="option-sec">
 						<div>
 							<h6><span class="option-lable mr-1">Option 1</span> Email Link</h6>
@@ -1689,96 +1692,115 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 							<p>We’ve sent a secure payment link to <b class="bytenft-customer-email" style="color: #000;"></b>. Please check your inbox to continue.</p>
 						</div>
 					</div>
+
+					<!-- Option 2 and 3 -->
 					<div class="box-sec">
+						<!-- QR Code -->
 						<div class="box_item option-sec">
-							<div class="">
-								<div>
-									<h6><span class="option-lable mr-1">Option 2</span> Scan QR code</h6>
-								</div>
-								<div class="qr-code">
-									<img src="<?php echo esc_url(plugins_url('../assets/images/qr_code.png', __FILE__)); ?>" id="bytenft-qr-img" alt="QR Code" width="94" height="100" />
-								</div>
-								<p class="qr-text">Scan the QR code to continue on another device</p>
+							<h6><span class="option-lable mr-1">Option 2</span> Scan QR code</h6>
+							<div class="qr-code">
+								<img src="<?php echo esc_url(plugins_url('../assets/images/qr_code.png', __FILE__)); ?>" id="bytenft-qr-img" alt="QR Code" width="94" height="100" />
 							</div>
+							<p class="qr-text">Scan the QR code to continue on another device</p>
 						</div>
+
+						<!-- Resend -->
 						<div class="box_item option-sec">
-							<div class="">
-								<div>
-									<h6><span class="option-lable mr-1">Option 3</span> Send Link Again</h6>
-								</div>
-								<p class="send-link-text">You can send the link to a different email or phone number.</p>
-								<div class="">
-									<div class="tabs">
-										<div class="switch_tab tab active" data-tab="phone">Phone Number</div>
-										<div class="switch_tab tab" data-tab="email">Email</div>
-									</div>
-									<div id="phone-input">
-										<label for="phone">Phone Number</label>
-										<div class="input-group">
-											<input type="number" placeholder="Enter phone number" class="form-control" name="phone">
-											<span class="input-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/flag.png', __FILE__)); ?>" width="23" height="13" /> </span>
-										</div>
-									</div>
-									<div id="email-input" style="display: none;">
-										<label for="email">Email</label>
-										<div class="input-group">
-											<input type="email" placeholder="Enter Email" class="form-control" name="email">
-											<span class="input-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/Vector_email.png', __FILE__)); ?>" width="15" height="10" /> </span>
-										</div>
-									</div>
-									<button class="stop-process-btn" id="bytenft-send-link-btn">Send Link</button>
+							<h6><span class="option-lable mr-1">Option 3</span> Send Link Again</h6>
+							<p class="send-link-text">You can send the link to a different email or phone number.</p>
+
+							<div class="tabs">
+								<div class="switch_tab tab active" data-tab="email">Email</div>
+								<div class="switch_tab tab" data-tab="phone">Phone Number</div>
+							</div>
+
+							<div id="email-input">
+								<div class="input-group">
+									<input type="email" placeholder="Enter Email" class="form-control" name="email">
+									<span class="input-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/Vector_email.png', __FILE__)); ?>" width="15" height="10" /></span>
 								</div>
 							</div>
+
+							<div id="phone-input" style="display: none;">
+								<div class="input-group">
+									<input type="number" placeholder="Enter phone number" class="form-control" name="phone">
+									<span class="input-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/flag.png', __FILE__)); ?>" width="23" height="13" /></span>
+								</div>
+							</div>
+
+							<button class="stop-process-btn" id="bytenft-send-link-btn">Send Link</button>
 						</div>
 					</div>
+
 					<div class="footer-note">
-						Don’t close this window-we’re checking the payment status automatically.
+						Don’t close this window — we’re checking the payment status automatically.
 					</div>
 				</div>
-				<div>
-					<!-- <h3>Connected to Your Mobile</h3>
-					<p class="subtitle">Please keep this window open while you complete the process<br>on your mobile device.</p> -->
-					<div class="stepper">
-						<!-- Step 1 -->
-						<div class="step done payment-started">
-							<div class="icon"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
+
+				<!-- === POLLING & TIMELINE === -->
+				<div class="tabs-wrapper" style="display: none;">
+
+					<h3>Process Initiated on Your Linked Side</h3>
+            		<p class="subtitle">Please keep this window open while completing the process successfully.</p>
+
+					<div class="stepper payment-timeline">
+
+						<!-- Step 1: Started -->
+						<div class="step payment-started">
+							<div class="icon success-sec"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /></div>
 							<div class="step-title">Payment started</div>
 							<div class="step-description">Your payment has been <br />initiated.</div>
 						</div>
 
-						<!-- Step 2 -->
-						<div class="step pending payment-processing">
-							<div class="icon waiting-sec"><img src="<?php echo esc_url(plugins_url('../assets/images/waiting_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
-							<div class="icon success-sec" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
+						<!-- Step 2: Processing -->
+						<div class="step processing">
+							<div class="icon success-sec" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" width="14" height="14" /></div>
 							<div class="icon loader-sec" style="display: none;"><div class="spinner-border"></div></div>
 							<div class="step-title">Payment Processing</div>
-							<div class="step-description">Transaction in progress<br /> — please wait.</div>
+							<div class="step-description">Transaction in progress<br />— please wait.</div>
 						</div>
 
-						<!-- Step 3 -->
-						<div class="step pending payment-approve">
-							<div class="icon waiting-sec"><img src="<?php echo esc_url(plugins_url('../assets/images/waiting_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
-							<div class="icon success-sec" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
-							<div class="step-title">Waiting for Approval</div>
-							<div class="step-description">Approval is pending from the<br>merchant side.</div>
+						<!-- Step 3/4: Approval OR Failure -->
+						<div class="step pending payment-approve-or-fail">
+							<!-- Approval Icons -->
+							<div class="icon waiting-sec approve-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/waiting_icon.png', __FILE__)); ?>" width="14" height="14" /></div>
+							<div class="icon success-sec approve-icon" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" width="14" height="14" /></div>
+
+							<!-- Failure Icon -->
+							<div class="icon failed-icon" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/failed_icon.png', __FILE__)); ?>" width="3" height="9" /></div>
+
+							<!-- Approval Text -->
+							<div class="step-title approve-text">Waiting for Approval</div>
+							<div class="step-description approve-text">Approval is pending from the<br>merchant side.</div>
+
+							<!-- Approval Text -->
+							<div class="step-title success-text">Payment Successfully</div>
+							<div class="step-description success-text">Your payment has been <br> processed.</div>
+
+							<!-- Failure Text -->
+							<div class="step-title fail-text" style="display: none;">Payment Failed</div>
+							<div class="step-description fail-text" style="display: none;">Payment process was not successful.</div>
 						</div>
-						
-						<!-- Step 4 -->
-						<!-- <div class="step failed payment-failed" style="display: none;">
-							<div class="icon"><img src="<?php echo esc_url(plugins_url('../assets/images/failed_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /> </div>
-							<div class="step-title">Payment Failed</div>
-							<div class="step-description">Payment process was not successfull.</div>
-						</div> -->
 					</div>
-					<div class="thank-you-msg" style="display: none;">
-						<img src="<?php echo esc_url(plugins_url('../assets/images/success_icon.png', __FILE__)); ?>" width="87" height="59" />
-						<h4>Thank you for your payment!</h4>
-						<p>Your payment has been successfully received. We appreciate <br/>your trust in us.</p>
-					</div>
+				</div>
+
+				<!-- === THANK YOU SECTION === -->
+				<div class="thank-you-msg" style="display: none;">
+					<img src="<?php echo esc_url(plugins_url('../assets/images/success_icon.png', __FILE__)); ?>" width="87" height="59" />
+					<h4>Thank you for your payment!</h4>
+					<p>Your payment has been successfully received.<br />We appreciate your trust in us.</p>
+				</div>
+
+				<!-- === Failed YOU SECTION === -->
+				<div class="failed-msg" style="display: none;">
+					<img src="<?php echo esc_url(plugins_url('../assets/images/success_icon.png', __FILE__)); ?>" width="87" height="59" />
+					<h4>Payment Failed</h4>
+					<p>Your payment was not successful.<br />Please try again later.</p>
 				</div>
 			</div>
 		</div>
 
+		<!-- === PAYMENT ALREADY IN PROGRESS === -->
 		<div id="bytenft-pending-popup" style="display:none;">
 			<div class="bytenft-modal-content">
 				<h3>Payment Already In Progress</h3>
@@ -1790,6 +1812,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				<button id="bytenft-close-pending-popup" class="button">Close</button>
 			</div>
 		</div>
+
 		<?php
 	}
 

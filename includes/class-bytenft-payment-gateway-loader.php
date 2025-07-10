@@ -240,8 +240,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	    $status_data = json_decode($response_body, true);
 
 		$is_transaction = $status_data['data']['is_transaction'];
-		$is_transaction = true;
-	    // 6. Validate response
+		// 6. Validate response
 	    if (!isset($status_data['status']) || $status_data['status'] !== 'success' || !isset($status_data['data']['payment_status'])) {
 	        wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url, 'is_transaction' => $is_transaction]);
 	    }

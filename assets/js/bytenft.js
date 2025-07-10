@@ -6,22 +6,19 @@ jQuery(function ($) {
 	let originalButtonText = '';
 	let pollingInterval = null;
 	let pollingActive = false;
-	payment_link = null;
+	let payment_link = null;
 
-	// Append loader
 	const loaderUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
 	$('body').append(`
 		<div class="bytenft-loader-background"></div>
 		<div class="bytenft-loader"><img src="${loaderUrl}" alt="Loading..." /></div>
 	`);
 
-	// Disable default WC submit
 	$('form.checkout').on('checkout_place_order', function () {
 		const selected = $('input[name="payment_method"]:checked').val();
 		return selected !== bytenft_params.payment_method;
 	});
 
-	// Rebind on updated checkout
 	$(document.body).on("updated_checkout", () => {
 		isHandlerBound = false;
 		bindCheckoutHandler();
@@ -44,10 +41,8 @@ jQuery(function ($) {
 
 	function handleFormSubmit(e) {
 		e.preventDefault();
-
 		const $form = $(this);
 		if (isSubmitting) return false;
-
 		isSubmitting = true;
 
 		const selected = $form.find('input[name="payment_method"]:checked').val();
@@ -116,38 +111,44 @@ jQuery(function ($) {
 		$('.bytenft-loader-background, .bytenft-loader').hide();
 	}
 
-	function openPopup(paymentLink,customerEmail) {
+	function openPopup(paymentLink, customerEmail) {
 		payment_link = paymentLink;
-		$('#bytenft-manual-link').attr('href', paymentLink);
-		$('#bytenft-qr-img').attr('src', "https://image-charts.com/chart?chs=120x120&cht=qr&chl="+paymentLink+"&choe=UTF-8");
 
-		// ✅ Set customer email dynamically
+		$('#bytenft-manual-link').attr('href', paymentLink);
+		$('#bytenft-qr-img').attr('src', "https://image-charts.com/chart?chs=120x120&cht=qr&chl=" + paymentLink + "&choe=UTF-8");
+
 		if (customerEmail) {
 			$('#bytenft-payment-popup .email-info .bytenft-customer-email').text(customerEmail);
 		}
+
+		// Reset UI
+		$('#bytenft-payment-popup .payment-link-div').show();
+		$('#bytenft-payment-popup .payment-timeline, .tabs-wrapper, .thank-you-msg, .failed-msg, .payment-failed').hide();
 		$('#bytenft-payment-popup').fadeIn();
+
+		startPolling(() => {
+			$('#bytenft-payment-popup').fadeOut();
+		});
 
 		$('#bytenft-cancel-order').off('click').on('click', function () {
 			$('#bytenft-payment-popup').fadeOut();
 			stopPolling();
 			resetButton();
 		});
-
-		// startPolling(() => {
-		// 	$('#bytenft-payment-popup').fadeOut();
-		// });
 	}
 
 	function showPendingMessage() {
 		$('#bytenft-pending-popup').fadeIn();
-		// startPolling(() => {
-		// 	$('#bytenft-pending-popup').fadeOut();
-		// });
+
+		startPolling(() => {
+			$('#bytenft-pending-popup').fadeOut();
+		});
 	}
 
 	function startPolling(onComplete) {
-		if (pollingActive || !orderId) return;
+		let hasShownProcessingStep = false;
 
+		if (pollingActive || !orderId) return;
 		pollingActive = true;
 
 		pollingInterval = setInterval(() => {
@@ -162,26 +163,56 @@ jQuery(function ($) {
 				dataType: 'json',
 				success: (statusResponse) => {
 					const status = statusResponse?.data?.status;
+					const isTxn = statusResponse?.data?.is_transaction;
 					const popup = $("#bytenft-payment-popup");
 
-					if (status == 'success') {
+					if (isTxn && status === 'pending' && !hasShownProcessingStep) {
+						hasShownProcessingStep = true; // ✅ Prevent repeat
 						popup.find('.payment-link-div').hide();
-						popup.find('.thank-you-msg, .success-sec').show();
-						popup.find('.payment-processing .icon').hide();
-						popup.find('.payment-approve').removeClass('pending').addClass('done');
-						popup.find('.payment-processing').removeClass('processing').removeClass('pending').addClass('done');
-					} else if (status == 'failed') {
-						popup.find('.payment-processing .icon').hide();
-						popup.find('.payment-processing .success-sec').show();
-						popup.find('.payment-failed').show();
-						popup.find('.payment-processing').removeClass('processing').removeClass('pending').addClass('done');
-						popup.find('.payment-approve').hide();
-					} else if (statusResponse.data.is_transaction) {
-						popup.find('.payment-processing').removeClass('pending').addClass('processing');
-						popup.find('.payment-processing .icon').hide();
-						popup.find('.payment-processing .loader-sec').show();
+						popup.find('.tabs-wrapper').show();
+						popup.find('.payment-timeline').show();
+						popup.find('.loader-sec').show(); 
+						
+						// Always reset approval/failure block to neutral
+						const approveFail = popup.find('.payment-approve-or-fail');
+						approveFail.removeClass('failed').addClass('pending');						
+						approveFail.find('.waiting-sec, .approve-text').show();						
+						approveFail.find('.success-text, .failed-icon, .fail-text').hide();
+						approveFail.find('.payment-started .success-sec').show();	
+
+						// Show check icon after 3s
+						setTimeout(() => {
+							popup.find('.loader-sec').hide();       // hide spinner
+							popup.find('.processing .success-sec').show();      // show check icon
+						}, 3000);
+						
 					}
-					
+
+					if (status === 'success') {
+						popup.find('.payment-timeline .icon').hide();
+						popup.find('.thank-you-msg, .success-sec').show();
+						popup.find('.payment-timeline').removeClass('processing');
+
+						const approveFail = popup.find('.payment-approve-or-fail');
+						approveFail.removeClass('pending');
+						approveFail.find('.approve-text, .waiting-sec').hide();
+						approveFail.find('.success-sec, .success-text').show();						
+					} else if (status === 'failed') {
+						popup.find('.payment-timeline .icon').hide();
+						popup.find('.payment-timeline .success-sec').show();
+						popup.find('.payment-timeline').removeClass('processing');
+						
+
+						const approveFail = popup.find('.payment-approve-or-fail');
+						approveFail.removeClass('pending').addClass('failed');
+						approveFail.find('.waiting-sec').hide();
+						approveFail.find('.approve-icon, .approve-text').hide();
+						approveFail.find('.failed-icon, .fail-text').show();
+
+						popup.find('.failed-msg').show();
+
+					}
+
 					if (status === 'success' || status === 'failed') {
 						setTimeout(() => {
 							stopPolling();
@@ -189,7 +220,7 @@ jQuery(function ($) {
 							if (statusResponse.data.redirect_url) {
 								window.location.href = statusResponse.data.redirect_url;
 							}
-						}, 3000);
+						}, 4000);
 					}
 				},
 				error: (xhr, status, error) => {
@@ -207,13 +238,13 @@ jQuery(function ($) {
 	$(document).on('click', '#bytenft-close-payment-popup', function () {
 		$('#bytenft-payment-popup').fadeOut();
 		stopPolling();
-		resetButton(); // ✅ Reset place order button
+		resetButton();
 	});
 
 	$(document).on('click', '#bytenft-close-pending-popup', function () {
 		$('#bytenft-pending-popup').fadeOut();
 		stopPolling();
-		resetButton(); // ✅ Reset place order button
+		resetButton();
 	});
 
 	$('#bytenft-send-link-btn').on('click', function () {
@@ -240,7 +271,7 @@ jQuery(function ($) {
 			},
 			success: function (res) {
 				const $msg = $('#bytenft-send-link-msg');
-				$msg.remove(); // remove any old message
+				$msg.remove();
 
 				const message = res.success
 					? 'Payment link sent successfully!'
@@ -261,22 +292,17 @@ jQuery(function ($) {
 	});
 
 	$(document).on('click', '#bytenft-payment-popup .switch_tab', function () {
-        var tab = $(this).data('tab'); // either 'phone' or 'email'
+		const tab = $(this).data('tab');
 
-        // Remove 'active' from all tabs
-        $('.tab').removeClass('active');
+		$('.tab').removeClass('active');
+		$(this).addClass('active');
 
-        // Add 'active' to clicked tab
-        $(this).addClass('active');
-
-        // Show/hide input blocks
-        if (tab === 'phone') {
-            $('#phone-input').show();
-            $('#email-input').hide();
-        } else if (tab === 'email') {
-            $('#phone-input').hide();
-            $('#email-input').show();
-        }
-    });
-
+		 if (tab === 'email') {
+			$('#phone-input').hide();
+			$('#email-input').show();
+		} else if (tab === 'phone') {
+			$('#phone-input').show();
+			$('#email-input').hide();
+		}
+	});
 });
