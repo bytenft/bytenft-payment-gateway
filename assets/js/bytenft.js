@@ -76,11 +76,7 @@ jQuery(function ($) {
 				orderId = response.order_id;
 				$form.removeAttr('data-result data-redirect-url');
 
-				if (response.reuse) {
-					showPendingMessage();
-				} else {
 					openPopup(response.payment_link, response.customer_email);
-				}
 			} else {
 				throw response.messages || 'An error occurred during checkout.';
 			}
@@ -134,14 +130,6 @@ jQuery(function ($) {
 			$('#bytenft-payment-popup').fadeOut();
 			stopPolling();
 			resetButton();
-		});
-	}
-
-	function showPendingMessage() {
-		$('#bytenft-pending-popup').fadeIn();
-
-		startPolling(() => {
-			$('#bytenft-pending-popup').fadeOut();
 		});
 	}
 
@@ -237,12 +225,6 @@ jQuery(function ($) {
 
 	$(document).on('click', '#bytenft-close-payment-popup', function () {
 		$('#bytenft-payment-popup').fadeOut();
-		stopPolling();
-		resetButton();
-	});
-
-	$(document).on('click', '#bytenft-close-pending-popup', function () {
-		$('#bytenft-pending-popup').fadeOut();
 		stopPolling();
 		resetButton();
 	});

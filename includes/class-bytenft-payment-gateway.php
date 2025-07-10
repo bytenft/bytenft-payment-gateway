@@ -696,8 +696,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				    return [
 				        'result'       => 'success',
 				        'payment_link' => esc_url($existing_link['payment_link']),
-				        'order_id'     => $order_id,
-				        'reuse'        => false,
+				        'order_id'     => $order_id
 				    ];
 				}
 
@@ -1793,26 +1792,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				<!-- === Failed YOU SECTION === -->
 				<div class="failed-msg" style="display: none;">
-					<img src="<?php echo esc_url(plugins_url('../assets/images/success_icon.png', __FILE__)); ?>" width="87" height="59" />
+					<img src="<?php echo esc_url(plugins_url('../assets/images/failed_icon_card.png', __FILE__)); ?>" width="87" height="59" />
 					<h4>Payment Failed</h4>
 					<p>Your payment was not successful.<br />Please try again later.</p>
 				</div>
 			</div>
 		</div>
-
-		<!-- === PAYMENT ALREADY IN PROGRESS === -->
-		<div id="bytenft-pending-popup" style="display:none;">
-			<div class="bytenft-modal-content">
-				<h3>Payment Already In Progress</h3>
-				<p>You already have a payment in progress. Please check your email for the payment link and complete the process.</p>
-				<ul>
-					<li>Check your inbox or spam folder for the email.</li>
-					<li>If you've already paid, this page will update automatically.</li>
-				</ul>
-				<button id="bytenft-close-pending-popup" class="button">Close</button>
-			</div>
-		</div>
-
 		<?php
 	}
 
