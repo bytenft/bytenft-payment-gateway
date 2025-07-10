@@ -132,7 +132,6 @@ jQuery(function ($) {
 			resetButton();
 		});
 	}
-
 	function startPolling(onComplete) {
 		let hasShownProcessingStep = false;
 
@@ -152,64 +151,86 @@ jQuery(function ($) {
 				success: (statusResponse) => {
 					const status = statusResponse?.data?.status;
 					const isTxn = statusResponse?.data?.is_transaction;
+					const redirectUrl = statusResponse?.data?.redirect_url;
 					const popup = $("#bytenft-payment-popup");
+					const approveFail = popup.find('.payment-approve-or-fail');
 
-					if (isTxn && status === 'pending' && !hasShownProcessingStep) {
-						hasShownProcessingStep = true; // ✅ Prevent repeat
-						popup.find('.payment-link-div').hide();
-						popup.find('.tabs-wrapper').show();
-						popup.find('.payment-timeline').show();
-						popup.find('.loader-sec').show(); 
-						
-						// Always reset approval/failure block to neutral
-						const approveFail = popup.find('.payment-approve-or-fail');
-						approveFail.removeClass('failed').addClass('pending');						
-						approveFail.find('.waiting-sec, .approve-text').show();						
-						approveFail.find('.success-text, .failed-icon, .fail-text').hide();
-						approveFail.find('.payment-started .success-sec').show();	
+					// Show timeline once
+					if (isTxn && status === 'pending' && !popup.data('timeline-shown')) {
+						popup.data('timeline-shown', true);
 
-						// Show check icon after 3s
-						setTimeout(() => {
-							popup.find('.loader-sec').hide();       // hide spinner
-							popup.find('.processing .success-sec').show();      // show check icon
-						}, 3000);
-						
+						popup.find('.payment-link-div').fadeOut(200);
+						popup.find('.tabs-wrapper, .payment-timeline').fadeIn(300);
+						popup.find('.step.processing .loader-sec').fadeIn(300); // show processing loader
+
+						approveFail.removeClass('failed').addClass('pending');
+						approveFail.find('.waiting-sec, .approve-text').fadeIn(300);
+						approveFail.find('.success-text, .failed-icon, .fail-text, .loader-sec, .success-sec').hide();
+						popup.find('.payment-started .success-sec').fadeIn(300);
 					}
 
 					if (status === 'success') {
-						popup.find('.payment-timeline .icon').hide();
-						popup.find('.thank-you-msg, .success-sec').show();
-						popup.find('.payment-timeline').removeClass('processing');
-
-						const approveFail = popup.find('.payment-approve-or-fail');
-						approveFail.removeClass('pending');
-						approveFail.find('.approve-text, .waiting-sec').hide();
-						approveFail.find('.success-sec, .success-text').show();						
-					} else if (status === 'failed') {
-						popup.find('.payment-timeline .icon').hide();
-						popup.find('.payment-timeline .success-sec').show();
-						popup.find('.payment-timeline').removeClass('processing');
-						
-
-						const approveFail = popup.find('.payment-approve-or-fail');
-						approveFail.removeClass('pending').addClass('failed');
-						approveFail.find('.waiting-sec').hide();
-						approveFail.find('.approve-icon, .approve-text').hide();
-						approveFail.find('.failed-icon, .fail-text').show();
-
-						popup.find('.failed-msg').show();
-
-					}
-
-					if (status === 'success' || status === 'failed') {
-						setTimeout(() => {
+						if (!popup.data('handled-success')) {
+							popup.data('handled-success', true);
 							stopPolling();
-							onComplete?.();
-							if (statusResponse.data.redirect_url) {
-								window.location.href = statusResponse.data.redirect_url;
+
+							// Step 2
+							popup.find('.step.processing .loader-sec').fadeOut(200, () => {
+								popup.find('.step.processing .success-sec').fadeIn(300);
+							});
+
+							// Step 3 - Approval
+							approveFail.find('.waiting-sec').fadeOut(200);
+							if (!approveFail.find('.approve-text').is(':visible')) {
+								approveFail.find('.approve-text').fadeIn(300);
 							}
-						}, 4000);
+							if (!approveFail.find('.loader-sec').is(':visible')) {
+								approveFail.find('.loader-sec').fadeIn(300);
+							}
+
+							setTimeout(() => {
+								approveFail.find('.loader-sec').fadeOut(200);
+								approveFail.find('.approve-text').fadeOut(200, () => {
+									approveFail.find('.success-sec, .success-text').fadeIn(300);
+									approveFail.removeClass('pending');
+								});
+
+								popup.find('.thank-you-msg').slideDown(300);
+								popup.find('.redirect-section').slideDown(300);
+								handleRedirect(redirectUrl);
+							}, 3000);
+						}
 					}
+
+					if (status === 'failed') {
+						if (!popup.data('handled-failed')) {
+							popup.data('handled-failed', true); // ✅ Prevent multiple triggers
+							stopPolling(); // ✅ Stop further requests
+
+							// Step 2: Hide loader, show success icon (optional)
+							popup.find('.step.processing .loader-sec').fadeOut(200, () => {
+								popup.find('.step.processing .success-sec').fadeIn(300);
+							});
+
+							// Step 3: Show failure after slight delay
+							setTimeout(() => {
+								approveFail.removeClass('pending').addClass('failed');
+
+								// Fade out all previous elements
+								approveFail.find('.waiting-sec, .approve-text, .approve-icon, .success-sec, .success-text, .loader-sec').fadeOut(200);
+
+								// Fade in failure icon and text
+								approveFail.find('.failed-icon, .fail-text').fadeIn(300);
+
+								// Slide in failure message and redirect options
+								popup.find('.failed-msg').slideDown(300);
+								popup.find('.redirect-section').slideDown(300);
+
+								handleRedirect(redirectUrl);
+							}, 3000);
+						}
+					}
+
 				},
 				error: (xhr, status, error) => {
 					console.error('Polling error:', error);
@@ -217,6 +238,34 @@ jQuery(function ($) {
 			});
 		}, 5000);
 	}
+
+	// ⏳ Redirect with countdown + button
+	function handleRedirect(redirectUrl) {
+		if (!redirectUrl) return;
+
+		const popup = $("#bytenft-payment-popup");
+		let secondsLeft = 5;
+		const timerEl = popup.find('#redirect-timer');
+
+		timerEl.text(secondsLeft); // Init text
+
+		const interval = setInterval(() => {
+			secondsLeft--;
+			timerEl.text(secondsLeft);
+			if (secondsLeft <= 0) {
+				clearInterval(interval);
+				// Uncomment when ready for live
+				// window.location.href = redirectUrl;
+			}
+		}, 1000);
+
+		popup.find('#redirect-now-btn').on('click', () => {
+			clearInterval(interval);
+			// Uncomment when ready for live
+			window.location.href = redirectUrl;
+		});
+	}
+
 
 	function stopPolling() {
 		clearInterval(pollingInterval);

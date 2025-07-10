@@ -67,7 +67,7 @@
 .bytenft-modal-content {
   position: relative;
   background: #fff;
-  height: 550px;
+  height: 600px;
   overflow-y: auto;
   padding: 30px;
   border-radius: 10px;
@@ -89,7 +89,7 @@
   text-align: center;
 }
 
-#bytenft-payment-popup .stop-process-btn {
+#bytenft-payment-popup .process-btn {
   background: #000;
   color: #fff;
   font-size: 14px;
@@ -365,8 +365,8 @@
   background: #FAFAFA;
   border-radius: 15px;
   text-align: center;
-  margin-top: 50px;
-  padding: 50px 20px;
+  margin-top: 35px;
+  padding: 20px 20px;
 }
 #bytenft-payment-popup .thank-you-msg h4, #bytenft-payment-popup .failed-msg h4{
   font-size: 18px;
@@ -389,3 +389,12 @@
 #bytenft-send-link-msg {
 	font-weight: 500;
 }
+
+.payment-approve-or-fail .icon {
+	width: 20px;
+	height: 20px;
+	display: inline-block;
+	text-align: center;
+	vertical-align: middle;
+}
+

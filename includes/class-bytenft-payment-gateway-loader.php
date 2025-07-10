@@ -185,11 +185,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	    global $wpdb;
 
 	    $logger_context = ['source' => 'bytenft-payment-gateway', 'order_id' => $order_id];
+	    $logger = wc_get_logger();
 
 	    // 1. Get order
 	    $order = wc_get_order($order_id);
 	    if (!$order) {
-	        wc_get_logger()->error("Order not found", $logger_context);
+	        $logger->error("Order not found", $logger_context);
 	        return new WP_REST_Response(['error' => 'Order not found'], 404);
 	    }
 
@@ -201,22 +202,20 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	    $secret_key = $order->get_meta('_bytenft_secret_key');
 
 	    if (empty($pay_id) || empty($public_key) || empty($secret_key)) {
-	        wc_get_logger()->warning("Missing stored payment metadata.", $logger_context);
+	        $logger->warning("Missing stored payment metadata.", $logger_context);
 	        return new WP_REST_Response([
 	            'success' => false,
 	            'error' => 'Missing payment data for the order.',
 	        ], 400);
 	    }
 
-	    // 3. Skip if already in final state
+	    // 3. Skip if already finalized
 	    if ($order->is_paid()) {
-	        wc_get_logger()->info("Order already paid", $logger_context);
-	        wp_send_json_success(['status' => 'success', 'redirect_url' => $payment_return_url]);
+	        return wp_send_json_success(['status' => 'success', 'redirect_url' => $payment_return_url]);
 	    }
 
 	    if ($order->has_status(['failed', 'canceled', 'refunded'])) {
-	        wc_get_logger()->info("Order is in final state: " . $order->get_status(), $logger_context);
-	        wp_send_json_success(['status' => $order->get_status(), 'redirect_url' => $payment_return_url]);
+	        return wp_send_json_success(['status' => $order->get_status(), 'redirect_url' => $payment_return_url]);
 	    }
 
 	    // 4. Call status API
@@ -230,44 +229,71 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	        ],
 	    ]);
 
-	    // 5. Handle error
 	    if (is_wp_error($response)) {
-	        wc_get_logger()->error("HTTP error while checking status: " . $response->get_error_message(), $logger_context);
-	        wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url]);
+	        $logger->error("HTTP error: " . $response->get_error_message(), $logger_context);
+	        return wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url]);
 	    }
 
 	    $response_body = wp_remote_retrieve_body($response);
 	    $status_data = json_decode($response_body, true);
 
-		$is_transaction = $status_data['data']['is_transaction'];
-		// 6. Validate response
-	    if (!isset($status_data['status']) || $status_data['status'] !== 'success' || !isset($status_data['data']['payment_status'])) {
-	        wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url, 'is_transaction' => $is_transaction]);
+	    $is_transaction = $status_data['data']['is_transaction'] ?? false;
+
+	    if (
+	        !isset($status_data['status']) ||
+	        $status_data['status'] !== 'success' ||
+	        !isset($status_data['data']['payment_status'])
+	    ) {
+	        $logger->warning("Invalid API response for status check", $logger_context);
+	        return wp_send_json_success([
+	            'status' => 'pending',
+	            'redirect_url' => $payment_return_url,
+	            'is_transaction' => $is_transaction
+	        ]);
 	    }
 
 	    $payment_status = strtolower($status_data['data']['payment_status']);
-	    wc_get_logger()->info("Payment status for $pay_id: $payment_status", $logger_context);
 
-	    // 7. Update WooCommerce order status
+	    // 5. Act on status
 	    if ($payment_status === 'success') {
 	        $order->payment_complete();
-	        wp_send_json_success(['status' => 'success', 'redirect_url' => $payment_return_url, 'is_transaction' => $is_transaction]);
+	        return wp_send_json_success([
+	            'status' => 'success',
+	            'redirect_url' => $payment_return_url,
+	            'is_transaction' => $is_transaction
+	        ]);
 	    }
 
 	    if (in_array($payment_status, ['failed', 'cancelled', 'canceled'])) {
 	        $order->update_status('failed', __('Payment failed via API status check', 'bytenft-payment-gateway'));
-	        wp_send_json_success(['status' => 'failed', 'redirect_url' => $payment_return_url, 'is_transaction' => $is_transaction]);
+	        $logger->warning("Order marked failed by API", $logger_context);
+	        return wp_send_json_success([
+	            'status' => 'failed',
+	            'redirect_url' => $payment_return_url,
+	            'is_transaction' => $is_transaction
+	        ]);
 	    }
 
 	    if (in_array($payment_status, ['pending', 'on-hold'])) {
-	        $order->update_status('pending', __('Awaiting payment confirmation.', 'bytenft-payment-gateway'));
-	        wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url, 'is_transaction' => $is_transaction]);
+	        // Optional: avoid updating to "pending" if it's already pending
+	        if (!$order->has_status('pending')) {
+	            $order->update_status('pending', __('Awaiting payment confirmation.', 'bytenft-payment-gateway'));
+	        }
+	        return wp_send_json_success([
+	            'status' => 'pending',
+	            'redirect_url' => $payment_return_url,
+	            'is_transaction' => $is_transaction
+	        ]);
 	    }
 
-	    // 8. Fallback
-	    wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url, 'is_transaction' => $is_transaction]);
+	    // Unknown or unhandled status
+	    $logger->warning("Unhandled payment status: $payment_status", $logger_context);
+	    return wp_send_json_success([
+	        'status' => 'pending',
+	        'redirect_url' => $payment_return_url,
+	        'is_transaction' => $is_transaction
+	    ]);
 	}
-
 
 	public function handle_popup_close()
 	{

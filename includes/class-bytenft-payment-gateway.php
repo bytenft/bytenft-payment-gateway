@@ -1727,7 +1727,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 								</div>
 							</div>
 
-							<button class="stop-process-btn" id="bytenft-send-link-btn">Send Link</button>
+							<button class="process-btn" id="bytenft-send-link-btn">Send Link</button>
 						</div>
 					</div>
 
@@ -1764,6 +1764,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 							<!-- Approval Icons -->
 							<div class="icon waiting-sec approve-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/waiting_icon.png', __FILE__)); ?>" width="14" height="14" /></div>
 							<div class="icon success-sec approve-icon" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" width="14" height="14" /></div>
+							<div class="icon loader-sec" style="display: none;"><div class="spinner-border"></div></div>
 
 							<!-- Failure Icon -->
 							<div class="icon failed-icon" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/failed_icon.png', __FILE__)); ?>" width="3" height="9" /></div>
@@ -1788,13 +1789,23 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					<img src="<?php echo esc_url(plugins_url('../assets/images/success_icon.png', __FILE__)); ?>" width="87" height="59" />
 					<h4>Thank you for your payment!</h4>
 					<p>Your payment has been successfully received.<br />We appreciate your trust in us.</p>
+
+					<div class="redirect-section" style="display: none;">
+						<p>You’ll be redirected in <span id="redirect-timer">5</span> seconds...</p>
+						<button id="redirect-now-btn" class="process-btn">Redirect Now</button>
+					</div>
 				</div>
+
 
 				<!-- === Failed YOU SECTION === -->
 				<div class="failed-msg" style="display: none;">
 					<img src="<?php echo esc_url(plugins_url('../assets/images/failed_icon_card.png', __FILE__)); ?>" width="87" height="59" />
 					<h4>Payment Failed</h4>
 					<p>Your payment was not successful.<br />Please try again later.</p>
+					<div class="redirect-section" style="display: none;">
+						<p>You’ll be redirected in <span id="redirect-timer">5</span> seconds...</p>
+						<button id="redirect-now-btn" class="process-btn">Redirect Now</button>
+					</div>
 				</div>
 			</div>
 		</div>
