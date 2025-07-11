@@ -111,7 +111,7 @@ jQuery(function ($) {
 		payment_link = paymentLink;
 
 		$('#bytenft-manual-link').attr('href', paymentLink);
-		$('#bytenft-qr-img').attr('src', "https://image-charts.com/chart?chs=120x120&cht=qr&chl=" + paymentLink + "&choe=UTF-8");
+		$('#bytenft-qr-img').attr('src', "https://image-charts.com/chart?chs=95x95&cht=qr&chl=" + paymentLink + "&choe=UTF-8");
 
 		if (customerEmail) {
 			$('#bytenft-payment-popup .email-info .bytenft-customer-email').text(customerEmail);
@@ -159,8 +159,18 @@ jQuery(function ($) {
 					if (isTxn && status === 'pending' && !popup.data('timeline-shown')) {
 						popup.data('timeline-shown', true);
 
-						popup.find('.payment-link-div').fadeOut(200);
-						popup.find('.tabs-wrapper, .payment-timeline').fadeIn(300);
+							// Smooth transition from payment link view to timeline
+						popup.find('.payment-link-div').slideUp(200, () => {
+							popup.find('.tabs-wrapper, .payment-timeline')
+								.css({ display: 'block', opacity: 0 })
+								//.delay(200)
+								.animate({ opacity: 1 }, 300);
+						});
+
+
+						// popup.find('.payment-link-div').fadeOut(200);
+						// popup.find('.tabs-wrapper, .payment-timeline').fadeIn(300);
+						
 						popup.find('.step.processing .loader-sec').fadeIn(300); // show processing loader
 
 						approveFail.removeClass('failed').addClass('pending');
@@ -174,19 +184,20 @@ jQuery(function ($) {
 							popup.data('handled-success', true);
 							stopPolling();
 
-							// Step 2
-							popup.find('.step.processing .loader-sec').fadeOut(200, () => {
+							// Step 2: Mark "processing" step as completed
+							popup.find('.step.processing .loader-sec').stop(true, true).fadeOut(200, () => {
 								popup.find('.step.processing .success-sec').fadeIn(300);
 							});
 
 							// Step 3 - Approval
-							approveFail.find('.waiting-sec').fadeOut(200);
-							if (!approveFail.find('.approve-text').is(':visible')) {
-								approveFail.find('.approve-text').fadeIn(300);
-							}
-							if (!approveFail.find('.loader-sec').is(':visible')) {
-								approveFail.find('.loader-sec').fadeIn(300);
-							}
+							approveFail.removeClass('failed').addClass('pending');
+
+							// Hide everything first for clean setup
+							approveFail.find('.waiting-sec, .success-sec, .success-text, .failed-icon, .fail-text').hide();
+
+							// ✅ Show approval text and loader together
+							approveFail.find('.approve-text').show().css('opacity', 0).animate({ opacity: 1 }, 300);
+							approveFail.find('.loader-sec').fadeIn(300);
 
 							setTimeout(() => {
 								approveFail.find('.loader-sec').fadeOut(200);
@@ -255,7 +266,7 @@ jQuery(function ($) {
 			if (secondsLeft <= 0) {
 				clearInterval(interval);
 				// Uncomment when ready for live
-				window.location.href = redirectUrl;
+				//window.location.href = redirectUrl;
 			}
 		}, 1000);
 

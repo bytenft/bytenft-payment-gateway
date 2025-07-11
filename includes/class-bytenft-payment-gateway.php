@@ -503,7 +503,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
 			return ['result' => 'fail'];
 		}
-		
+
 		// **Sandbox Mode Handling**
 		if ($this->sandbox) {
 			$test_note = __('This is a test order processed in sandbox mode.', 'bytenft-payment-gateway');
@@ -1696,7 +1696,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						<div class="box_item option-sec">
 							<h6><span class="option-lable mr-1">Option 2</span> Scan QR code</h6>
 							<div class="qr-code">
-								<img src="<?php echo esc_url(plugins_url('../assets/images/qr_code.png', __FILE__)); ?>" id="bytenft-qr-img" alt="QR Code" width="94" height="100" />
+								<img src="" id="bytenft-qr-img" alt="QR Code" />
 							</div>
 							<p class="qr-text">Scan the QR code to continue on another device</p>
 						</div>
@@ -1739,47 +1739,49 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 					<h3>Process Initiated on Your Linked Side</h3>
             		<p class="subtitle">Please keep this window open while completing the process successfully.</p>
+					<div class="payment-timeline">
+						<div class="stepper">
 
-					<div class="stepper payment-timeline">
+							<!-- Step 1: Started -->
+							<div class="step payment-started">
+								<div class="icon success-sec"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /></div>
+								<div class="step-title">Payment started</div>
+								<div class="step-description">Your payment has been <br />initiated.</div>
+							</div>
 
-						<!-- Step 1: Started -->
-						<div class="step payment-started">
-							<div class="icon success-sec"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" alt="Waiting" width="14" height="14" /></div>
-							<div class="step-title">Payment started</div>
-							<div class="step-description">Your payment has been <br />initiated.</div>
-						</div>
+							<!-- Step 2: Processing -->
+							<div class="step processing">
+								<div class="icon success-sec" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" width="14" height="14" /></div>
+								<div class="icon loader-sec" style="display: none;"><div class="spinner-border"></div></div>
+								<div class="step-title">Payment Processing</div>
+								<div class="step-description">Transaction in progress<br />. please wait.</div>
+							</div>
 
-						<!-- Step 2: Processing -->
-						<div class="step processing">
-							<div class="icon success-sec" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" width="14" height="14" /></div>
-							<div class="icon loader-sec" style="display: none;"><div class="spinner-border"></div></div>
-							<div class="step-title">Payment Processing</div>
-							<div class="step-description">Transaction in progress<br />. please wait.</div>
-						</div>
+							<!-- Step 3/4: Approval OR Failure -->
+							<div class="step pending payment-approve-or-fail">
+								<!-- Approval Icons -->
+								<div class="icon waiting-sec approve-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/waiting_icon.png', __FILE__)); ?>" width="14" height="14" /></div>
+								<div class="icon success-sec approve-icon" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" width="14" height="14" /></div>
+								<div class="icon loader-sec" style="display: none;"><div class="spinner-border"></div></div>
 
-						<!-- Step 3/4: Approval OR Failure -->
-						<div class="step pending payment-approve-or-fail">
-							<!-- Approval Icons -->
-							<div class="icon waiting-sec approve-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/waiting_icon.png', __FILE__)); ?>" width="14" height="14" /></div>
-							<div class="icon success-sec approve-icon" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" width="14" height="14" /></div>
-							<div class="icon loader-sec" style="display: none;"><div class="spinner-border"></div></div>
+								<!-- Failure Icon -->
+								<div class="icon failed-icon" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/failed_icon.png', __FILE__)); ?>" width="3" height="9" /></div>
 
-							<!-- Failure Icon -->
-							<div class="icon failed-icon" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/failed_icon.png', __FILE__)); ?>" width="3" height="9" /></div>
+								<!-- Approval Text -->
+								<div class="step-title approve-text">Waiting for Approval</div>
+								<div class="step-description approve-text">Finalizing your<br />payment…</div>
 
-							<!-- Approval Text -->
-							<div class="step-title approve-text">Waiting for Approval</div>
-							<div class="step-description approve-text">Hold tight <br />we’re finalizing your payment..</div>
+								<!-- Approval Text -->
+								<div class="step-title success-text">Payment Successfully</div>
+								<div class="step-description success-text">Your payment has been <br /> processed.</div>
 
-							<!-- Approval Text -->
-							<div class="step-title success-text">Payment Successfully</div>
-							<div class="step-description success-text">Your payment has been <br /> processed.</div>
-
-							<!-- Failure Text -->
-							<div class="step-title fail-text" style="display: none;">Payment Failed</div>
-							<div class="step-description fail-text" style="display: none;">Payment process was not successful.</div>
+								<!-- Failure Text -->
+								<div class="step-title fail-text" style="display: none;">Payment Failed</div>
+								<div class="step-description fail-text" style="display: none;">Payment process was not successful.</div>
+							</div>
 						</div>
 					</div>
+
 				</div>
 
 				<!-- === THANK YOU SECTION === -->
