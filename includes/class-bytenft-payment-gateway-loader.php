@@ -469,11 +469,13 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	public function handle_cron_event()
 	{
 		$logger_context = ['source' => 'bytenft-payment-gateway'];
-		wc_get_logger()->info('Starting account status sync via handle_cron_event()', $logger_context);
+		wc_get_logger()->info('🔄 Starting account status sync via handle_cron_event()', $logger_context);
 
 		$accounts = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
+		wc_get_logger()->debug('📦 Raw account data fetched from options', array_merge($logger_context, ['accounts' => $accounts]));
+
 		if (empty($accounts) || !is_array($accounts)) {
-			wc_get_logger()->warning('No accounts found to sync.', $logger_context);
+			wc_get_logger()->warning('⚠️ No accounts found to sync.', $logger_context);
 			return ['message' => 'No accounts to sync'];
 		}
 
@@ -482,7 +484,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		foreach ($accounts as $account) {
 			$account_name = $account['title'] ?? '';
 
-			// Live account
 			if (!empty($account['live_public_key']) && !empty($account['live_secret_key'])) {
 				$request_payload[] = [
 					'account_name' => $account_name,
@@ -492,7 +493,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				];
 			}
 
-			// Sandbox account
 			if (
 				!empty($account['has_sandbox']) &&
 				$account['has_sandbox'] === 'on' &&
@@ -509,35 +509,32 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		}
 
 		if (empty($request_payload)) {
-			wc_get_logger()->warning('No valid keys found for sync.', $logger_context);
+			wc_get_logger()->warning('⚠️ No valid keys found for sync.', $logger_context);
 			return ['message' => 'No public+secret keys provided'];
 		}
 
-		$url = $this->base_url . '/api/sync-account-status'; // Correct endpoint
-		$headers = [
-			'Content-Type' => 'application/json',
-		];
+		wc_get_logger()->debug('📤 Sending sync request payload', array_merge($logger_context, ['payload' => $request_payload]));
 
+		$url = $this->base_url . '/api/sync-account-status';
 		$response = wp_remote_post($url, [
 			'method'  => 'POST',
 			'timeout' => 20,
-			'headers' => $headers,
+			'headers' => ['Content-Type' => 'application/json'],
 			'body'    => wp_json_encode(['accounts' => $request_payload]),
 		]);
 
 		if (is_wp_error($response)) {
-			wc_get_logger()->error('Failed to sync account statuses: ' . $response->get_error_message(), $logger_context);
+			wc_get_logger()->error('❌ Failed to sync account statuses: ' . $response->get_error_message(), $logger_context);
 			return ['error' => $response->get_error_message()];
 		}
 
 		$code = wp_remote_retrieve_response_code($response);
 		$body = json_decode(wp_remote_retrieve_body($response), true);
 
+		wc_get_logger()->debug('📥 Received API response', array_merge($logger_context, ['status' => $code, 'body' => $body]));
+
 		if ($code !== 200 || empty($body['data']) || !is_array($body['data'])) {
-			wc_get_logger()->warning('Unexpected API response during sync', [
-				'status' => $code,
-				'body'   => $body,
-			]);
+			wc_get_logger()->warning('⚠️ Unexpected API response during sync', array_merge($logger_context, ['code' => $code, 'body' => $body]));
 			return ['error' => 'Invalid response from API'];
 		}
 
@@ -548,15 +545,13 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			}
 		}
 
-		// Update account statuses in saved option
+		wc_get_logger()->debug('✅ Parsed status map from API response', array_merge($logger_context, ['status_map' => $status_map]));
+
 		foreach ($accounts as $i => &$account) {
-			// Live
 			if (!empty($account['live_public_key'])) {
 				$live_key = $account['live_public_key'];
 				$account['live_status'] = $status_map['live'][$live_key] ?? 'Unknown';
 			}
-
-			// Sandbox
 			if (!empty($account['has_sandbox']) && $account['has_sandbox'] === 'on' && !empty($account['sandbox_public_key'])) {
 				$sandbox_key = $account['sandbox_public_key'];
 				$account['sandbox_status'] = $status_map['sandbox'][$sandbox_key] ?? 'Unknown';
@@ -564,8 +559,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		}
 
 		update_option('woocommerce_bytenft_payment_gateway_accounts', $accounts);
-
-		wc_get_logger()->info('Account statuses updated successfully.', ['updated_accounts' => $accounts]);
+		wc_get_logger()->info('✅ Account statuses updated successfully.', array_merge($logger_context, ['updated_accounts' => $accounts]));
 
 		return ['message' => 'Sync completed', 'accounts' => $accounts];
 	}
@@ -573,45 +567,44 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	function bytenft_manual_sync_callback()
 	{
 		$logger_context = ['source' => 'bytenft-payment-gateway'];
-		// Verify nonce first
+		wc_get_logger()->info("🛠 Manual sync triggered", $logger_context);
+
 		if (!check_ajax_referer('bytenft_sync_nonce', 'nonce', false)) {
-			wc_get_logger()->error('Security validation failed during manual sync.', $logger_context);
+			wc_get_logger()->error('🔐 Security validation failed during manual sync.', $logger_context);
 			wp_send_json_error([
 				'message' => __('Security check failed. Please refresh the page and try again.', 'bytenft-payment-gateway')
 			], 400);
 			wp_die();
 		}
 
-		// Check user capabilities
 		if (!current_user_can('manage_woocommerce')) {
-		wc_get_logger()->error('Unauthorized manual sync attempt by user ID: ' . get_current_user_id(), $logger_context);
+			wc_get_logger()->error('⛔ Unauthorized manual sync attempt by user ID: ' . get_current_user_id(), $logger_context);
 			wp_send_json_error([
 				'message' => __('You do not have permission to perform this action.', 'bytenft-payment-gateway')
 			], 403);
 			wp_die();
 		}
 
-		wc_get_logger()->info("Payment accounts sync initiated", $logger_context);
-
 		try {
 			ob_start();
 
+			wc_get_logger()->info("🔄 Executing handle_cron_event()", $logger_context);
 			$statusSummary = $this->handle_cron_event();
 			$output = ob_get_clean();
 
 			if (!empty($output)) {
-				wc_get_logger()->warning('Unexpected output generated during sync: ' . $output, $logger_context);
+				wc_get_logger()->warning('⚠️ Unexpected output generated during sync: ' . $output, $logger_context);
 			}
 
-			wc_get_logger()->info('Payment accounts sync completed successfully.', $logger_context);
+			wc_get_logger()->info('✅ Manual sync completed', array_merge($logger_context, ['status_summary' => $statusSummary]));
 
 			wp_send_json_success([
-				'message'  => __('Payment accounts synchronized successfully.', 'bytenft-payment-gateway'),
+				'message'   => __('Payment accounts synchronized successfully.', 'bytenft-payment-gateway'),
 				'timestamp' => current_time('mysql'),
-				'statuses' => $statusSummary
+				'statuses'  => $statusSummary
 			]);
 		} catch (Exception $e) {
-			wc_get_logger()->error('Payment accounts sync failed: ' . $e->getMessage(), $logger_context);
+			wc_get_logger()->error('❌ Payment accounts sync failed: ' . $e->getMessage(), $logger_context);
 			wp_send_json_error([
 				'message' => __('Sync failed: ', 'bytenft-payment-gateway') . $e->getMessage(),
 				'code'    => $e->getCode()
@@ -620,6 +613,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		wp_die(); // Always include this
 	}
+
 
 	function bytenft_send_payment_link() {
 		$email = isset($_POST['email']) ? sanitize_email($_POST['email']) : null;
