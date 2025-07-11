@@ -478,30 +478,42 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		}
 
 		$request_payload = [];
+
 		foreach ($accounts as $account) {
-			// Live key
-			if (!empty($account['live_public_key'])) {
+			$account_name = $account['title'] ?? '';
+
+			// Live account
+			if (!empty($account['live_public_key']) && !empty($account['live_secret_key'])) {
 				$request_payload[] = [
-					'public_key' => $account['live_public_key'],
-					'mode'       => 'live',
+					'account_name' => $account_name,
+					'public_key'   => $account['live_public_key'],
+					'secret_key'   => $account['live_secret_key'],
+					'mode'         => 'live',
 				];
 			}
 
-			// Sandbox key
-			if (!empty($account['has_sandbox']) && $account['has_sandbox'] === 'on' && !empty($account['sandbox_public_key'])) {
+			// Sandbox account
+			if (
+				!empty($account['has_sandbox']) &&
+				$account['has_sandbox'] === 'on' &&
+				!empty($account['sandbox_public_key']) &&
+				!empty($account['sandbox_secret_key'])
+			) {
 				$request_payload[] = [
-					'public_key' => $account['sandbox_public_key'],
-					'mode'       => 'sandbox',
+					'account_name' => $account_name,
+					'public_key'   => $account['sandbox_public_key'],
+					'secret_key'   => $account['sandbox_secret_key'],
+					'mode'         => 'sandbox',
 				];
 			}
 		}
 
 		if (empty($request_payload)) {
-			wc_get_logger()->warning('No public keys found for sync.', $logger_context);
-			return ['message' => 'No public keys provided'];
+			wc_get_logger()->warning('No valid keys found for sync.', $logger_context);
+			return ['message' => 'No public+secret keys provided'];
 		}
 
-		$url = $this->base_url . '/api/sync-account-status'; // ✅ Corrected endpoint
+		$url = $this->base_url . '/api/sync-account-status'; // Correct endpoint
 		$headers = [
 			'Content-Type' => 'application/json',
 		];
@@ -536,13 +548,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			}
 		}
 
-		// Update account statuses
+		// Update account statuses in saved option
 		foreach ($accounts as $i => &$account) {
 			// Live
 			if (!empty($account['live_public_key'])) {
 				$live_key = $account['live_public_key'];
 				$account['live_status'] = $status_map['live'][$live_key] ?? 'Unknown';
 			}
+
 			// Sandbox
 			if (!empty($account['has_sandbox']) && $account['has_sandbox'] === 'on' && !empty($account['sandbox_public_key'])) {
 				$sandbox_key = $account['sandbox_public_key'];
@@ -553,9 +566,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		update_option('woocommerce_bytenft_payment_gateway_accounts', $accounts);
 
 		wc_get_logger()->info('Account statuses updated successfully.', ['updated_accounts' => $accounts]);
+
 		return ['message' => 'Sync completed', 'accounts' => $accounts];
 	}
-
 
 	function bytenft_manual_sync_callback()
 	{
