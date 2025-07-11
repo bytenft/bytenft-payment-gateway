@@ -7,7 +7,7 @@
  * Author URI: https://www.bytenft.xyz/
  * Text Domain: bytenft-payment-gateway
  * Plugin URI: 
- * Version: 1.0.0
+ * Version: 1.0.2
  * License: GPLv3 or later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  *
@@ -31,7 +31,7 @@ include_once plugin_dir_path(__FILE__) . 'migration.php';
 
 // Autoload classes
 spl_autoload_register(function ($class) {
-	if (strpos($class, 'BYTENFT_PAYMENT_GATEWAY_') === 0) {
+	if (strpos($class, 'BYTENFT_PAYMENT_GATEWAY') === 0) {
 		$class_file = BYTENFT_PAYMENT_GATEWAY_PLUGIN_DIR . 'includes/class-' . str_replace('_', '-', strtolower($class)) . '.php';
 		if (file_exists($class_file)) {
 			require_once $class_file;
@@ -41,93 +41,163 @@ spl_autoload_register(function ($class) {
 
 BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
 
-add_action('woocommerce_cancel_unpaid_order', 'cancel_bytenft_unpaid_order_action');
-add_action('woocommerce_order_status_cancelled', 'cancel_bytenft_unpaid_order_action');
+add_action('woocommerce_cancel_unpaid_order', 'bytenft_cancel_unpaid_order_action');
+add_action('woocommerce_order_status_cancelled', 'bytenft_cancel_unpaid_order_action');
 
-function cancel_bytenft_unpaid_order_action($order_id) {
+/**
+ * Cancels an unpaid order after a specified timeout.
+ *
+ * @param int $order_id The ID of the order to cancel.
+ */
+function bytenft_cancel_unpaid_order_action($order_id)
+{
 	global $wpdb;
-    if (!$order_id) {
-		wc_get_logger()->error('Cancel order Error: Order ID is missing.', ['source' => 'bytenft-payment-gateway']);
-        return;
-    }
-    wc_get_logger()->info('WooCommerce hook triggered with Order ID: ' .$order_id, ['source' => 'bytenft-payment-gateway']);
+
+	if (empty($order_id) || !is_numeric($order_id) || $order_id <= 0) {
+		return;
+	}
 
 	$order = wc_get_order($order_id);
-	if (!$order_id || !is_numeric($order_id)) {
-        $order_id = $wpdb->get_var("
-            SELECT ID FROM {$wpdb->posts}
-            WHERE post_type = 'shop_order_placehold'
-            ORDER BY ID DESC
-            LIMIT 1
-        ");
-		wc_get_logger()->info('Auto-fetched latest unpaid order ID: ' . $order_id, ['source' => 'bytenft-payment-gateway']);
 
-    }
-	$order = wc_get_order($order_id);
+	// Fallback: try to fetch latest placeholder if order is invalid
 	if (!$order) {
-		wc_get_logger()->error('Error: No unpaid orders found.', ['source' => 'bytenft-payment-gateway']);
-        return;
-    }
-	else
-	{
-		//$pending_time = $order->get_meta('_pending_order_time');
-		$pending_time = get_post_meta($order_id, '_pending_order_time', true);
-   		$pending_time = is_numeric($pending_time) ? (int) $pending_time : 0; // Ensure it's an integer
-		// Check if the order is still unpaid and the timeout has passed
-		if ($order->has_status('pending') && (time() - $pending_time) >= (30 * 60)) {
-			$order->update_status('cancelled', 'Order automatically cancelled due to unpaid timeout.');
-			//$order->reduce_order_stock(); // Release the stock
-			wc_reduce_stock_levels($order_id);
-		}
-		// ========================== start code for expiring payment link ==========================
-		//  Get latest payment URL for this order from custom table
-        $table_name = esc_sql($wpdb->prefix . 'order_payment_link'); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		
-		$latest_uuid = $wpdb->get_row($wpdb->prepare(
-            "SELECT uuid FROM {$table_name} WHERE order_id = %d ORDER BY id DESC",
-            $order_id
-        ));
+		$args = [
+			'post_type'      => 'shop_order_placehold',
+			'post_status'    => 'any',
+			'posts_per_page' => 1,
+			'orderby'        => 'ID',
+			'order'          => 'DESC',
+			'fields'         => 'ids',
+		];
 
-        if (!$latest_uuid || !isset($latest_uuid->uuid)) {
-            wc_get_logger()->error('No Record found for order ID - ' . intval($order_id), ['source' => 'bytenft-payment-gateway']);
-            return;
-        }
+		$placeholder_orders = get_posts($args);
 
-        $encoded_uuid_from_db = sanitize_text_field($latest_uuid->uuid);
+		if (!empty($placeholder_orders)) {
+			$order_id = $placeholder_orders[0];
+			$order    = wc_get_order($order_id);
 
-		// Call cancel API before inserting new
-		$apiPath = '/api/cancel-order-link';
-
-		// Concatenate the base URL and path
-		$url = SIP_PROTOCOL . SIP_HOST . $apiPath;
-
-		// Remove any double slashes in the URL except for the 'http://' or 'https://'
-		$cleanUrl = esc_url(preg_replace('#(?<!:)//+#', '/', $url));
-		$response = wp_remote_post($cleanUrl, array(
-			'method'    => 'POST',
-			'timeout'   => 30,
-			'body'      => json_encode(array(
-				'order_id'       => $order_id,
-				'order_uuid'  => $encoded_uuid_from_db,
-				'status'         => 'canceled'
-			)),
-			'headers'   => array(
-				'Content-Type'  => 'application/json',
-			),
-			'sslverify' => true, // Ensure SSL verification
-		));
-
-
-		// Log API response for debugging (with json_encode for structured data)
-		if (is_wp_error($response)) {
-		    wc_get_logger()->error('Cancel API Error: ' . $response->get_error_message(), ['source' => 'bytenft-payment-gateway']);
+			wc_get_logger()->info('Fallback to latest unpaid placeholder order.', [
+				'source'  => 'bytenft-payment-gateway',
+				'context' => ['order_id' => $order_id],
+			]);
 		} else {
-		    $response_body = wp_remote_retrieve_body($response);
-		    // If the response is an array or object, convert it to a JSON string
-		    $response_json = is_array($response_body) || is_object($response_body) ? json_encode($response_body) : $response_body;
-		    wc_get_logger()->info('Cancel API Response: ' . $response_json, ['source' => 'bytenft-payment-gateway']);
+			wc_get_logger()->error('No unpaid placeholder orders found.', [
+				'source' => 'bytenft-payment-gateway',
+			]);
+			return;
 		}
-		// ==============/ end code for payment link expirty / =============================
+	}
 
+	if (!$order) {
+		wc_get_logger()->error('Order not found.', [
+			'source'  => 'bytenft-payment-gateway',
+			'context' => ['order_id' => $order_id],
+		]);
+		return;
+	}
+
+	$pending_time = get_post_meta($order_id, '_pending_order_time', true);
+	$pending_time = is_numeric($pending_time) ? (int) $pending_time : 0;
+
+	if ($order->has_status('pending')) {
+		if ((time() - $pending_time) < (30 * 60)) {
+			wc_get_logger()->info('Order still within pending timeout. Skipping cancel.', [
+				'source'  => 'bytenft-payment-gateway',
+				'context' => ['order_id' => $order_id],
+			]);
+			return;
+		}
+
+		$order->update_status('cancelled', 'Order automatically cancelled due to unpaid timeout.');
+		wc_reduce_stock_levels($order_id);
+		wp_cache_delete('bytenft_payment_link_uuid_' . $order_id, 'bytenft_payment_gateway');
+		wp_cache_delete('bytenft_payment_row_' . $order_id, 'bytenft_payment_gateway'); // Clear row cache
+
+		wc_get_logger()->info('Order auto-cancelled due to unpaid timeout.', [
+			'source'  => 'bytenft-payment-gateway',
+			'context' => ['order_id' => $order_id],
+		]);
+	}
+
+	// ====== Cancel Payment Link API ======
+	$table_name   = $wpdb->prefix . 'order_payment_link';
+	$cache_key    = 'bytenft_payment_row_' . $order_id;
+	$cache_group  = 'bytenft_payment_gateway';
+
+	$payment_row = wp_cache_get($cache_key, $cache_group);
+
+	if (false === $payment_row) {
+	    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table_name is safe, built from $wpdb->prefix
+	    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- direct query is safe and properly prepared
+	    $payment_row = $wpdb->get_row(
+	        $wpdb->prepare(
+	            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table_name is not user input
+	            "SELECT * FROM `{$table_name}` WHERE `order_id` = %d LIMIT 1",
+	            $order_id
+	        ),
+	        ARRAY_A
+	    );
+
+	    if ($payment_row) {
+	        wp_cache_set($cache_key, $payment_row, $cache_group, 5 * MINUTE_IN_SECONDS);
+	    }
+	}
+
+	$uuid           = sanitize_text_field($payment_row['uuid'] ?? '');
+	$payment_link   = esc_url_raw($payment_row['payment_link'] ?? '');
+	$customer_email = sanitize_email($payment_row['customer_email'] ?? '');
+	$amount         = number_format(floatval($payment_row['amount'] ?? 0), 8, '.', '');
+
+	if (empty($uuid)) {
+		wc_get_logger()->error('Missing or invalid UUID in payment link table.', [
+			'source'  => 'bytenft-payment-gateway',
+			'context' => ['order_id' => $order_id, 'uuid' => $uuid],
+		]);
+		return;
+	}
+
+	$apiPath  = '/api/cancel-order-link';
+	$url      = BYTENFT_BASE_URL . $apiPath;
+	$cleanUrl = esc_url(preg_replace('#(?<!:)//+#', '/', $url));
+
+	$request_payload = [
+		'order_id'   => $order_id,
+		'order_uuid' => $uuid,
+		'status'     => 'canceled',
+	];
+
+	$response = wp_remote_post($cleanUrl, [
+		'method'    => 'POST',
+		'timeout'   => 30,
+		'body'      => json_encode($request_payload),
+		'headers'   => ['Content-Type' => 'application/json'],
+		'sslverify' => true,
+	]);
+
+	if (is_wp_error($response)) {
+		wc_get_logger()->error("Cancel API call failed. Order ID: {$order_id}", [
+			'source'  => 'bytenft-payment-gateway',
+			'context' => [
+				'order_id' => $order_id,
+				'uuid'     => $uuid,
+				'error'    => $response->get_error_message(),
+			],
+		]);
+	} else {
+		$response_body    = wp_remote_retrieve_body($response);
+		$decoded_response = json_decode($response_body, true);
+
+		wc_get_logger()->info("Cancel API response received for Order ID: {$order_id}.", [
+			'source'  => 'bytenft-payment-gateway',
+			'context' => [
+				'order_id'       => $order_id,
+				'uuid'           => $uuid,
+				'payment_link'   => $payment_link,
+				'customer_email' => $customer_email,
+				'amount'         => number_format((float) $amount, 2, '.', ''),
+				'response'       => $decoded_response,
+			],
+		]);
 	}
 }
+

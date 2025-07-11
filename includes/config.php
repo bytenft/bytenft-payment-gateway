@@ -1,6 +1,13 @@
 <?php
 // config.php
+if (!defined('BYTENFT_PROTOCOL')) {
+    define('BYTENFT_PROTOCOL', is_ssl() ? 'https://' : 'http://');
+}
 
-// Determine SIP protocol based on the site's protocol
-define('SIP_PROTOCOL', is_ssl() ? 'https://' : 'http://');
-define('SIP_HOST', 'www.bytenft.xyz');
+if (!defined('BYTENFT_HOST')) {
+    define('BYTENFT_HOST', 'www.bytenft.xyz');
+}
+
+if (!defined('BYTENFT_BASE_URL')) {
+	define('BYTENFT_BASE_URL', BYTENFT_PROTOCOL . BYTENFT_HOST);
+}

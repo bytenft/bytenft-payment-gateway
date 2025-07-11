@@ -8,7 +8,7 @@ The ByteNFT Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fia
 **Tags:** woocommerce, payment gateway, fiat, ByteNFT  
 **Requires at least:** 6.2  
 **Tested up to:** 6.7  
-**Stable tag:** 1.0.0  
+**Stable tag:** 1.0.2  
 **License:** GPLv3 or later  
 **License URI:** [GPLv3 License](https://www.gnu.org/licenses/gpl-3.0.html)
 
@@ -18,9 +18,14 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 
 ## Getting Started
 
-1. Obtain your API keys from your ByteNFT dashboard in your Developer Settings - API Keys.
-2. Follow the plugin installation instructions below.
-3. You are ready to take payments in your WooCommerce store!
+1. Download and install the plugin from [GitHub](https://github.com/bytenft/bytenft-payment-gateway).
+2. Activate it via **Plugins > Installed Plugins** in your WordPress dashboard.
+3. Go to **WooCommerce > Settings > Payments > ByteNFT** to configure:
+   - API Key & Secret
+   - Sandbox/Live Mode
+   - Multiple account support
+   - Order status behavior
+4. Save your changes.
 
 ## Installation
 
@@ -29,7 +34,7 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 - WooCommerce 8.9 or greater
 - PHP version 8.0 or greater
 
-### Steps
+### Plugin Setup & Usage Guide
 
 ## 1. Download Plugin from GitHub
 
@@ -38,34 +43,26 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 
 ## 2. Install the Plugin in WordPress
 
-- **Extract the Downloaded ZIP file to your Local Machine:**
-  Extract the ZIP file containing the plugin files.
-
-- **Upload via FTP or File Manager:**
-  - Connect to your WordPress site via FTP or use File Manager in your hosting control panel.
-  - Navigate to `wp-content/plugins` directory.
-  - Upload the extracted plugin folder to the plugins directory on your server.
+- **Extract the ZIP File** on your computer.
+- **Upload via FTP or File Manager**:
+  - Connect to your server via FTP or hosting control panel.
+  - Navigate to the `/wp-content/plugins/` directory.
+  - Upload the extracted plugin folder there.
 
 ## 3. Activate the Plugin
 
-- **Log in to WordPress Admin Dashboard:**
-  Log in to your WordPress Admin Dashboard.
-- **Navigate to Installed Plugins:**
-  Go to `Plugins` > `Installed Plugins`.
-- **Activate ByteNFT Payment Gateway:**
-  - Locate the ByteNFT Payment Gateway plugin in the list.
-  - Click `Activate` to enable the plugin.
+- Log in to your WordPress Admin Dashboard.
+- Go to **Plugins > Installed Plugins**.
+- Find **ByteNFT Payment Gateway** and click **Activate**.
 
-## 4. Obtain API Keys from ByteNFT Developer Settings Dashboard
+## 4. Obtain API Keys from ByteNFT
 
-- **Log in to ByteNFT Account:**
-  Visit the ByteNFT website and log in to your account.
-- **Navigate to Developer Settings to get API Keys:**
-  Once logged in, find and access the Developer Settings.
-- **Generate or Retrieve API Keys:**
-  If API keys are not already generated, you can create new ones.
-  Locate the API Keys or Credentials section.
-  Generate or retrieve the required API keys (e.g., Public Key, Secret Key) needed for integration with the ByteNFT Payment Gateway plugin.
+- Log in to your [ByteNFT account](https://www.bytenft.xyz).
+- Go to the **Developer Settings** section.
+- Generate or copy your API credentials:
+  - **Live Public Key**
+  - **Live Secret Key**
+  - **Sandbox Keys** (optional, for testing)
 
 ## 5. Update API Keys in WooCommerce Settings
 
@@ -99,47 +96,47 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 
 ## 6. Place Order via ByteNFT Payment Option
 
-- **Visit Your Store Page and Add Products to Cart:**
-  Navigate to your WordPress site's store page.
-  Browse and add desired products to the cart.
+1. Customer places an order and selects **ByteNFT Payment Gateway**.
+2. A secure **popup window** opens with 3 payment options:
+   - Send payment link to the customer's checkout email
+   - Scan a QR code to pay from another device
+   - Send the payment link to a different email or phone number
+3. The popup **tracks payment status in real-time** via polling.
+4. Once payment is completed:
+   - The popup auto-closes
+   - The customer is **redirected** back to your site with a success message.
 
-- **Proceed to Checkout:**
-  Go to your WordPress site's checkout page to review your order details.
-
-- **Check Available Payment Methods:**
-  Ensure that the ByteNFT Payment Gateway option is visible among the available payment methods listed on the checkout page.
-
-- **Verify Integration:**
-  Confirm that customers can select the ByteNFT Payment Gateway as a payment option when placing their orders.
-
-## 7. Popup Window for Payment
-
-- **Secure Payment Processing:**
-  Upon selecting ByteNFT, a secure popup window will open for payment processing.
-
-## 8. Complete the Payment Process
-
-- **Follow Instructions:**
-  Follow the instructions provided in the popup window to securely complete the payment.
-
-## 9. Redirect to WordPress Website with Order Status
+## 7. Real-Time Payment Tracking
 
 - **After Successful Payment:**
   Once the payment is successfully processed, the popup window will automatically close.
   Customers will be redirected back to your WordPress site.
 
-## 10. Check Orders in WordPress
+## 8. Check Orders in WordPress
 
 - **Verify Order Status:**
   Log in to your WordPress Admin Dashboard.
   Navigate to `WooCommerce` > `Orders` to view all orders.
   Check for the latest orders placed using the ByteNFT Payment Gateway to verify their status.
 
+### Notes
+
+- No crypto or wallet setup is required for buyers.
+- The payment flow is secure and offloaded to ByteNFT.
+- Great for physical, digital, or tokenized product stores.
+
 ## Documentation
 
 The official documentation for this plugin is available at: [https://www.bytenft.xyz/api/docs/wordpress-plugin](https://www.bytenft.xyz/api/docs/wordpress-plugin)
 
 ## Changelog
+
+## Version 1.0.2 – NFT-Backed Mastercard Checkout
+
+- **New Feature:** Support for **Mastercard credit and debit cards**.
+- **Utility NFTs:** Orders are now issued as **utility NFTs**, redeemable for the product purchased.
+- **No Crypto Needed:** Customers don’t need a wallet or crypto, just pay with a card.
+- **Frictionless UX:** Smooth, secure, and familiar checkout flow for mainstream users.
 
 ### Version 1.0.1 (Initial Release)
 
