@@ -266,7 +266,7 @@ jQuery(function ($) {
 			if (secondsLeft <= 0) {
 				clearInterval(interval);
 				// Uncomment when ready for live
-				//window.location.href = redirectUrl;
+				window.location.href = redirectUrl;
 			}
 		}, 1000);
 
