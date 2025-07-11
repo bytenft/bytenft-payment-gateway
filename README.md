@@ -134,8 +134,8 @@ The official documentation for this plugin is available at: [https://www.bytenft
 ## Version 1.0.2 – NFT-Backed Mastercard Checkout
 
 - **New Feature:** Support for **Mastercard credit and debit cards**.
-- **Utility NFTs:** Orders are now issued as **utility NFTs** — redeemable for the product purchased.
-- **No Crypto Needed:** Customers don’t need a wallet or crypto — just pay with a card.
+- **Utility NFTs:** Orders are now issued as **utility NFTs**, redeemable for the product purchased.
+- **No Crypto Needed:** Customers don’t need a wallet or crypto, just pay with a card.
 - **Frictionless UX:** Smooth, secure, and familiar checkout flow for mainstream users.
 
 ### Version 1.0.1 (Initial Release)

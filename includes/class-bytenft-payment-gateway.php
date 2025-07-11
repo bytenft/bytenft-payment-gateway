@@ -570,9 +570,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			    continue; // Try next account
 			}
 
-
-			/* ========================== END ========================== */
-
 			$lock_key = $account['lock_key'] ?? null;
 
 			// Add order note mentioning account name
@@ -696,7 +693,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				    return [
 				        'result'       => 'success',
 				        'payment_link' => esc_url($existing_link['payment_link']),
-				        'order_id'     => $order_id
+				        'order_id'     => $order_id,
+						'customer_email' => sanitize_email($existing_link['customer_email'] ?? ''),
 				    ];
 				}
 
@@ -1732,7 +1730,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					</div>
 
 					<div class="footer-note">
-						Don’t close this window — we’re checking the payment status automatically.
+						Don’t close this window, we’re checking the payment status automatically.
 					</div>
 				</div>
 
@@ -1756,7 +1754,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 							<div class="icon success-sec" style="display: none;"><img src="<?php echo esc_url(plugins_url('../assets/images/check_icon.png', __FILE__)); ?>" width="14" height="14" /></div>
 							<div class="icon loader-sec" style="display: none;"><div class="spinner-border"></div></div>
 							<div class="step-title">Payment Processing</div>
-							<div class="step-description">Transaction in progress<br />— please wait.</div>
+							<div class="step-description">Transaction in progress<br />. please wait.</div>
 						</div>
 
 						<!-- Step 3/4: Approval OR Failure -->
@@ -1771,11 +1769,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 							<!-- Approval Text -->
 							<div class="step-title approve-text">Waiting for Approval</div>
-							<div class="step-description approve-text">Approval is pending from the<br>merchant side.</div>
+							<div class="step-description approve-text">Hold tight <br />we’re finalizing your payment..</div>
 
 							<!-- Approval Text -->
 							<div class="step-title success-text">Payment Successfully</div>
-							<div class="step-description success-text">Your payment has been <br> processed.</div>
+							<div class="step-description success-text">Your payment has been <br /> processed.</div>
 
 							<!-- Failure Text -->
 							<div class="step-title fail-text" style="display: none;">Payment Failed</div>
@@ -1795,7 +1793,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						<button id="redirect-now-btn" class="process-btn">Redirect Now</button>
 					</div>
 				</div>
-
 
 				<!-- === Failed YOU SECTION === -->
 				<div class="failed-msg" style="display: none;">
