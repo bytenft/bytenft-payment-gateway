@@ -244,7 +244,7 @@ jQuery(function ($) {
 		if (!redirectUrl) return;
 
 		const popup = $("#bytenft-payment-popup");
-		let secondsLeft = 5;
+		let secondsLeft = 3;
 		const timerEl = popup.find('#redirect-timer');
 
 		timerEl.text(secondsLeft); // Init text
@@ -255,7 +255,7 @@ jQuery(function ($) {
 			if (secondsLeft <= 0) {
 				clearInterval(interval);
 				// Uncomment when ready for live
-				// window.location.href = redirectUrl;
+				window.location.href = redirectUrl;
 			}
 		}, 1000);
 
