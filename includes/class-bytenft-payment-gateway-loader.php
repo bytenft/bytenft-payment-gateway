@@ -466,7 +466,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		wp_clear_scheduled_hook('bytenft_cron_event');
 	}
 
-
 	public function handle_cron_event()
 	{
 		$logger_context = ['source' => 'bytenft-payment-gateway'];
@@ -483,23 +482,23 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		}
 
 		$accountsData = [];
-
 		foreach ($accounts as &$account) {
 			$isSandboxEnabled = isset($account['has_sandbox']) && $account['has_sandbox'] === 'on';
 
-			// Prepare both live and sandbox entries
+			// Add live mode
 			if (!empty($account['live_public_key']) && !empty($account['live_secret_key'])) {
 				$accountsData[] = [
-					'account_name' => $account['title'],
+					'account_name' => $account['title'] ?? '',
 					'public_key'   => $account['live_public_key'],
 					'secret_key'   => $account['live_secret_key'],
 					'mode'         => 'live',
 				];
 			}
 
+			// Add sandbox mode if enabled
 			if ($isSandboxEnabled && !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key'])) {
 				$accountsData[] = [
-					'account_name' => $account['title'],
+					'account_name' => $account['title'] ?? '',
 					'public_key'   => $account['sandbox_public_key'],
 					'secret_key'   => $account['sandbox_secret_key'],
 					'mode'         => 'sandbox',
@@ -515,7 +514,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$url = esc_url($this->base_url . '/api/sync-account-status');
 		$response = wp_remote_post($url, [
 			'headers' => [
-				'Content-Type'  => 'application/json',
+				'Content-Type' => 'application/json',
 			],
 			'body' => json_encode(['accounts' => $accountsData]),
 			'timeout' => 15,
@@ -528,61 +527,72 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		$response_body = wp_remote_retrieve_body($response);
 		$response_data = json_decode($response_body, true);
-
-		$updated = false;
 		$statusSummary = [];
+		$updated = false;
 
-		if (!empty($response_data['statuses'])) {
+		wc_get_logger()->info('response_data :: ', [
+			'source'  => 'bytenft-payment-gateway',
+			'context' => ['response_data' => $response_data],
+		]);
+
+		if (!empty($response_data['statuses']) && is_array($response_data['statuses'])) {
 			foreach ($response_data['statuses'] as $statusData) {
 				if (
 					isset($statusData['mode'], $statusData['public_key'], $statusData['status']) &&
-					!empty($statusData['status'])
+					in_array($statusData['mode'], ['live', 'sandbox'], true)
 				) {
 					foreach ($accounts as &$account) {
 						if (
 							$statusData['mode'] === 'live' &&
+							isset($account['live_public_key']) &&
 							$account['live_public_key'] === $statusData['public_key']
 						) {
-							$account['live_status'] = $statusData['status'];
-							$updated = true;
-							$statusSummary[] = [
-								'title'  => $account['title'] ?? 'N/A',
-								'mode'   => $statusData['mode'],
-								'status' => $statusData['status'],
-							];
-						}
-
-						if (
+							if ($account['live_status'] !== $statusData['status']) {
+								$account['live_status'] = $statusData['status'];
+								$updated = true;
+								$statusSummary[] = [
+									'title'  => $account['title'] ?? 'N/A',
+									'mode'   => 'live',
+									'status' => $statusData['status'],
+								];
+							}
+						} elseif (
 							$statusData['mode'] === 'sandbox' &&
+							isset($account['sandbox_public_key']) &&
 							$account['sandbox_public_key'] === $statusData['public_key']
 						) {
-							$account['sandbox_status'] = $statusData['status'];
-							$updated = true;
-							$statusSummary[] = [
-								'title'  => $account['title'] ?? 'N/A',
-								'mode'   => $statusData['mode'],
-								'status' => $statusData['status'],
-							];
+							if ($account['sandbox_status'] !== $statusData['status']) {
+								$account['sandbox_status'] = $statusData['status'];
+								$updated = true;
+								$statusSummary[] = [
+									'title'  => $account['title'] ?? 'N/A',
+									'mode'   => 'sandbox',
+									'status' => $statusData['status'],
+								];
+							}
 						}
 					}
 				}
 			}
 		}
 
-		if (!empty($statusSummary)) {
-			if ($updated) {
-				update_option('woocommerce_bytenft_payment_gateway_accounts', $accounts);
+		wc_get_logger()->info('accounts after sync :: ', [
+			'source'  => 'bytenft-payment-gateway',
+			'context' => ['accounts' => $accounts],
+		]);
 
-				wc_get_logger()->info('Payment account statuses were successfully updated after syncing.', [
-					'source'  => 'bytenft-payment-gateway',
-					'context' => ['updated_accounts' => $statusSummary],
-				]);
-			} else {
-				wc_get_logger()->info('Payment accounts were checked, but no updates were necessary.', [
-					'source'  => 'bytenft-payment-gateway',
-					'context' => ['checked_accounts' => $statusSummary],
-				]);
-			}
+		if ($updated) {
+			update_option('woocommerce_bytenft_payment_gateway_accounts', $accounts);
+
+			wc_get_logger()->info('Payment account statuses were successfully updated after syncing.', [
+				'source'  => 'bytenft-payment-gateway',
+				'context' => ['updated_accounts' => $statusSummary],
+			]);
+		} elseif (!empty($statusSummary)) {
+			wc_get_logger()->info('Payment accounts were checked, but no updates were necessary.', [
+				'source'  => 'bytenft-payment-gateway',
+				'context' => ['checked_accounts' => $statusSummary],
+			]);
 		} else {
 			wc_get_logger()->info('Sync completed. No account status data was returned from the server.', $logger_context);
 		}

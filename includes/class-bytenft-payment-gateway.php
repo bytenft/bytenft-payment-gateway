@@ -336,9 +336,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 							$sandbox_status = (!empty($account['sandbox_status'])) ? $account['sandbox_status'] : 'unknown';
 							?>
 							<div class="bytenft-account" data-index="<?php echo esc_attr($index); ?>">
-								<input type="hidden" name="accounts[<?php echo esc_attr($index); ?>][live_status]"
+								<input type="hidden" class="live-status" name="accounts[<?php echo esc_attr($index); ?>][live_status]"
 									value="<?php echo esc_attr($account['live_status'] ?? ''); ?>">
-								<input type="hidden" name="accounts[<?php echo esc_attr($index); ?>][sandbox_status]"
+								<input type="hidden" class="sandbox-status" name="accounts[<?php echo esc_attr($index); ?>][sandbox_status]"
 									value="<?php echo esc_attr($account['sandbox_status'] ?? ''); ?>">
 								<div class="title-blog">
 

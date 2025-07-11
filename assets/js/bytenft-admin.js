@@ -313,51 +313,130 @@ jQuery(document).ready(function ($) {
 			}
 		});
 
+
+		// need to check below
+		function runAccountSync(gatewayId) {
+			if (typeof gatewayId !== 'string' || !gatewayId.trim()) return;
+
+			const id = gatewayId.trim();
+
+			const $button = $(`#${id}-sync-accounts`);
+			const $status = $(`#${id}-sync-status`);
+			const originalButtonText = $button.text();
+
+			// Set loading state
+			$button.prop('disabled', true).html('<span class="spinner is-active" style="float: none; margin: 0;"></span> Syncing...');
+			$status.removeClass('error success').text('Syncing accounts...').show();
+
+			$.ajax({
+				url: bytenft_admin_data.ajax_url,
+				method: 'POST',
+				dataType: 'json',
+				data: {
+					action: `${id}_manual_sync`, // assuming different action per gateway (optional)
+					nonce: bytenft_admin_data.nonce
+				},
+				success: function (response) {
+					if (response.success) {
+						$status
+							.removeClass('error')
+							.addClass('success')
+							.text(response.data.message || 'Sync completed successfully!')
+							.fadeIn()
+							.delay(4000)
+							.fadeOut();
+
+						// Update statuses (pass gateway ID if needed)
+						if (typeof updateAccountStatuses === 'function') {
+							updateAccountStatuses(response.data.statuses, id);
+						}
+					} else {
+						$status
+							.removeClass('success')
+							.addClass('error')
+							.text(response.data.message || 'Sync failed. Please try again.')
+							.fadeIn()
+							.delay(4000)
+							.fadeOut();
+					}
+				},
+				error: function (xhr, status, error) {
+					let errorMessage = 'AJAX Error: ';
+					if (xhr.responseJSON?.data?.message) {
+						errorMessage += xhr.responseJSON.data.message;
+					} else {
+						errorMessage += error;
+					}
+					$status.addClass('error').text(errorMessage);
+				},
+				complete: function () {
+					$button.prop('disabled', false).text(originalButtonText);
+				}
+			});
+		}
+
 		// Function to update all account statuses
 		function updateAccountStatuses(statuses) {
 			if (!Array.isArray(statuses)) return;
+
+			const sandboxEnabled = $('#woocommerce_' + gatewayId + '_sandbox').is(':checked');
 
 			statuses.forEach(function (statusItem) {
 				var accountTitle = statusItem.title;
 				var mode = statusItem.mode;
 				var newStatus = statusItem.status;
 
-				// Loop through all accounts to find matching title
-				$('.'+gatewayId+'-account').each(function () {
+				$('.' + gatewayId + '-account').each(function () {
 					var $account = $(this);
 					var currentTitle = $.trim($account.find('.account-title').val());
 
 					if (currentTitle === accountTitle) {
-						// Update hidden inputs
+						// Save status in hidden inputs
 						if (mode === 'live') {
 							$account.find('.live-status').val(newStatus);
 						} else if (mode === 'sandbox') {
 							$account.find('.sandbox-status').val(newStatus);
 						}
 
-						// Update visible label
-						var sandboxEnabled = $('#woocommerce_'+gatewayId+'_sandbox').is(':checked'); // <-- Updated
-						var statusLabel = $account.find('.account-status-label');
-
+						// Display correct one based on sandbox toggle
 						if ((sandboxEnabled && mode === 'sandbox') || (!sandboxEnabled && mode === 'live')) {
-							statusLabel
+							var labelText = (mode === 'sandbox' ? 'Sandbox Account Status: ' : 'Live Account Status: ');
+							$account.find('.account-status-label')
 								.removeClass('active inactive invalid unknown')
 								.addClass(newStatus.toLowerCase())
-								.text((mode === 'sandbox' ? 'Sandbox Account Status: ' : 'Live Account Status: ') + capitalize(newStatus));
+								.text(labelText + capitalize(newStatus));
 						}
 					}
 				});
 			});
 		}
 
+
 		function capitalize(text) {
 			if (!text) return '';
 			return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
 		}
 
-		// When checkbox is changed, update statuses
-		$('#woocommerce_'+gatewayId+'_sandbox').on('change', function () {
-			updateAccountStatuses();
+		$('#woocommerce_' + gatewayId + '_sandbox').on('change', function () {
+			const sandboxEnabled = $(this).is(':checked');
+
+			// First: update label from current hidden fields
+			$('.' + gatewayId + '-account').each(function () {
+				const $account = $(this);
+				const liveStatus = $account.find('.live-status').val() || 'Unknown';
+				const sandboxStatus = $account.find('.sandbox-status').val() || 'Unknown';
+
+				const currentStatus = sandboxEnabled ? sandboxStatus : liveStatus;
+				const modeText = sandboxEnabled ? 'Sandbox Account Status: ' : 'Live Account Status: ';
+
+				$account.find('.account-status-label')
+					.removeClass('active inactive invalid unknown')
+					.addClass(currentStatus.toLowerCase())
+					.text(modeText + capitalize(currentStatus));
+			});
+
+			// Then: sync latest status via AJAX
+			runAccountSync(gatewayId);
 		});
 
 	} else {
