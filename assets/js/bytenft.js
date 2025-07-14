@@ -256,7 +256,7 @@ jQuery(function ($) {
 
 		const popup = $("#bytenft-payment-popup");
 		let secondsLeft = 3;
-		const timerEl = popup.find('#redirect-timer');
+		const timerEl = popup.find('.redirect-timer');
 
 		timerEl.text(secondsLeft); // Init text
 
@@ -314,15 +314,26 @@ jQuery(function ($) {
 			success: function (res) {
 				const $msg = $('#bytenft-send-link-msg');
 				$msg.remove();
+				let successMsg = "Payment link sent successfully!";
+
+				if (email) {
+					successMsg += ` To email: ${email}`;
+				} else if (phone) {
+					successMsg += ` To phone: +${phone}`;
+				}
 
 				const message = res.success
-					? 'Payment link sent successfully!'
-					: `${res.data.message || 'Failed to send payment link.'}`;
-
+				? successMsg
+				: `${res.data.message || 'Failed to send payment link.'}`;
+				
 				const color = res.success ? 'green' : 'red';
 
 				$('#bytenft-send-link-btn')
-					.after(`<div id="bytenft-send-link-msg" style="margin-top:8px;color:${color};font-size:14px;">${message}</div>`);
+				.after(`<div id="bytenft-send-link-msg" style="margin-top:8px;color:${color};font-size:14px;">${message}</div>`);
+				
+				setTimeout(() => {
+					$(document).find('#bytenft-send-link-msg').remove();
+				}, 3000);
 			},
 			error: function () {
 				alert('An error occurred.');

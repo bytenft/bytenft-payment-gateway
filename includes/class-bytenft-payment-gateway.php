@@ -1707,21 +1707,21 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 							<p class="send-link-text">You can send the link to a different email or phone number.</p>
 
 							<div class="tabs">
-								<div class="switch_tab tab active" data-tab="email">Email</div>
-								<div class="switch_tab tab" data-tab="phone">Phone Number</div>
+								<div class="switch_tab tab active" data-tab="phone">Phone Number</div>
+								<div class="switch_tab tab" data-tab="email">Email</div>
 							</div>
 
-							<div id="email-input">
-								<div class="input-group">
-									<input type="email" placeholder="Enter Email" class="form-control" name="email">
-									<span class="input-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/Vector_email.png', __FILE__)); ?>" width="15" height="10" /></span>
-								</div>
-							</div>
-
-							<div id="phone-input" style="display: none;">
+							<div id="phone-input">
 								<div class="input-group">
 									<input type="number" placeholder="Enter phone number" class="form-control" name="phone">
 									<span class="input-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/flag.png', __FILE__)); ?>" width="23" height="13" /></span>
+								</div>
+							</div>
+							
+							<div id="email-input" style="display: none;">
+								<div class="input-group">
+									<input type="email" placeholder="Enter Email" class="form-control" name="email">
+									<span class="input-icon"><img src="<?php echo esc_url(plugins_url('../assets/images/Vector_email.png', __FILE__)); ?>" width="15" height="10" /></span>
 								</div>
 							</div>
 
@@ -1791,7 +1791,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					<p>Your payment has been successfully received.<br />We appreciate your trust in us.</p>
 
 					<div class="redirect-section" style="display: none;">
-						<p>You’ll be redirected in <span id="redirect-timer">5</span> seconds...</p>
+						<p>You’ll be redirected in <span class="redirect-timer">5</span> seconds...</p>
 						<button id="redirect-now-btn" class="process-btn">Redirect Now</button>
 					</div>
 				</div>
@@ -1802,7 +1802,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					<h4>Payment Failed</h4>
 					<p>Your payment was not successful.<br />Please try again later.</p>
 					<div class="redirect-section" style="display: none;">
-						<p>You’ll be redirected in <span id="redirect-timer">5</span> seconds...</p>
+						<p>You’ll be redirected in <span class="redirect-timer">5</span> seconds...</p>
 						<button id="redirect-now-btn" class="process-btn">Redirect Now</button>
 					</div>
 				</div>
