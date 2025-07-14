@@ -307,6 +307,7 @@ jQuery(function ($) {
 				phone: phone,
 				payment_link: payment_link,
 				order_id: orderId,
+				security: bytenft_params.bytenft_nonce,
 			},
 			beforeSend: function () {
 				$('#bytenft-send-link-btn').text('Sending...');

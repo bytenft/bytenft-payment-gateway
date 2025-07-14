@@ -616,10 +616,18 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 
 	function bytenft_send_payment_link() {
-		$email = isset($_POST['email']) ? sanitize_email($_POST['email']) : null;
-		$phone = isset($_POST['phone']) ? sanitize_text_field($_POST['phone']) : null;
-		$payment_link = esc_url_raw($_POST['payment_link']);
-		$order_id = sanitize_text_field($_POST['order_id']);
+
+		$security = isset($_POST['security']) ? sanitize_text_field(wp_unslash($_POST['security'])) : '';
+
+		// Check the nonce for security
+		if (empty($security) || !wp_verify_nonce($security, 'bytenft_payment')) {
+			wp_send_json_error(['message' => 'Nonce verification failed.']);
+			wp_die();
+		}
+		$email        = isset($_POST['email']) ? sanitize_email(wp_unslash($_POST['email'])) : null;
+		$phone        = isset($_POST['phone']) ? sanitize_text_field(wp_unslash($_POST['phone'])) : null;
+		$payment_link = isset($_POST['payment_link']) ? esc_url_raw(wp_unslash($_POST['payment_link'])) : null;
+		$order_id     = isset($_POST['order_id']) ? sanitize_text_field(wp_unslash($_POST['order_id'])) : null;
 
 		if (empty($email) && empty($phone)) {
 			wp_send_json_error(['message' => 'Please provide email or phone.']);
