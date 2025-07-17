@@ -120,6 +120,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				return sanitize_text_field($account);
 			}, $raw_accounts);
 
+			$accStatusApiUrl = $this->get_api_url('/api/check-merchant-status');
 			foreach ($accounts as $index => $account) {
 				// Sanitize input
 				$account_title = sanitize_text_field($account['title'] ?? '');
@@ -129,7 +130,23 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$sandbox_public_key = sanitize_text_field($account['sandbox_public_key'] ?? '');
 				$sandbox_secret_key = sanitize_text_field($account['sandbox_secret_key'] ?? '');
 				$has_sandbox = isset($account['has_sandbox']); // Checkbox handling
+				$public_key = $this->sandbox ? $sandbox_public_key : $live_public_key;
+				$secret_key = $this->sandbox ? $sandbox_secret_key : $live_secret_key;
+				
+				$merchant_status_data = [
+					'is_sandbox'     => $this->sandbox,
+					'api_public_key' => $public_key,
+					'api_secret_key' => $secret_key,
+				];
 
+				// Use cache for status check
+				$cache_key = 'merchant_status_' . md5($public_key);
+				$merchant_status_response = $this->get_cached_api_response($accStatusApiUrl, $merchant_status_data, $cache_key);
+
+				if ($merchant_status_response['status'] && $merchant_status_response['status'] == 'error') {
+					$errors[] = sprintf(__('Account "%s": Title, Secret key does not match for the given API key and user.', 'bytenft-payment-gateway'), $account_title);
+					continue;
+				}
 				//  Ignore empty accounts
 				if (empty($account_title) && empty($live_public_key) && empty($live_secret_key) && empty($sandbox_public_key) && empty($sandbox_secret_key)) {
 					continue;
@@ -534,12 +551,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
+			$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
 
 			$accStatusApiUrl = $this->get_api_url('/api/check-merchant-status');
 			$merchant_status_data = [
 			    'is_sandbox'     => $this->sandbox,
 			    'amount'         => $order->get_total(),
 			    'api_public_key' => $public_key,
+			    'api_secret_key' => $secret_key,
 			];
 
 			// Use cache for status check
@@ -576,8 +595,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$order->add_order_note(__('Processing Payment Via: ', 'bytenft-payment-gateway') . $account['title']);
 
 			// **Prepare API Data**
-			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
-			$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
 			$data = $this->bytenft_prepare_payment_data($order, $public_key, $secret_key);
 
 			// **Check Transaction Limit**
@@ -1213,11 +1230,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	    foreach ($accounts as $account) {
 	    $public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
+		$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
 
 	    $data = [
 	        'is_sandbox'     => $this->sandbox,
 	        'amount'         => $amount,
 	        'api_public_key' => $public_key,
+	        'api_secret_key' => $secret_key,
 	    ];
 
 	    $cache_key = 'bytenft_daily_limit_' . md5($public_key . $amount);
