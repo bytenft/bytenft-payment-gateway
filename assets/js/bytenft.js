@@ -1,78 +1,52 @@
 jQuery(function ($) {
-	var isSubmitting = false;
-	var popupInterval;
-	var paymentStatusInterval;
-	var orderId;
-	var $button;
-	var originalButtonText;
-	var isPollingActive = false;
+	let isSubmitting = false;
 	let isHandlerBound = false;
+	let orderId = null;
+	let $button = null;
+	let originalButtonText = '';
+	let pollingInterval = null;
+	let pollingActive = false;
+	let payment_link = null;
 
-	var loaderUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
-	$('body').append(
-		'<div class="bytenft-onramp-loader-background"></div>' +
-		'<div class="bytenft-onramp-loader"><img src="' + loaderUrl + '" alt="Loading..." /></div>'
-	);
+	const loaderUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
+	$('body').append(`
+		<div class="bytenft-loader-background"></div>
+		<div class="bytenft-loader"><img src="${loaderUrl}" alt="Loading..." /></div>
+	`);
 
 	$('form.checkout').on('checkout_place_order', function () {
-		var selectedPaymentMethod = $('input[name="payment_method"]:checked').val();
-		if (selectedPaymentMethod === bytenft_params.payment_method) {
-			return false;
-		}
+		const selected = $('input[name="payment_method"]:checked').val();
+		return selected !== bytenft_params.payment_method;
 	});
 
-	function markCheckoutFormIfNeeded() {
-		var $form = $("form.checkout");
-		var selectedMethod = $form.find('input[name="payment_method"]:checked').val();
-		var expectedId = bytenft_params.payment_method + '-checkout-form';
+	$(document.body).on("updated_checkout", () => {
+		isHandlerBound = false;
+		bindCheckoutHandler();
+	});
 
-		if (selectedMethod === bytenft_params.payment_method) {
-			$form.attr('id', expectedId);
-		} else if ($form.attr('id') === expectedId) {
-			$form.removeAttr('id'); // Only remove if we added it
-		}
-	}
+	bindCheckoutHandler();
 
 	function bindCheckoutHandler() {
-		var formId = '#' + bytenft_params.payment_method + '-checkout-form';
-		if (!$(formId).length) return; // Form not available yet
+		if (isHandlerBound) return;
+		isHandlerBound = true;
 
-		$(formId).off("submit.bytenft-onramp").on("submit.bytenft-onramp", function (e) {
-			if ($(this).find('input[name="payment_method"]:checked').val() === bytenft_params.payment_method) {
+		$('form.checkout').off('submit.bytenft').on('submit.bytenft', function (e) {
+			const selected = $(this).find('input[name="payment_method"]:checked').val();
+			if (selected === bytenft_params.payment_method) {
 				handleFormSubmit.call(this, e);
 				return false;
 			}
 		});
 	}
 
-	$(document.body).on("updated_checkout", function () {
-		isHandlerBound = false;
-		markCheckoutFormIfNeeded();
-		bindCheckoutHandler();
-	});
-
-	// NEW: Also listen to payment method change
-	$(document.body).on("change", 'input[name="payment_method"]', function () {
-		markCheckoutFormIfNeeded();
-		bindCheckoutHandler();
-	});
-
-	markCheckoutFormIfNeeded();
-	bindCheckoutHandler();
-
 	function handleFormSubmit(e) {
 		e.preventDefault();
-		var $form = $(this);
-
-		if (isSubmitting) {
-			console.warn("Checkout already submitting...");
-			return false;
-		}
-
+		const $form = $(this);
+		if (isSubmitting) return false;
 		isSubmitting = true;
 
-		var selectedPaymentMethod = $form.find('input[name="payment_method"]:checked').val();
-		if (selectedPaymentMethod !== bytenft_params.payment_method) {
+		const selected = $form.find('input[name="payment_method"]:checked').val();
+		if (selected !== bytenft_params.payment_method) {
 			isSubmitting = false;
 			return true;
 		}
@@ -80,115 +54,29 @@ jQuery(function ($) {
 		$button = $form.find('button[type="submit"][name="woocommerce_checkout_place_order"]');
 		originalButtonText = $button.text();
 		$button.prop('disabled', true).text('Processing...');
-
-		$('.bytenft-onramp-loader-background, .bytenft-onramp-loader').show();
-
-		var data = $form.serialize();
+		$('.bytenft-loader-background, .bytenft-loader').show();
 
 		$.ajax({
 			type: 'POST',
 			url: wc_checkout_params.checkout_url,
-			data: data,
+			data: $form.serialize(),
 			dataType: 'json',
-			success: function (response) {
-				handleResponse(response, $form);
-			},
-			error: function () {
-				handleError($form);
-			},
-			complete: function () {
-				isSubmitting = false;
-			},
+			success: (response) => handleResponse(response, $form),
+			error: () => handleError($form),
+			complete: () => isSubmitting = false,
 		});
-
-		return false;
-	}
-
-	function openPaymentLink(paymentLink) {
-		var sanitizedPaymentLink = encodeURI(paymentLink);
-		var width = 700;
-		var height = 700;
-		var left = window.innerWidth / 2 - width / 2;
-		var top = window.innerHeight / 2 - height / 2;
-		var popupWindow = window.open(
-			sanitizedPaymentLink,
-			'paymentPopup',
-			'width=' + width + ',height=' + height + ',scrollbars=yes,top=' + top + ',left=' + left
-		);
-
-		if (!popupWindow || popupWindow.closed || typeof popupWindow.closed === 'undefined') {
-			window.location.href = sanitizedPaymentLink;
-			resetButton();
-		} else {
-			popupInterval = setInterval(function () {
-				if (popupWindow.closed) {
-					clearInterval(popupInterval);
-					clearInterval(paymentStatusInterval);
-					isPollingActive = false;
-
-					$.ajax({
-						type: 'POST',
-						url: bytenft_params.ajax_url,
-						data: {
-							action: 'popup_closed_event',
-							order_id: orderId,
-							security: bytenft_params.bytenft__nonce,
-						},
-						dataType: 'json',
-						success: function (response) {
-							if (response.success && response.data.redirect_url) {
-								window.location.href = response.data.redirect_url;
-							}
-							isPollingActive = false;
-						},
-						error: function (xhr, status, error) {
-							console.error("AJAX Error: ", error);
-						},
-						complete: function () {
-							resetButton();
-						}
-					});
-				}
-			}, 500);
-
-			if (!isPollingActive) {
-				isPollingActive = true;
-				paymentStatusInterval = setInterval(function () {
-					$.ajax({
-						type: 'POST',
-						url: bytenft_params.ajax_url,
-						data: {
-							action: 'check_payment_status',
-							order_id: orderId,
-							security: bytenft_params.bytenft__nonce,
-						},
-						dataType: 'json',
-						success: function (statusResponse) {
-							if (statusResponse.data.status === 'success' || statusResponse.data.status === 'failed') {
-								clearInterval(paymentStatusInterval);
-								clearInterval(popupInterval);
-								if (statusResponse.data.redirect_url) {
-									window.location.href = statusResponse.data.redirect_url;
-								}
-								isPollingActive = false;
-							}
-						}
-					});
-				}, 5000);
-			}
-		}
 	}
 
 	function handleResponse(response, $form) {
-		$('.bytenft-onramp-loader-background, .bytenft-onramp-loader').hide();
+		$('.bytenft-loader-background, .bytenft-loader').hide();
 		$('.wc_er').remove();
 
 		try {
 			if (response.result === 'success') {
 				orderId = response.order_id;
-				var paymentLink = response.payment_link;
-				openPaymentLink(paymentLink);
-				$form.removeAttr('data-result').removeAttr('data-redirect-url');
+				$form.removeAttr('data-result data-redirect-url');
+
+					openPopup(response.payment_link, response.customer_email);
 			} else {
 				throw response.messages || 'An error occurred during checkout.';
 			}
@@ -206,7 +94,7 @@ jQuery(function ($) {
 
 	function displayError(err, $form) {
 		$('.wc_er').remove();
-		$form.prepend('<div class="wc_er">' + err + '</div>');
+		$form.prepend(`<div class="wc_er">${err}</div>`);
 		$('html, body').animate({ scrollTop: $('.wc_er').offset().top - 300 }, 500);
 		resetButton();
 	}
@@ -216,9 +104,8 @@ jQuery(function ($) {
 		if ($button) {
 			$button.prop('disabled', false).text(originalButtonText);
 		}
-		$('.bytenft-onramp-loader-background, .bytenft-onramp-loader').hide();
+		$('.bytenft-loader-background, .bytenft-loader').hide();
 	}
-<<<<<<< Updated upstream
 
 	function openPopup(paymentLink, customerEmail) {
 		payment_link = paymentLink;
@@ -460,6 +347,4 @@ jQuery(function ($) {
 			$('#email-input').hide();
 		}
 	});
-=======
->>>>>>> Stashed changes
 });
