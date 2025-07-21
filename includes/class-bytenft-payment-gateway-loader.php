@@ -160,7 +160,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	 */
 	public function bytenft_handle_check_payment_status_request($request)
 	{
-		// Verify nonce for security (recommended)
+	    // Verify nonce for security (recommended)
 		// Sanitize and unslash the 'security' value
 		$security = isset($_POST['security']) ? sanitize_text_field(wp_unslash($_POST['security'])) : '';
 
@@ -169,15 +169,15 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			wp_send_json_error(['message' => 'Nonce verification failed.']);
 			wp_die();
 		}
+	    // Sanitize and validate the order ID
+	    $order_id = isset($_POST['order_id']) ? intval(sanitize_text_field(wp_unslash($_POST['order_id']))) : null;
+	    if (!$order_id) {
+	        wp_send_json_error(['message' => esc_html__('Invalid order ID', 'bytenft-payment-gateway')]);
+	        wp_die();
+	    }
 
-		// Sanitize and validate the order ID from $_POST
-		$order_id = isset($_POST['order_id']) ? intval(sanitize_text_field(wp_unslash($_POST['order_id']))) : null;
-		if (!$order_id) {
-			wp_send_json_error(array('error' => esc_html__('Invalid order ID', 'bytenft-payment-gateway')));
-		}
-
-		// Call the function to check payment status with the validated order ID
-		return $this->bytenft_check_payment_status($order_id);
+	    // Call the function to check payment status with the validated order ID
+	    return $this->bytenft_check_payment_status($order_id);
 	}
 
 	public function bytenft_check_payment_status($order_id)
@@ -297,6 +297,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 	public function handle_popup_close()
 	{
+		// Verify nonce for security (recommended)
 		// Sanitize and unslash the 'security' value
 		$security = isset($_POST['security']) ? sanitize_text_field(wp_unslash($_POST['security'])) : '';
 
