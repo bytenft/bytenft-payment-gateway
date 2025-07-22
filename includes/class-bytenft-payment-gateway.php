@@ -711,7 +711,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				        'result'       => 'success',
 				        'payment_link' => esc_url($existing_link['payment_link']),
 				        'order_id'     => $order_id,
-						'customer_email' => sanitize_email($existing_link['customer_email'] ?? ''),
+						'customer_email' => WC()->checkout()->get_value('billing_email'),
 				    ];
 				}
 
