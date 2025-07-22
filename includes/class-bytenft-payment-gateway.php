@@ -3,7 +3,7 @@ if (!defined('ABSPATH')) {
 	exit(); // Exit if accessed directly.
 }
 // Include the configuration file
-require_once plugin_dir_path(__FILE__) . 'config.php';
+require_once plugin_dir_path(__FILE__) . 'byte-config.php';
 
 /**
  * Main WooCommerce BytenFT Payment Gateway class.
@@ -13,7 +13,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	const ID = 'bytenft';
 
 	protected $sandbox;
-	private $base_url;
+	private $bytenft_base_url;
 	private $public_key;
 	private $secret_key;
 	private $sandbox_secret_key;
@@ -40,7 +40,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// Instantiate the notices class
 		$this->admin_notices = new BYTENFT_PAYMENT_GATEWAY_Admin_Notices();
 
-		$this->base_url = BYTENFT_BASE_URL;
+		$this->bytenft_base_url = BYTENFT_BASE_URL;
 		
 		// Define user set variables
 		$this->id = self::ID;
@@ -98,7 +98,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private function get_api_url($endpoint)
 	{
-		return $this->base_url . $endpoint;
+		return $this->bytenft_base_url . $endpoint;
 	}
 
 	public function bytenft_process_admin_options()
@@ -277,7 +277,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					/* translators: %1$s is a link to the developer account. %2$s is used for any additional formatting if necessary. */
 					__('To configure this gateway, %1$sGet your API keys from your merchant account: Developer Settings > API Keys.%2$s', 'bytenft-payment-gateway'),
 					'<strong><a class="bytenft-instructions-url" href="' .
-						esc_url($this->base_url . '/developers') .
+						esc_url($this->bytenft_base_url . '/developers') .
 						'" target="_blank">' .
 						__('click here to access your developer account', 'bytenft-payment-gateway') .
 						'</a></strong><br>',
@@ -649,7 +649,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// **Proceed with Payment**
 			wc_get_logger()->info("Sending payment request using account '{$account['title']}'", $logger_context);
 			$apiPath = '/api/request-payment';
-			$url = esc_url($this->base_url . $apiPath);
+			$url = esc_url($this->bytenft_base_url . $apiPath);
 
 			$order->update_meta_data('_order_origin', 'bytenft_payment_gateway');
 			$order->save();
@@ -697,6 +697,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				$table_name = $wpdb->prefix . 'order_payment_link';
 
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				$existing_link = $wpdb->get_row(
 				    $wpdb->prepare("SELECT * FROM $table_name WHERE order_id = %d", $order_id),
 				    ARRAY_A
@@ -1642,14 +1643,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				<!-- === INITIAL PAYMENT OPTIONS === -->
 				<div class="payment-link-div">
 					<h3>Complete Your Payment</h3>
-
 					<!-- Option 1 -->
 					<div class="option-sec">
 						<div>
 							<h6><span class="option-lable mr-1">Option 1</span> Email Link</h6>
 						</div>
 						<div class="email-info">
-							<img src="<?php echo esc_url(plugins_url('../assets/images/email-icon.png', __FILE__)); ?>" alt="success" width="33" height="30" />
+							<div class="email-icon" aria-hidden="true"></div>
 							<p>We’ve sent a secure payment link to <b class="bytenft-customer-email" style="color: #000;"></b>. Please check your inbox to continue.</p>
 						</div>
 					</div>
@@ -1755,8 +1755,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					<p>Your payment has been successfully received.<br />We appreciate your trust in us.</p>
 
 					<div class="redirect-section" style="display: none;">
-						<p>You’ll be redirected in <span id="redirect-timer">5</span> seconds...</p>
-						<button id="redirect-now-btn" class="process-btn">Redirect Now</button>
+						<p>You’ll be redirected in <span id="redirect-timer-success">3</span> seconds...</p>
+						<button id="redirect-now-btn-success" class="process-btn">Redirect Now</button>
 					</div>
 				</div>
 
@@ -1766,8 +1766,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					<h4>Payment Failed</h4>
 					<p>Your payment was not successful.<br />Please try again later.</p>
 					<div class="redirect-section" style="display: none;">
-						<p>You’ll be redirected in <span id="redirect-timer">5</span> seconds...</p>
-						<button id="redirect-now-btn" class="process-btn">Redirect Now</button>
+						<p>You’ll be redirected in <span id="redirect-timer-failed">3</span> seconds...</p>
+						<button id="redirect-now-btn-failed" class="process-btn">Redirect Now</button>
 					</div>
 				</div>
 			</div>
