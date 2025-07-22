@@ -3,7 +3,7 @@ if (!defined('ABSPATH')) {
 	exit(); // Exit if accessed directly.
 }
 // Include the configuration file
-require_once plugin_dir_path(__FILE__) . 'config.php';
+require_once plugin_dir_path(__FILE__) . 'byte-config.php';
 
 /**
  * Main WooCommerce BytenFT Payment Gateway class.
@@ -13,7 +13,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	const ID = 'bytenft';
 
 	protected $sandbox;
-	private $base_url;
+	private $bytenft_base_url;
 	private $public_key;
 	private $secret_key;
 	private $sandbox_secret_key;
@@ -40,7 +40,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// Instantiate the notices class
 		$this->admin_notices = new BYTENFT_PAYMENT_GATEWAY_Admin_Notices();
 
-		$this->base_url = BYTENFT_BASE_URL;
+		$this->bytenft_base_url = BYTENFT_BASE_URL;
 		
 		// Define user set variables
 		$this->id = self::ID;
@@ -82,9 +82,23 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_action('wp_footer', [$this, 'render_bytenft_payment_popup']);
 	}
 
+	protected function log_info($message, $context = []) {
+	    wc_get_logger()->info($message, array_merge([
+	        'source' => 'bytenft-payment-gateway',
+	        'context' => $context,
+	    ]));
+	}
+
+	protected function log_error($message, $context = []) {
+	    wc_get_logger()->error($message, array_merge([
+	        'source' => 'bytenft-payment-gateway',
+	        'context' => $context,
+	    ]));
+	}
+
 	private function get_api_url($endpoint)
 	{
-		return $this->base_url . $endpoint;
+		return $this->bytenft_base_url . $endpoint;
 	}
 
 	public function bytenft_process_admin_options()
@@ -263,7 +277,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					/* translators: %1$s is a link to the developer account. %2$s is used for any additional formatting if necessary. */
 					__('To configure this gateway, %1$sGet your API keys from your merchant account: Developer Settings > API Keys.%2$s', 'bytenft-payment-gateway'),
 					'<strong><a class="bytenft-instructions-url" href="' .
-						esc_url($this->base_url . '/developers') .
+						esc_url($this->bytenft_base_url . '/developers') .
 						'" target="_blank">' .
 						__('click here to access your developer account', 'bytenft-payment-gateway') .
 						'</a></strong><br>',
@@ -534,12 +548,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
+			$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
 
 			$accStatusApiUrl = $this->get_api_url('/api/check-merchant-status');
 			$merchant_status_data = [
 			    'is_sandbox'     => $this->sandbox,
 			    'amount'         => $order->get_total(),
 			    'api_public_key' => $public_key,
+				'api_secret_key' => $secret_key,
 			];
 
 			// Use cache for status check
@@ -633,7 +649,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// **Proceed with Payment**
 			wc_get_logger()->info("Sending payment request using account '{$account['title']}'", $logger_context);
 			$apiPath = '/api/request-payment';
-			$url = esc_url($this->base_url . $apiPath);
+			$url = esc_url($this->bytenft_base_url . $apiPath);
 
 			$order->update_meta_data('_order_origin', 'bytenft_payment_gateway');
 			$order->save();
@@ -681,6 +697,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				$table_name = $wpdb->prefix . 'order_payment_link';
 
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				$existing_link = $wpdb->get_row(
 				    $wpdb->prepare("SELECT * FROM $table_name WHERE order_id = %d", $order_id),
 				    ARRAY_A
@@ -694,7 +711,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				        'result'       => 'success',
 				        'payment_link' => esc_url($existing_link['payment_link']),
 				        'order_id'     => $order_id,
-						'customer_email' => sanitize_email($existing_link['customer_email'] ?? ''),
+						'customer_email' => WC()->checkout()->get_value('billing_email'),
 				    ];
 				}
 
@@ -1147,146 +1164,95 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		]);
 	}
 
-	public function hide_custom_payment_gateway_conditionally($available_gateways)
-	{
-	    $gateway_id = $this->id;
+	public function get_active_account() {
+	    $cache_key = 'bytenft_active_payment_account';
+	    $cached_account = get_transient($cache_key);
 
-	    if (!is_checkout()) {
-	        return $available_gateways;
+	    if ($cached_account !== false) {
+	        $this->log_info('Using cached active account');
+	        return $cached_account;
 	    }
 
-	    // Optional: limit logic execution within a single PHP request
-	    static $already_checked = false;
-	    static $is_visible = null;
+	    $this->log_info('No cached account. Checking all configured accounts...');
 
-	    if ($already_checked) {
-	        if (!$is_visible) {
-	            unset($available_gateways[$gateway_id]);
-	        }
-	        return $available_gateways;
-	    }
-
-	    $already_checked = true;
-
-	    $amount = number_format(WC()->cart->get_total('edit'), 2, '.', '');
-
-	    if (!method_exists($this, 'get_all_accounts')) {
-	        wc_get_logger()->error('Payment account setup is incomplete. Please ensure at least one valid payment account is configured.', [
-	            'source' => 'bytenft-payment-gateway'
-	        ]);
-	        unset($available_gateways[$gateway_id]);
-	        $is_visible = false;
-	        return $available_gateways;
-	    }
-
-	    $accounts = $this->get_all_accounts();
+	    $accounts = $this->get_all_accounts(); // ✅ Use correct helper
 
 	    if (empty($accounts)) {
-	        $log_key = 'bytenft_log_no_accounts_' . md5($this->id);
-	        if (false === get_transient($log_key)) {
-	            wc_get_logger()->warning('No payment accounts are available. The payment option will not appear during checkout.', [
-	                'source' => 'bytenft-payment-gateway'
-	            ]);
-	            set_transient($log_key, 1, 10); // Avoid duplicate log for 10 seconds
-	        }
-	        unset($available_gateways[$gateway_id]);
-	        $is_visible = false;
-	        return $available_gateways;
+	        $this->log_error('No valid accounts returned from get_all_accounts()');
+	        return false;
 	    }
 
-	    usort($accounts, function ($a, $b) {
-	        return $a['priority'] <=> $b['priority'];
-	    });
+	   foreach ($accounts as $index => $account) {
+		    $useSandbox = $this->sandbox;
+		    $secretKey = $useSandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
+		    $publicKey = $useSandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
 
-	    $all_high_priority_accounts_limited = true;
-	    $user_account_active = false;
+		    $this->log_info("Checking merchant status for account #$index", [
+		        'context' => compact('useSandbox', 'publicKey')
+		    ]);
 
-	    delete_transient('_bytenft_daily_limit');
+		    $checkStatusUrl = $this->get_api_url('/api/check-merchant-status', $useSandbox);
 
-	    $transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
-	    $accStatusApiUrl = $this->get_api_url('/api/check-merchant-status');
+		    $response = wp_remote_post($checkStatusUrl, [
+		        'headers' => [
+		            'Authorization' => 'Bearer ' . $publicKey,
+		            'Content-Type'  => 'application/json',
+		        ],
+		        'timeout' => 10,
+		        'body' => wp_json_encode([
+		            'api_secret_key' => $secretKey,
+		            'is_sandbox'     => $useSandbox,
+		        ]),
+		    ]);
 
-		wc_get_logger()->info('Accounts to evaluate:', [
-		    'source' => 'bytenft-payment-gateway',
-		    'context' => $accounts
-		]);
+		    if (is_wp_error($response)) {
+		        $this->log_error("Error checking merchant status for account #$index", [
+		            'context' => ['error' => $response->get_error_message()]
+		        ]);
+		        continue;
+		    }
 
-	    foreach ($accounts as $account) {
-	    $public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
+		    $body = json_decode(wp_remote_retrieve_body($response), true);
 
-	    $data = [
-	        'is_sandbox'     => $this->sandbox,
-	        'amount'         => $amount,
-	        'api_public_key' => $public_key,
-	    ];
+		    if (
+				is_array($body) &&
+				strtolower($body['status'] ?? '') === 'success' &&
+				str_contains(strtolower($body['message'] ?? ''), 'active')
+			) {
+		        set_transient($cache_key, $account, 5 * MINUTE_IN_SECONDS);
+		        $this->log_info("Active account found and cached", ['context' => $account]);
+		        return $account;
+		    }
 
-	    $cache_key = 'bytenft_daily_limit_' . md5($public_key . $amount);
-	    $force_refresh = isset($_GET['refresh_accounts']) && $_GET['refresh_accounts'] == '1';
+		    $this->log_info("Account #$index not active", ['context' => $body]);
+		}
 
-	    // 🔄 Always fetch account status (you can keep caching if needed here)
-	    $acc_status_response_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_key . '_status', 30, $force_refresh);
-	    if (
-	        isset($acc_status_response_data['status']) &&
-	        $acc_status_response_data['status'] === 'success'
-	    ) {
-	        $user_account_active = true;
-	    }
-
-	    // 🔄 Daily Limit: Force refresh if response is invalid or error
-	    $transaction_limit_response_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_key . '_limit', 60, $force_refresh);
-
-	    // 🛡️ If response is not success — delete cache so it's not reused
-	    if (
-	        !is_array($transaction_limit_response_data) ||
-	        !isset($transaction_limit_response_data['status']) ||
-	        $transaction_limit_response_data['status'] !== 'success'
-	    ) {
-	        delete_transient($cache_key . '_limit');
-	    } else {
-	        $all_high_priority_accounts_limited = false;
-	    }
-
-	    if ($user_account_active && !$all_high_priority_accounts_limited) {
-	        break;
-	    }
+	    $this->log_info('No active account. Removing bytenft gateway.');
+	    return false;
 	}
 
-	    if (!$user_account_active) {
-	        $log_key = 'bytenft_log_no_active_accounts_' . md5($this->id);
-	        if (false === get_transient($log_key)) {
-	            wc_get_logger()->warning('Payment gateway is hidden. No payment accounts are currently active or approved for transactions.', [
-	                'source' => 'bytenft-payment-gateway'
-	            ]);
-	            set_transient($log_key, 1, 10);
-	        }
-	        unset($available_gateways[$gateway_id]);
-	        $is_visible = false;
+
+
+	public function hide_custom_payment_gateway_conditionally($available_gateways) {
+	    $this->log_info('Filter: hide_custom_payment_gateway_conditionally triggered');
+
+	    if (is_admin()) {
+	        $this->log_info('In admin area, skipping gateway check.');
 	        return $available_gateways;
 	    }
 
-	    if ($all_high_priority_accounts_limited) {
-	        $log_key = 'bytenft_log_accounts_limited_' . md5($this->id);
-	        if (false === get_transient($log_key)) {
-	            wc_get_logger()->warning('Payment gateway is hidden. All available accounts have reached their daily transaction limits.', [
-	                'source' => 'bytenft-payment-gateway'
-	            ]);
-	            set_transient($log_key, 1, 10);
+	    if (is_checkout()) {
+	        $this->log_info('Checkout page detected. Verifying active account status...');
+	        $active_account = $this->get_active_account();
+
+	        if (!$active_account) {
+	            $this->log_info('No active account. Removing bytenft gateway.');
+	            unset($available_gateways['bytenft']);
+	        } else {
+	            $this->log_info('Active account exists. Gateway remains available.');
 	        }
-	        unset($available_gateways[$gateway_id]);
-	        $is_visible = false;
-	        return $available_gateways;
 	    }
 
-	    // ✅ At least one account is valid and within limits
-	    $log_key = 'bytenft_log_gateway_active_' . md5($this->id);
-	    if (false === get_transient($log_key)) {
-	        wc_get_logger()->info('Payment gateway is active. At least one account is available and within limits.', [
-	            'source' => 'bytenft-payment-gateway'
-	        ]);
-	        set_transient($log_key, 1, 10);
-	    }
-
-	    $is_visible = true;
 	    return $available_gateways;
 	}
 
@@ -1365,16 +1331,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	        delete_transient($cache_key); // Clear previous cached version
 	    }
 
-	    // Make the API call
-	    $response = wp_remote_post($url, [
-	        'method'  => 'POST',
-	        'timeout' => 30,
-	        'body'    => $data,
+	  $response = wp_remote_post($url, [
+		 	'method'  => 'POST',
 	        'headers' => [
-	            'Content-Type'  => 'application/x-www-form-urlencoded',
 	            'Authorization' => 'Bearer ' . $data['api_public_key'],
+	            'Content-Type'  => 'application/json',
 	        ],
-	        'sslverify' => true,
+	        'timeout' => 30,
+	        'body' => wp_json_encode($data),
+			'sslverify' => true,
 	    ]);
 
 	    if (is_wp_error($response)) {
@@ -1678,14 +1643,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				<!-- === INITIAL PAYMENT OPTIONS === -->
 				<div class="payment-link-div">
 					<h3>Complete Your Payment</h3>
-
 					<!-- Option 1 -->
 					<div class="option-sec">
 						<div>
 							<h6><span class="option-lable mr-1">Option 1</span> Email Link</h6>
 						</div>
 						<div class="email-info">
-							<img src="<?php echo esc_url(plugins_url('../assets/images/email-icon.png', __FILE__)); ?>" alt="success" width="33" height="30" />
+							<div class="email-icon" aria-hidden="true"></div>
 							<p>We’ve sent a secure payment link to <b class="bytenft-customer-email" style="color: #000;"></b>. Please check your inbox to continue.</p>
 						</div>
 					</div>
@@ -1791,8 +1755,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					<p>Your payment has been successfully received.<br />We appreciate your trust in us.</p>
 
 					<div class="redirect-section" style="display: none;">
-						<p>You’ll be redirected in <span id="redirect-timer">5</span> seconds...</p>
-						<button id="redirect-now-btn" class="process-btn">Redirect Now</button>
+						<p>You’ll be redirected in <span id="redirect-timer-success">3</span> seconds...</p>
+						<button id="redirect-now-btn-success" class="process-btn">Redirect Now</button>
 					</div>
 				</div>
 
@@ -1802,8 +1766,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					<h4>Payment Failed</h4>
 					<p>Your payment was not successful.<br />Please try again later.</p>
 					<div class="redirect-section" style="display: none;">
-						<p>You’ll be redirected in <span id="redirect-timer">5</span> seconds...</p>
-						<button id="redirect-now-btn" class="process-btn">Redirect Now</button>
+						<p>You’ll be redirected in <span id="redirect-timer-failed">3</span> seconds...</p>
+						<button id="redirect-now-btn-failed" class="process-btn">Redirect Now</button>
 					</div>
 				</div>
 			</div>

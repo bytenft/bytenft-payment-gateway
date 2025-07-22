@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Include the configuration file
-require_once plugin_dir_path(__FILE__) . 'config.php';
+require_once plugin_dir_path(__FILE__) . 'byte-config.php';
 
 /**
  * Class BYTENFT_PAYMENT_GATEWAY_Loader
@@ -15,7 +15,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	private static $instance = null;
 	private $admin_notices;
 
-	private $base_url;
+	private $bytenft_base_url;
 
 	/**
 	 * Get the singleton instance of this class.
@@ -36,7 +36,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	private function __construct()
 	{
 
-		$this->base_url = BYTENFT_BASE_URL;
+		$this->bytenft_base_url = BYTENFT_BASE_URL;
 
 		$this->admin_notices = new BYTENFT_PAYMENT_GATEWAY_Admin_Notices();
 
@@ -106,7 +106,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 	private function get_api_url($endpoint)
 	{
-		return $this->base_url . $endpoint;
+		return $this->bytenft_base_url . $endpoint;
 	}
 
 	/**
@@ -160,24 +160,17 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	 */
 	public function bytenft_handle_check_payment_status_request($request)
 	{
-		// Verify nonce for security (recommended)
-		// Sanitize and unslash the 'security' value
-		$security = isset($_POST['security']) ? sanitize_text_field(wp_unslash($_POST['security'])) : '';
+	   check_ajax_referer('bytenft_payment', 'security');
+	   
+	    // Sanitize and validate the order ID
+	    $order_id = isset($_POST['order_id']) ? intval(sanitize_text_field(wp_unslash($_POST['order_id']))) : null;
+	    if (!$order_id) {
+	        wp_send_json_error(['message' => esc_html__('Invalid order ID', 'bytenft-payment-gateway')]);
+	        wp_die();
+	    }
 
-		// Check the nonce for security
-		if (empty($security) || !wp_verify_nonce($security, 'bytenft_payment')) {
-			wp_send_json_error(['message' => 'Nonce verification failed.']);
-			wp_die();
-		}
-
-		// Sanitize and validate the order ID from $_POST
-		$order_id = isset($_POST['order_id']) ? intval(sanitize_text_field(wp_unslash($_POST['order_id']))) : null;
-		if (!$order_id) {
-			wp_send_json_error(array('error' => esc_html__('Invalid order ID', 'bytenft-payment-gateway')));
-		}
-
-		// Call the function to check payment status with the validated order ID
-		return $this->bytenft_check_payment_status($order_id);
+	    // Call the function to check payment status with the validated order ID
+	    return $this->bytenft_check_payment_status($order_id);
 	}
 
 	public function bytenft_check_payment_status($order_id)
@@ -219,7 +212,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	    }
 
 	    // 4. Call status API
-	    $url = trailingslashit($this->base_url) . 'api/orders/' . $pay_id . '/status';
+	    $url = trailingslashit($this->bytenft_base_url) . 'api/orders/' . $pay_id . '/status';
 
 	    $response = wp_remote_get($url, [
 	        'timeout' => 20,
@@ -297,6 +290,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 	public function handle_popup_close()
 	{
+		// Verify nonce for security (recommended)
 		// Sanitize and unslash the 'security' value
 		$security = isset($_POST['security']) ? sanitize_text_field(wp_unslash($_POST['security'])) : '';
 
@@ -515,7 +509,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		wc_get_logger()->debug('📤 Sending sync request payload', array_merge($logger_context, ['payload' => $request_payload]));
 
-		$url = $this->base_url . '/api/sync-account-status';
+		$url = $this->bytenft_base_url . '/api/sync-account-status';
 		$response = wp_remote_post($url, [
 			'method'  => 'POST',
 			'timeout' => 20,
@@ -616,10 +610,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 
 	function bytenft_send_payment_link() {
-		$email = isset($_POST['email']) ? sanitize_email($_POST['email']) : null;
-		$phone = isset($_POST['phone']) ? sanitize_text_field($_POST['phone']) : null;
-		$payment_link = esc_url_raw($_POST['payment_link']);
-		$order_id = sanitize_text_field($_POST['order_id']);
+		check_ajax_referer('bytenft_payment', 'security');
+
+		$email = isset($_POST['email']) ? sanitize_email(wp_unslash($_POST['email'])) : null;
+		$phone = isset($_POST['phone']) ? sanitize_text_field(wp_unslash($_POST['phone'])) : null;
+		$payment_link = isset($_POST['payment_link']) ? esc_url_raw(wp_unslash($_POST['payment_link'])) : null;
+		$order_id = isset($_POST['order_id']) ? sanitize_text_field(wp_unslash($_POST['order_id'])) : null;
 
 		if (empty($email) && empty($phone)) {
 			wp_send_json_error(['message' => 'Please provide email or phone.']);
@@ -645,7 +641,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			'payment_link' => $payment_link,
 		];
 
-		$url = $this->base_url . '/api/payment-link/send';
+		$url = $this->bytenft_base_url . '/api/payment-link/send';
 
 		$headers = [
 			'Authorization' => 'Bearer ' . sanitize_text_field($public_key),
@@ -657,6 +653,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			'timeout' => 20,
 			'headers' => $headers,
 			'body'    => json_encode($payload),
+		]);
+
+		wc_get_logger()->info("ByteNFT API request and response ", [
+			'url' => $url,
+			'headers' => $headers,
+			'body' => $payload,
+			'order_id' => $order_id,
+			'response'=>$response
 		]);
 
 		// Error logging
