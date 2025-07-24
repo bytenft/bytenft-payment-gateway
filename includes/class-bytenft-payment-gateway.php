@@ -426,7 +426,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 											class="<?php echo esc_attr( $checkbox_class ); ?>"
 											id="<?php echo esc_attr( $checkbox_id ); ?>"
 											name="accounts[<?php echo esc_attr( $index ); ?>][has_sandbox]"
-											<?php checked( ! empty( $account['sandbox_public_key'] ) ); ?>>
+											<?php checked( $account['has_sandbox'] == 'on' ); ?>>
 										<label for="<?php echo esc_attr( $checkbox_id ); ?>">
 											<?php esc_html_e( 'Do you have the sandbox keys?', 'bytenft-payment-gateway' ); ?>
 										</label>
@@ -435,7 +435,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 									<?php
 									$sandbox_container_id    = $this->id . '-sandbox-keys-' . $index;
 									$sandbox_container_class = $this->id . '-sandbox-keys';
-									$sandbox_display_style   = empty($account['sandbox_public_key']) ? 'display: none;' : '';
+									$sandbox_display_style   = $account['has_sandbox'] == 'off' ? 'display: none;' : '';
 									?>
 									<div id="<?php echo esc_attr($sandbox_container_id); ?>"
 									     class="<?php echo esc_attr($sandbox_container_class); ?>"
