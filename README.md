@@ -8,7 +8,7 @@ The ByteNFT Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fia
 **Tags:** woocommerce, payment gateway, fiat, ByteNFT  
 **Requires at least:** 6.2  
 **Tested up to:** 6.7  
-**Stable tag:** 1.0.2  
+**Stable tag:** 1.0.3
 **License:** GPLv3 or later  
 **License URI:** [GPLv3 License](https://www.gnu.org/licenses/gpl-3.0.html)
 
@@ -130,6 +130,27 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 The official documentation for this plugin is available at: [https://www.bytenft.xyz/api/docs/wordpress-plugin](https://www.bytenft.xyz/api/docs/wordpress-plugin)
 
 ## Changelog
+
+## Version 1.0.3
+
+### What's New
+- **Account Settings Sync Fix**  
+   - Resolved an issue where updates to account settings were not retained after refreshing the admin settings page.
+
+- **Sandbox Mode Key Handling**  
+  - Fixed a bug where selecting the Sandbox environment didn’t correctly display or activate the corresponding key options.
+
+- **Code Cleanup & Mode Switching Improvements**  
+  - Refactored internal logic for account validation. 
+  - Enhanced environment switching between Sandbox and Live modes.
+  - Improved reliability and consistency of key loading.
+
+## Version 1.0.2 – NFT-Backed Mastercard Checkout
+
+- **New Feature:** Support for **Mastercard credit and debit cards**.
+- **Utility NFTs:** Orders are now issued as **utility NFTs**, redeemable for the product purchased.
+- **No Crypto Needed:** Customers don’t need a wallet or crypto, just pay with a card.
+- **Frictionless UX:** Smooth, secure, and familiar checkout flow for mainstream users.
 
 ## Version 1.0.2 – NFT-Backed Mastercard Checkout
 
