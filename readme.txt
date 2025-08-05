@@ -3,7 +3,7 @@ Contributors: ByteNFT
 Tags: woocommerce, payment gateway, fiat, ByteNFT
 Requires at least: 5.0
 Tested up to: 6.8
-Stable tag: 1.0.2
+Stable tag: 1.0.3
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -27,6 +27,11 @@ Visit the ByteNFT website and log in to your account. Navigate to Developer Sett
 
 == Changelog ==
 
+= 1.0.3 =
+* Fixed an issue where changes to account settings were not properly synced after refreshing the admin settings page.
+* Refactored internal logic for account validation and improved sandbox/live switching.
+* Fixed an issue where sanbox is selected then sanbox keys option show and sanbox select option work.
+
 = 1.0.2 =
 * Added support for **Mastercard credit/debit card** payments.
 * Orders now issue a **utility NFT** — no crypto or wallet needed.
@@ -36,6 +41,11 @@ Visit the ByteNFT website and log in to your account. Navigate to Developer Sett
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.3 =
+* Account settings now stay synced even after page refresh.
+* Improved handling of Sandbox and Live mode switching.
+* Fixed display and functionality issues with Sandbox key options.
 
 = 1.0.2 =
 New: Accept Mastercard cards with automatic NFT issuance and a no-wallet-required flow.
