@@ -435,7 +435,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 									<?php
 									$sandbox_container_id    = $this->id . '-sandbox-keys-' . $index;
 									$sandbox_container_class = $this->id . '-sandbox-keys';
-									$sandbox_display_style   = $account['has_sandbox'] == 'on' ? 'display: none;' : '';
+									$sandbox_display_style   = $account['has_sandbox'] == 'off' ? 'display: none;' : '';
 									?>
 									<div id="<?php echo esc_attr($sandbox_container_id); ?>"
 									     class="<?php echo esc_attr($sandbox_container_class); ?>"
