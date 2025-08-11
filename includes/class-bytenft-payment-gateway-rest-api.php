@@ -40,14 +40,14 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$api_key = sanitize_text_field($api_key);
 
 		// Get DFinSell settings
-		$bytenft_settings = get_option('woocommerce_bytenft_payment_gateway_accounts');
+		$bytenft_payment_accounts = get_option('woocommerce_bytenft_payment_gateway_accounts');
 		$bytenft_settings = get_option('woocommerce_bytenft_settings');
 
-		if (!$bytenft_settings || empty($bytenft_settings)) {
+		if (!$bytenft_payment_accounts || empty($bytenft_settings)) {
 			return false; // No accounts available
 		}
 
-		$accounts = $bytenft_settings;
+		$accounts = $bytenft_payment_accounts;
 
 		$sandbox = isset($bytenft_settings['sandbox']) && $bytenft_settings['sandbox'] === 'yes';
 
