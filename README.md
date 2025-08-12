@@ -8,7 +8,7 @@ The ByteNFT Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fia
 **Tags:** woocommerce, payment gateway, fiat, ByteNFT  
 **Requires at least:** 6.2  
 **Tested up to:** 6.7  
-**Stable tag:** 1.0.3
+**Stable tag:** 1.0.4
 **License:** GPLv3 or later  
 **License URI:** [GPLv3 License](https://www.gnu.org/licenses/gpl-3.0.html)
 
@@ -131,9 +131,17 @@ The official documentation for this plugin is available at: [https://www.bytenft
 
 ## Changelog
 
-## Version 1.0.3
+## Version 1.0.4
 
 ### What's New
+- **Account Settings Validation Fix**  
+   - Resolved an issue where the account key’s status and displays an error if it is inactive or invalid, preventing normal flow execution.
+
+- **Sandbox Mode Key default enable**  
+  - Fixed an bug where the settings now appear immediately when Sandbox Mode is enabled, without requiring a click inside the field.
+
+## Version 1.0.3
+
 - **Account Settings Sync Fix**  
    - Resolved an issue where updates to account settings were not retained after refreshing the admin settings page.
 
