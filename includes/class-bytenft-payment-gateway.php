@@ -698,8 +698,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$table_name = $wpdb->prefix . 'order_payment_link';
 
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				$existing_link = $wpdb->get_row(
-				    $wpdb->prepare("SELECT * FROM $table_name WHERE order_id = %d", $order_id),
+				$existing_link = $wpdb->get_row(// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+				    $wpdb->prepare("SELECT * FROM {$wpdb->prefix}order_payment_link WHERE order_id = %d", $order_id),
 				    ARRAY_A
 				);
 
@@ -725,7 +725,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				if (false === $table_exists) {
                     // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
                     $table_exists = $wpdb->get_var(
-                        $wpdb->prepare("SHOW TABLES LIKE %s", $table_name)
+                        $wpdb->prepare( "SHOW TABLES LIKE %s", $table_name )
                     );
 
 				    // Cache result for 1 hour
@@ -747,7 +747,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 ) $charset_collate;";
 
-                $wpdb->query("ALTER TABLE $table_name ADD UNIQUE KEY order_id (order_id)");
+                $wpdb->query("ALTER TABLE {$wpdb->prefix}order_payment_link ADD UNIQUE KEY order_id (order_id)"); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange
 
                 dbDelta($create_sql);
 
@@ -768,12 +768,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
                 $created_at     = current_time('mysql', 1);
 
                 // Check if order_id already exists
-                $existing = $wpdb->get_var(
-                    $wpdb->prepare("SELECT COUNT(*) FROM $table_name WHERE order_id = %d", $order_id)
+                $existing = $wpdb->get_var(// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+                    $wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}order_payment_link WHERE order_id = %d", $order_id)
                 );
 
                 if (!$existing) {
-                    $inserted = $wpdb->insert(
+                    $inserted = $wpdb->insert(// phpcs:ignore WordPress.DB.DirectDatabaseQuery
                         $table_name,
                         [
                             'order_id'       => $order_id,
@@ -876,9 +876,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return false;
 		}
 
-		$table_name = $wpdb->prefix . 'order_payment_link';
-		$row = $wpdb->get_row(
-			$wpdb->prepare("SELECT * FROM $table_name WHERE order_id = %d", $order_id),
+		// $table_name = $wpdb->prefix . 'order_payment_link';
+		$row = $wpdb->get_row(// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare("SELECT * FROM {$wpdb->prefix}order_payment_link WHERE order_id = %d", $order_id),
 			ARRAY_A
 		);
 
@@ -1370,7 +1370,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	private function get_cached_api_response($url, $data, $cache_key, $ttl = 120, $force_refresh = false)
 	{
 	    // Allow ?refresh_accounts=1 in URL to force-refresh cache (useful for testing)
-	    if (!$force_refresh && isset($_GET['refresh_accounts']) && $_GET['refresh_accounts'] == '1') {
+	    if (!$force_refresh && isset($_GET['refresh_accounts']) && $_GET['refresh_accounts'] == '1' && isset($_GET['_wpnonce']) && wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'refresh_accounts_nonce')) {
 	        $force_refresh = true;
 	    }
 
