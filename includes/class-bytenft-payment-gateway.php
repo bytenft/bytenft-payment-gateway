@@ -1192,7 +1192,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		    $body = json_decode(wp_remote_retrieve_body($response), true);
 			$hasError = is_array($body) && strtolower($body['status'] ?? '') === 'error';
-	
+
 			$valid_accounts[$index] = [
 				'title' => $account['title'],
 				'priority' => $account['priority'],
