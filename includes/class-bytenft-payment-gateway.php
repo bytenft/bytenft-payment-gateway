@@ -679,7 +679,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			wc_get_logger()->warning("Raw response body: " . wp_remote_retrieve_body($response), $logger_context);
 
-
 			if (!empty($response_data['status']) && $response_data['status'] === 'success' && !empty($response_data['data']['payment_link'])) {
 				if ($last_failed_account) {
 					wc_get_logger()->info("Sending email before returning success to: '{$last_failed_account['title']}'", ['source' => 'bytenft-payment-gateway']);
@@ -697,25 +696,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				$table_name = $wpdb->prefix . 'order_payment_link';
 
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				$existing_link = $wpdb->get_row(
-				    $wpdb->prepare("SELECT * FROM $table_name WHERE order_id = %d", $order_id),
-				    ARRAY_A
-				);
-
-				if (!empty($existing_link['payment_link'])) {
-				    // Log reuse
-				    wc_get_logger()->info("Order {$order_id} already has a payment link. Returning existing payment link.", $logger_context);
-
-				    return [
-				        'result'       => 'success',
-				        'payment_link' => esc_url($existing_link['payment_link']),
-				        'order_id'     => $order_id,
-						'customer_email' => WC()->checkout()->get_value('billing_email'),
-				    ];
-				}
-
-
 				// Add simple cache to avoid hitting DB on every request
 				$cache_key    = 'bytenft_table_exists_' . md5($table_name);
 				$cache_group  = 'bytenft_payment_gateway';
@@ -723,72 +703,58 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$table_exists = wp_cache_get($cache_key, $cache_group);
 
 				if (false === $table_exists) {
-                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
-                    $table_exists = $wpdb->get_var(
-                        $wpdb->prepare("SHOW TABLES LIKE %s", $table_name)
-                    );
+				    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.NotPrepared
+				    $table_exists = $wpdb->get_var(
+				        $wpdb->prepare("SHOW TABLES LIKE %s", $table_name)
+				    );
 
 				    // Cache result for 1 hour
-                    wp_cache_set($cache_key, $table_exists, $cache_group, HOUR_IN_SECONDS);
-                }
+				    wp_cache_set($cache_key, $table_exists, $cache_group, HOUR_IN_SECONDS);
+				}
 
-                // Always run dbDelta to ensure missing columns are created
-                require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+				if ($table_exists !== $table_name) {
+				    // Create the table if not exists
+				    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-                $charset_collate = $wpdb->get_charset_collate();
+				    $charset_collate = $wpdb->get_charset_collate();
 
-                $create_sql = "CREATE TABLE $table_name (
-                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                    order_id BIGINT UNSIGNED NOT NULL UNIQUE,  -- ✅ This makes REPLACE work
-                    uuid VARCHAR(100) NOT NULL,
-                    payment_link TEXT NOT NULL,
-                    customer_email VARCHAR(191),
-                    amount DECIMAL(18,2),
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                ) $charset_collate;";
+				    $create_sql = "CREATE TABLE $table_name (
+				        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+				        order_id BIGINT UNSIGNED NOT NULL,
+				        uuid VARCHAR(100) NOT NULL,
+				        payment_link TEXT NOT NULL,
+				        customer_email VARCHAR(191),
+				        amount DECIMAL(18,2),
+				        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+				    ) $charset_collate;";
 
-                $wpdb->query("ALTER TABLE $table_name ADD UNIQUE KEY order_id (order_id)");
+				    dbDelta($create_sql);
 
-                dbDelta($create_sql);
+				    wc_get_logger()->info("Created missing `$table_name` table.", [
+				        'source' => 'bytenft-onramp-payment-gateway',
+				        'context' => ['table' => $table_name],
+				    ]);
+				}
 
-                // Optionally log table creation or update
-                if ($table_exists !== $table_name) {
-                    wc_get_logger()->info("Created or updated `$table_name` table.", [
-                        'source' => 'bytenft-payment-gateway',
-                        'context' => ['table' => $table_name],
-                    ]);
-                }
+				// Prepare amount
+				$formatted_amount = number_format((float) ($response_data['data']['amount'] ?? 0), 2, '.', '');
 
-                // Prepare amount
-                $formatted_amount = number_format((float) ($response_data['data']['amount'] ?? 0), 2, '.', '');
-                $uuid           = sanitize_text_field($pay_id);
-                $payment_link   = esc_url_raw($response_data['data']['payment_link'] ?? '');
-                $customer_email = sanitize_email($response_data['data']['customer_email'] ?? '');
-                $amount         = number_format((float) ($response_data['data']['amount'] ?? 0), 2, '.', '');
-                $created_at     = current_time('mysql', 1);
-
-                // Check if order_id already exists
-                $existing = $wpdb->get_var(
-                    $wpdb->prepare("SELECT COUNT(*) FROM $table_name WHERE order_id = %d", $order_id)
-                );
-
-                if (!$existing) {
-                    $inserted = $wpdb->insert(
-                        $table_name,
-                        [
-                            'order_id'       => $order_id,
-                            'uuid'           => $uuid,
-                            'payment_link'   => $payment_link,
-                            'customer_email' => $customer_email,
-                            'amount'         => $amount,
-                            'created_at'     => $created_at,
-                        ],
-                        ['%d', '%s', '%s', '%s', '%s', '%s']
-                    );
-                }
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Insert is safely prepared with format specifiers
+				$wpdb->insert(
+				    $table_name,
+				    [
+				        'order_id'       => $order_id,
+				        'uuid'           => sanitize_text_field($pay_id),
+				        'payment_link'   => esc_url_raw($response_data['data']['payment_link'] ?? ''),
+				        'customer_email' => sanitize_email($response_data['data']['customer_email'] ?? ''),
+				        'amount'         => $formatted_amount,
+				        'created_at'     => current_time('mysql', 1),
+				    ],
+				    ['%d', '%s', '%s', '%s', '%s', '%s']
+				);
 
 				wc_get_logger()->info('Stored order payment link to DB.', [
-				    'source'  => 'bytenft-payment-gateway',
+				    'source'  => 'bytenft-onramp-payment-gateway',
 				    'context' => [
 				        'order_id' => $order_id,
 				        'uuid'     => $pay_id,
@@ -862,38 +828,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return ['result' => 'fail'];
 		}
 	}
-
-	public function is_order_payment_pending($order_id) {
-		global $wpdb;
-
-		$order = wc_get_order($order_id);
-		if (!$order || $order->get_status() !== 'pending') {
-			return false;
-		}
-
-		$pay_id = $order->get_meta('_bytenft_pay_id');
-		if (empty($pay_id)) {
-			return false;
-		}
-
-		$table_name = $wpdb->prefix . 'order_payment_link';
-		$row = $wpdb->get_row(
-			$wpdb->prepare("SELECT * FROM $table_name WHERE order_id = %d", $order_id),
-			ARRAY_A
-		);
-
-		if (!empty($row) && !empty($row['payment_link'])) {
-			return [
-				'payment_link' => esc_url($row['payment_link']),
-				'uuid'         => sanitize_text_field($row['uuid']),
-				'email'        => sanitize_email($row['customer_email']),
-				'amount'       => $row['amount'],
-			];
-		}
-
-		return false;
-	}
-
 
 	// Display the "Test Order" tag in admin order details
 	public function bytenft_display_test_order_tag($order)
@@ -1369,10 +1303,16 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private function get_cached_api_response($url, $data, $cache_key, $ttl = 120, $force_refresh = false)
 	{
-	    // Allow ?refresh_accounts=1 in URL to force-refresh cache (useful for testing)
-	    if (!$force_refresh && isset($_GET['refresh_accounts']) && $_GET['refresh_accounts'] == '1') {
-	        $force_refresh = true;
-	    }
+	    // Allow ?refresh_accounts=1&_wpnonce=... in URL to force-refresh cache (useful for testing)
+		if (
+		    !$force_refresh &&
+		    isset($_GET['refresh_accounts']) &&
+		    $_GET['refresh_accounts'] === '1' &&
+		    isset($_GET['_wpnonce']) &&
+		    wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'refresh_accounts_nonce')
+		) {
+		    $force_refresh = true;
+		}
 
 	    // If not forcing refresh, return cached version if it exists
 	    if (!$force_refresh) {
@@ -1384,15 +1324,16 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	        delete_transient($cache_key); // Clear previous cached version
 	    }
 
-	  $response = wp_remote_post($url, [
-		 	'method'  => 'POST',
-	        'headers' => [
-	            'Authorization' => 'Bearer ' . $data['api_public_key'],
-	            'Content-Type'  => 'application/json',
-	        ],
+	    // Make the API call
+	    $response = wp_remote_post($url, [
+	        'method'  => 'POST',
 	        'timeout' => 30,
-	        'body' => wp_json_encode($data),
-			'sslverify' => true,
+	        'body'    => $data,
+	        'headers' => [
+	            'Content-Type'  => 'application/x-www-form-urlencoded',
+	            'Authorization' => 'Bearer ' . $data['api_public_key'],
+	        ],
+	        'sslverify' => true,
 	    ]);
 
 	    if (is_wp_error($response)) {
@@ -1403,11 +1344,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	    $response_data = json_decode($response_body, true);
 
 	    // Cache the response
-	    set_transient($cache_key, $response_data, $ttl); // Default 120s, can be overridden
+	    set_transient($cache_key, $response_data, $ttl);
 
 	    return $response_data;
 	}
-
 
 	private function get_all_accounts()
 	{
