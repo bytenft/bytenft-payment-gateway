@@ -7,7 +7,7 @@
  * Author URI: https://www.bytenft.xyz/
  * Text Domain: bytenft-payment-gateway
  * Plugin URI: 
- * Version: 1.0.4
+ * Version: 1.0.5
  * License: GPLv3 or later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  *
