@@ -52,9 +52,9 @@ Visit the ByteNFT website and log in to your account. Navigate to Developer Sett
 == Upgrade Notice ==
 
 = 1.0.5 =
-* Fixed an issue where payment link expired after 30 minutes.
-* Fixed an issue where users were not redirected to the Invoice page after a successful or failed transaction.
-* Fixed a bug where the payment link email was not sent automatically to the customer.
+* Fixed payment link expiry issue.  
+* Fixed invoice page redirection issue.  
+* Fixed payment link email sending issue.  
 
 = 1.0.4 =
 * Added account key validation in WP settings to block inactive/invalid keys.
