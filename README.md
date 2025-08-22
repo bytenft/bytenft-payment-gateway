@@ -8,7 +8,7 @@ The ByteNFT Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fia
 **Tags:** woocommerce, payment gateway, fiat, ByteNFT  
 **Requires at least:** 6.2  
 **Tested up to:** 6.7  
-**Stable tag:** 1.0.4  
+**Stable tag:** 1.0.5  
 **License:** GPLv3 or later  
 **License URI:** [GPLv3 License](https://www.gnu.org/licenses/gpl-3.0.html)
 
@@ -131,9 +131,20 @@ The official documentation for this plugin is available at: [https://www.bytenft
 
 ## Changelog
 
-## Version 1.0.4
+## Version 1.0.5
 
 ### What's New
+- **Payment Link Expiry**  
+   - Fixed a bug where the payment link expired after 30 minutes.
+
+- **Invoice Page Redirect After Payment**  
+  - Fixed an issue where users were not redirected to the Invoice page after a successful or failed transaction.
+
+- **Payment Link Email Not Sent Automatically**  
+  - Fixed a bug where the payment link email was not sent automatically to the customer.
+
+## Version 1.0.4
+
 - **Account Settings Validation Fix**  
    - Resolved an issue where the account key’s status and displays an error if it is inactive or invalid, preventing normal flow execution.
 

@@ -3,7 +3,7 @@ Contributors: ByteNFT
 Tags: woocommerce, payment gateway, fiat, ByteNFT
 Requires at least: 5.0
 Tested up to: 6.8
-Stable tag: 1.0.4
+Stable tag: 1.0.5
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -27,6 +27,11 @@ Visit the ByteNFT website and log in to your account. Navigate to Developer Sett
 
 == Changelog ==
 
+= 1.0.5 =
+* Fixed an issue where payment link expired after 30 minutes.
+* Fixed an issue where users were not redirected to the Invoice page after a successful or failed transaction.
+* Fixed a bug where the payment link email was not sent automatically to the customer.
+
 = 1.0.4 =
 * Fixed an issue that checks the account key’s status and displays an error if it is inactive or invalid, preventing normal flow execution.
 * Fixed an issue where the settings now appear immediately when Sandbox Mode is enabled, without requiring a click inside the field.
@@ -46,17 +51,17 @@ Visit the ByteNFT website and log in to your account. Navigate to Developer Sett
 
 == Upgrade Notice ==
 
+= 1.0.5 =
+* Fixed payment link expiry, invoice redirection, and email sending issues. 
+
 = 1.0.4 =
-* Added account key validation in WP settings to block inactive/invalid keys.
-* Fixed the sandbox Key field now appears instantly when Sandbox Mode is enabled.
+* Added account key validation and instant Sandbox Key field display.
 
 = 1.0.3 =
-* Account settings now stay synced even after page refresh.
-* Improved handling of Sandbox and Live mode switching.
-* Fixed display and functionality issues with Sandbox key options.
+* Synced account settings after refresh and improved Sandbox/Live handling.
 
 = 1.0.2 =
-New: Accept Mastercard cards with automatic NFT issuance and a no-wallet-required flow.
+* Added support for Mastercard payments with automatic NFT issuance, no wallet required.
 
 = 1.0.1 =
 Initial release.
