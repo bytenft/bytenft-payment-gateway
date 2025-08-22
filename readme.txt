@@ -52,21 +52,16 @@ Visit the ByteNFT website and log in to your account. Navigate to Developer Sett
 == Upgrade Notice ==
 
 = 1.0.5 =
-* Fixed payment link expiry issue.  
-* Fixed invoice page redirection issue.  
-* Fixed payment link email sending issue.  
+* Fixed payment link expiry, invoice redirection, and email sending issues. 
 
 = 1.0.4 =
-* Added account key validation in WP settings to block inactive/invalid keys.
-* Fixed the sandbox Key field now appears instantly when Sandbox Mode is enabled.
+* Added account key validation and instant Sandbox Key field display.
 
 = 1.0.3 =
-* Account settings now stay synced even after page refresh.
-* Improved handling of Sandbox and Live mode switching.
-* Fixed display and functionality issues with Sandbox key options.
+* Synced account settings after refresh and improved Sandbox/Live handling.
 
 = 1.0.2 =
-New: Accept Mastercard cards with automatic NFT issuance and a no-wallet-required flow.
+* Added support for Mastercard payments with automatic NFT issuance, no wallet required.
 
 = 1.0.1 =
 Initial release.
