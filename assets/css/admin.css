@@ -1,36 +1,36 @@
-.bnfttransak-accounts-container {
+.bytenft-accounts-container {
 	max-width: 600px;
 }
 
-.bnfttransak-accounts-container .title-priority {
+.bytenft-accounts-container .title-priority {
 	display: flex;
 }
 
-.bnfttransak-accounts-container .title-priority .account-name {
+.bytenft-accounts-container .title-priority .account-name {
 	width: 70% !important;
 }
 
-.bnfttransak-accounts-container .title-priority .priority-name {
+.bytenft-accounts-container .title-priority .priority-name {
 	width: 28% !important;
 }
 
-.bnfttransak-accounts-container .rotated {
+.bytenft-accounts-container .rotated {
 	transform: rotate(180deg);
 }
 
-.bnfttransak-instructions-url,
-.bnfttransak-instructions-url:hover {
+.bytenft-instructions-url,
+.bytenft-instructions-url:hover {
 	color: #8264D7;
 }
 
-.bnfttransak-accounts-container .bnfttransak-account {
+.bytenft-accounts-container .bytenft-account {
 	margin-bottom: 14px !important;
 	border: 1px solid #C5C5C5;
 	border-radius: 7px;
 	padding: 12px;
 }
 
-.bnfttransak-accounts-container .add-blog {
+.bytenft-accounts-container .add-blog {
 	align-items: start;
 	flex-wrap: wrap;
 	margin-bottom: 10px;
@@ -38,13 +38,13 @@
 	justify-content: space-between;
 }
 
-.bnfttransak-accounts-container .account-input input {
+.bytenft-accounts-container .account-input input {
 	width: 100% !important;
 	margin-bottom: 8px !important;
 	margin-right: 8px !important;
 }
 
-.bnfttransak-accounts-container h4 {
+.bytenft-accounts-container h4 {
 	font-size: 17px !important;
 	margin-top: 0 !important;
 	margin-bottom: 0px !important;
@@ -52,7 +52,7 @@
 	align-items: center !important;
 }
 
-.bnfttransak-accounts-container h4 i {
+.bytenft-accounts-container h4 i {
 	font-size: 13px !important;
 	margin-right: 6px !important;
 	cursor: pointer;
@@ -67,12 +67,12 @@
 	margin-bottom: 20px !important;
 }
 
-.bnfttransak-accounts-container .action-button {
+.bytenft-accounts-container .action-button {
 	display: flex !important;
 	align-items: center !important;
 }
 
-.bnfttransak-accounts-container .action-button button {
+.bytenft-accounts-container .action-button button {
 	color: #6B6B6B;
 	font-size: 14px !important;
 	background: transparent;
@@ -80,7 +80,7 @@
 	cursor: pointer;
 }
 
-.bnfttransak-accounts-container .bnfttransak-account .active-indicator {
+.bytenft-accounts-container .bytenft-account .active-indicator {
 	font-size: 14px !important;
 	color: #28A745 !important;
 	background: #E7F5EB !important;
@@ -90,12 +90,12 @@
 	margin-right: 8px;
 }
 
-.bnfttransak-accounts-container .account-input label {
+.bytenft-accounts-container .account-input label {
 	display: block !important;
 	margin-bottom: 5px !important;
 }
 
-.bnfttransak-accounts-container .add-account-btn .bnfttransak-add-account {
+.bytenft-accounts-container .add-account-btn .bytenft-add-account {
 	border-radius: 5px;
 	background: #0A0B21;
 	color: #F5F5F5;
@@ -109,37 +109,37 @@
 	line-height: 19px !important;
 }
 
-.bnfttransak-accounts-container .add-account-btn .bnfttransak-add-account span {
+.bytenft-accounts-container .add-account-btn .bytenft-add-account span {
 	font-size: 19px;
 	line-height: 12px;
 }
 
-.bnfttransak-accounts-container .account-info {
+.bytenft-accounts-container .account-info {
 	display: none;
 	margin-top: 18px !important;
 }
 
-.bnfttransak-accounts-container .account-toggle-btn {
+.bytenft-accounts-container .account-toggle-btn {
 	color: #6B6B6B;
 	font-size: 17px !important;
 	margin-left: 8px !important;
 }
 
-.bnfttransak-accounts-container .account-checkbox {
+.bytenft-accounts-container .account-checkbox {
 	font-size: 14px !important;
 	display: flex !important;
 	align-items: center !important;
 	margin: 10px 0 15px !important;
 }
 
-.bnfttransak-accounts-container .account-checkbox input {
+.bytenft-accounts-container .account-checkbox input {
 	width: 15px !important;
 	height: 15px !important;
 	margin-right: 5px !important;
 	margin-left: 0 !important;
 }
 
-.bnfttransak-accounts-container .title-blog {
+.bytenft-accounts-container .title-blog {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -175,18 +175,18 @@
 	background-color: #dc3545;
 }
 
-#bnfttransak-sync-status {
+#bytenft-sync-status {
 	padding-right: 10px;
 }
 
-.bnfttransak-sync-account {
+.bytenft-sync-account {
 	justify-content: end;
 	align-items: center;
 	display: flex;
 	margin-bottom: 15px !important;
 }
 
-.bnfttransak-sync-account button {
+.bytenft-sync-account button {
 	border: 1px solid #8264D7 !important;
 	color: #8264D7 !important;
 	background: #8264D717 !important;
@@ -197,11 +197,11 @@
 	cursor: pointer;
 }
 
-.bnfttransak-sync-account .success {
+.bytenft-sync-account .success {
 	color: #28A745 !important;
 }
 
-.bnfttransak-accounts-container input.error {
+.bytenft-accounts-container input.error {
 	border: 1px solid #dc3545;
 	background-color: #fff0f0;
 	color: #dc3545;

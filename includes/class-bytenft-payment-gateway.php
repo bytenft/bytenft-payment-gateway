@@ -6,11 +6,11 @@ if (!defined('ABSPATH')) {
 require_once plugin_dir_path(__FILE__) . 'config.php';
 
 /**
- * Main WooCommerce ByteNFT transak Payment Gateway class.
+ * Main WooCommerce ByteNFT Payment Gateway class.
  */
-class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
+class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 {
-	const ID = 'bnfttransak';
+	const ID = 'bytenft';
 
 	protected $sandbox;
 	private $base_url;
@@ -37,18 +37,18 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// Instantiate the notices class
-		$this->admin_notices = new BYTENFT_TRANSAK_PAYMENT_GATEWAY_Admin_Notices();
+		$this->admin_notices = new BYTENFT_PAYMENT_GATEWAY_Admin_Notices();
 
-		$this->base_url = BYTENFT_TRANSAK_BASE_URL;
+		$this->base_url = BYTENFT_BASE_URL;
 		
 		// Define user set variables
 		$this->id = self::ID;
 		$this->icon = ''; // Define an icon URL if needed.
-		$this->method_title = __('ByteNFT transak Payment Gateway', 'bytenft-transak-payment-gateway');
-		$this->method_description = __('This plugin allows you to accept payments in USD through a secure payment gateway integration. Customers can complete their payment process with ease and security.', 'bytenft-transak-payment-gateway');
+		$this->method_title = __('ByteNFT Payment Gateway', 'bytenft-payment-gateway');
+		$this->method_description = __('This plugin allows you to accept payments in USD through a secure payment gateway integration. Customers can complete their payment process with ease and security.', 'bytenft-payment-gateway');
 
 		// Load the settings
-		$this->bnfttransak_init_form_fields();
+		$this->bytenft_init_form_fields();
 		$this->init_settings();
 		$this->load_gateway_settings();
 
@@ -76,13 +76,13 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * Register hooks for the gateway.
 	 */
 	private function register_hooks() {
-		add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'bnfttransak_process_admin_options']);
-		add_action('wp_enqueue_scripts', [$this, 'bnfttransak_enqueue_styles_and_scripts']);
-		add_action('admin_enqueue_scripts', [$this, 'bnfttransak_admin_scripts']);
+		add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'bytenft_process_admin_options']);
+		add_action('wp_enqueue_scripts', [$this, 'bytenft_enqueue_styles_and_scripts']);
+		add_action('admin_enqueue_scripts', [$this, 'bytenft_admin_scripts']);
 
-		add_action('woocommerce_admin_order_data_after_order_details', [$this, 'bnfttransak_display_test_order_tag']);
-		add_filter('woocommerce_admin_order_preview_line_items', [$this, 'bnfttransak_add_custom_label_to_order_row'], 10, 2);
-		add_filter('woocommerce_available_payment_gateways', [$this, 'bnft_transak_hide_custom_payment_gateway_conditionally']);
+		add_action('woocommerce_admin_order_data_after_order_details', [$this, 'bytenft_display_test_order_tag']);
+		add_filter('woocommerce_admin_order_preview_line_items', [$this, 'bytenft_add_custom_label_to_order_row'], 10, 2);
+		add_filter('woocommerce_available_payment_gateways', [$this, 'bytenft_hide_custom_payment_gateway_conditionally']);
 	}
 
 	/**
@@ -98,7 +98,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	protected function log_info($message, $context = [])
 	{
 	    $logger = wc_get_logger();
-	    $data = ['source' => 'bytenft-transak-payment-gateway'];
+	    $data = ['source' => 'bytenft-payment-gateway'];
 
 	    if (!empty($context)) {
 	        $data['context'] = $context;
@@ -107,12 +107,12 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	    $logger->info($message, $data);
 	}
 		
-	public function bnfttransak_process_admin_options() {
+	public function bytenft_process_admin_options() {
 	    parent::process_admin_options();
 
-	    if (!isset($_POST['bnfttransak_accounts_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['bnfttransak_accounts_nonce'])), 'bnfttransak_accounts_nonce_action')) {
+	    if (!isset($_POST['bytenft_accounts_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['bytenft_accounts_nonce'])), 'bytenft_accounts_nonce_action')) {
 	        $this->log_info('CSRF check failed during admin options update.');
-	        wp_die(esc_html__('Security check failed!', 'bytenft-transak-payment-gateway'));
+	        wp_die(esc_html__('Security check failed!', 'bytenft-payment-gateway'));
 	    }
 
 	    $errors = [];
@@ -140,7 +140,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 	    if (!is_array($raw_accounts) || empty($raw_accounts)) {
-	        $errors[] = __('You cannot delete all accounts. At least one valid payment account must be configured.', 'bytenft-transak-payment-gateway');
+	        $errors[] = __('You cannot delete all accounts. At least one valid payment account must be configured.', 'bytenft-payment-gateway');
 	        $this->log_info('No accounts submitted in admin options.');
 	    }
 
@@ -167,7 +167,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	        if (empty($account_title) || empty($live_public_key) || empty($live_secret_key)) {
 				// translators: %s: The account title entered by the user.
-			    $errors[] = sprintf(__( 'Account "%s": Title, Live Public Key, and Live Secret Key are required.', 'bytenft-transak-payment-gateway' ),$account_title);
+			    $errors[] = sprintf(__( 'Account "%s": Title, Live Public Key, and Live Secret Key are required.', 'bytenft-payment-gateway' ),$account_title);
 			    $this->log_info("Validation failed: missing required fields for account '{$account_title}'");
 			    continue;
 			}
@@ -176,14 +176,14 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	        $live_combined = $live_public_key . '|' . $live_secret_key;
 	        if (in_array($live_combined, $unique_live_keys, true)) {
 				// translators: %s: Live Public Key.
-	            $errors[] = sprintf(__('Account "%s": Live Public Key and Live Secret Key must be unique.', 'bytenft-transak-payment-gateway'), $account_title);
+	            $errors[] = sprintf(__('Account "%s": Live Public Key and Live Secret Key must be unique.', 'bytenft-payment-gateway'), $account_title);
 	            $this->log_info("Validation failed: duplicate live keys for account '{$account_title}'");
 	            continue;
 	        }
 
 	        if ($live_public_key === $live_secret_key) {
 				// translators: %s: Live Public Key.
-	            $errors[] = sprintf(__('Account "%s": Live Public Key and Live Secret Key must be different.', 'bytenft-transak-payment-gateway'), $account_title);
+	            $errors[] = sprintf(__('Account "%s": Live Public Key and Live Secret Key must be different.', 'bytenft-payment-gateway'), $account_title);
 	            $this->log_info("Validation warning: live keys are identical for account '{$account_title}'");
 	        }
 
@@ -194,14 +194,14 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	            if (in_array($sandbox_combined, $unique_sandbox_keys, true)) {
 					// translators: %s: Sandbox Public Key and Sandbox Secret Key.
-	                $errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key must be unique.', 'bytenft-transak-payment-gateway'), $account_title);
+	                $errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key must be unique.', 'bytenft-payment-gateway'), $account_title);
 	                $this->log_info("Validation failed: duplicate sandbox keys for account '{$account_title}'");
 	                continue;
 	            }
 
 	            if ($sandbox_public_key === $sandbox_secret_key) {
 					// translators: %s: Sandbox Public Key and Sandbox Secret Key.
-	                $errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key must be different.', 'bytenft-transak-payment-gateway'), $account_title);
+	                $errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key must be different.', 'bytenft-payment-gateway'), $account_title);
 	                $this->log_info("Validation warning: sandbox keys are identical for account '{$account_title}'");
 	            }
 
@@ -224,25 +224,25 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	    }
 
 	    if (empty($valid_accounts) && empty($errors)) {
-	        $errors[] = __('You cannot delete all accounts. At least one valid payment account must be configured.', 'bytenft-transak-payment-gateway');
+	        $errors[] = __('You cannot delete all accounts. At least one valid payment account must be configured.', 'bytenft-payment-gateway');
 	        $this->log_info('All submitted accounts failed validation. No accounts will be saved.');
 	    }
 
 	    if (empty($errors)) {
-	        update_option('woocommerce_bnfttransak_payment_gateway_accounts', $valid_accounts);
-	        $this->admin_notices->bnfttransak_add_notice('settings_success', 'notice notice-success', __('Settings saved successfully.', 'bytenft-transak-payment-gateway'));
+	        update_option('woocommerce_bytenft_payment_gateway_accounts', $valid_accounts);
+	        $this->admin_notices->bytenft_add_notice('settings_success', 'notice notice-success', __('Settings saved successfully.', 'bytenft-payment-gateway'));
 	        $this->log_info('Account settings updated successfully.', ['count' => count($valid_accounts)]);
 
-	        if (class_exists('BYTENFT_TRANSAK_PAYMENT_GATEWAY_Loader')) {
-	            $loader = BYTENFT_TRANSAK_PAYMENT_GATEWAY_Loader::get_instance();
+	        if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
+	            $loader = BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
 	            if (method_exists($loader, 'handle_cron_event')) {
 	                $loader->handle_cron_event();
-	                $this->log_info('Triggered BYTENFT_TRANSAK_PAYMENT_GATEWAY_Loader::handle_cron_event() after settings save.');
+	                $this->log_info('Triggered BYTENFT_PAYMENT_GATEWAY_Loader::handle_cron_event() after settings save.');
 	            }
 	        }
 	    } else {
 	        foreach ($errors as $error) {
-	            $this->admin_notices->bnfttransak_add_notice('settings_error', 'notice notice-error', $error);
+	            $this->admin_notices->bytenft_add_notice('settings_error', 'notice notice-error', $error);
 	            $this->log_info("Admin settings error: {$error}");
 	        }
 	    }
@@ -318,42 +318,42 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	/**
 	 * Initialize gateway settings form fields.
 	 */
-	public function bnfttransak_init_form_fields()
+	public function bytenft_init_form_fields()
 	{
-		$this->form_fields = $this->bnfttransak_get_form_fields();
+		$this->form_fields = $this->bytenft_get_form_fields();
 	}
 
 	/**
 	 * Get form fields.
 	 */
-	public function bnfttransak_get_form_fields() {
+	public function bytenft_get_form_fields() {
 	    $dev_instructions_link = sprintf(
-	        '<strong><a class="bnfttransak-instructions-url" href="%s" target="_blank">%s</a></strong><br>',
+	        '<strong><a class="bytenft-instructions-url" href="%s" target="_blank">%s</a></strong><br>',
 	        esc_url($this->base_url . '/developers'),
-	        __('click here to access your developer account', 'bytenft-transak-payment-gateway')
+	        __('click here to access your developer account', 'bytenft-payment-gateway')
 	    );
 
 	    return apply_filters('woocommerce_gateway_settings_fields_' . $this->id, [
 
 	        'enabled' => [
-	            'title'       => __('Enable/Disable', 'bytenft-transak-payment-gateway'),
-	            'label'       => __('Enable ByteNFT transak Payment Gateway', 'bytenft-transak-payment-gateway'),
+	            'title'       => __('Enable/Disable', 'bytenft-payment-gateway'),
+	            'label'       => __('Enable ByteNFT Payment Gateway', 'bytenft-payment-gateway'),
 	            'type'        => 'checkbox',
 	            'default'     => 'yes',
 	        ],
 
 	        'title' => [
-	            'title'       => __('Title', 'bytenft-transak-payment-gateway'),
+	            'title'       => __('Title', 'bytenft-payment-gateway'),
 	            'type'        => 'text',
-	            'description' => __('This controls the title which the user sees during checkout.', 'bytenft-transak-payment-gateway'),
-	            'default'     => __('Pay with ByteNFT (Credit Cards, Apple Pay & Google Pay)', 'bytenft-transak-payment-gateway'),
+	            'description' => __('This controls the title which the user sees during checkout.', 'bytenft-payment-gateway'),
+	            'default'     => __('Pay with ByteNFT (Credit Cards, Apple Pay & Google Pay)', 'bytenft-payment-gateway'),
 	            'desc_tip'    => true,
 	        ],
 
 			'description' => [
-			    'title'       => __('Description', 'bytenft-transak-payment-gateway'),
+			    'title'       => __('Description', 'bytenft-payment-gateway'),
 			    'type'        => 'textarea',
-			    'description' => __('Provide a brief description of the payment option.', 'bytenft-transak-payment-gateway'),
+			    'description' => __('Provide a brief description of the payment option.', 'bytenft-payment-gateway'),
 			    'default'     => __(
 			        '<p style="margin:0 0 8px; font-weight:bold; font-size:14px;">Important Information about Your Purchase</p>
 
@@ -366,55 +366,55 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			        <p style="margin:0 0 6px; font-weight:bold; font-size:13px;">Bank Statement Information</p>
 			        <p style="margin:0; font-size:13px;">
-			            On your bank or card statement, this transaction will appear as <em>“TRANSAK*BYTE”</em>.<br>
+			            On your bank or card statement, this transaction will appear as <em>“BYTE”</em>.<br>
 			            Make sure you recognize this description to avoid confusion when reviewing your statement.
 			        </p>',
-			        'bytenft-transak-payment-gateway'
+			        'bytenft-payment-gateway'
 			    ),
 			    'desc_tip'    => true,
 			],
 
 
 	         'instructions' => [
-	            'title'       => __('Instructions', 'bytenft-transak-payment-gateway'),
+	            'title'       => __('Instructions', 'bytenft-payment-gateway'),
 	            'type'        => 'title',
 				// translators: 1: Opening HTML link tag for "Get your API keys" instructions, 2: Closing HTML link tag.
-	            'description' => sprintf(__('To configure this gateway, %1$sGet your API keys from your merchant account: Developer Settings > API Keys.%2$s', 'bytenft-transak-payment-gateway'),$dev_instructions_link,''),
+	            'description' => sprintf(__('To configure this gateway, %1$sGet your API keys from your merchant account: Developer Settings > API Keys.%2$s', 'bytenft-payment-gateway'),$dev_instructions_link,''),
 	            'desc_tip'    => true,
 	        ],
 
 	        'sandbox' => [
-	            'title'       => __('Sandbox', 'bytenft-transak-payment-gateway'),
-	            'label'       => __('Enable Sandbox Mode', 'bytenft-transak-payment-gateway'),
+	            'title'       => __('Sandbox', 'bytenft-payment-gateway'),
+	            'label'       => __('Enable Sandbox Mode', 'bytenft-payment-gateway'),
 	            'type'        => 'checkbox',
-	            'description' => __('Use sandbox API keys (real payments will not be taken).', 'bytenft-transak-payment-gateway'),
+	            'description' => __('Use sandbox API keys (real payments will not be taken).', 'bytenft-payment-gateway'),
 	            'default'     => 'no',
 	        ],
 
 	        'accounts' => [
-	            'title'       => __('Payment Accounts', 'bytenft-transak-payment-gateway'),
+	            'title'       => __('Payment Accounts', 'bytenft-payment-gateway'),
 	            'type'        => 'accounts_repeater',
-	            'description' => __('Add multiple payment accounts dynamically.', 'bytenft-transak-payment-gateway'),
+	            'description' => __('Add multiple payment accounts dynamically.', 'bytenft-payment-gateway'),
 	        ],
 
 	        'order_status' => [
-	            'title'       => __('Order Status', 'bytenft-transak-payment-gateway'),
+	            'title'       => __('Order Status', 'bytenft-payment-gateway'),
 	            'type'        => 'select',
-	            'description' => __('Order status after successful payment.', 'bytenft-transak-payment-gateway'),
+	            'description' => __('Order status after successful payment.', 'bytenft-payment-gateway'),
 	            'default'     => '',
 	            'id'          => 'order_status_select',
 	            'desc_tip'    => true,
 	            'options'     => [
-	                'processing' => __('Processing', 'bytenft-transak-payment-gateway'),
-	                'completed'  => __('Completed', 'bytenft-transak-payment-gateway'),
+	                'processing' => __('Processing', 'bytenft-payment-gateway'),
+	                'completed'  => __('Completed', 'bytenft-payment-gateway'),
 	            ],
 	        ],
 
 	        'show_consent_checkbox' => [
-	            'title'       => __('Show Consent Checkbox', 'bytenft-transak-payment-gateway'),
-	            'label'       => __('Enable consent checkbox on checkout page', 'bytenft-transak-payment-gateway'),
+	            'title'       => __('Show Consent Checkbox', 'bytenft-payment-gateway'),
+	            'label'       => __('Enable consent checkbox on checkout page', 'bytenft-payment-gateway'),
 	            'type'        => 'checkbox',
-	            'description' => __('Show a checkbox for user consent during checkout.', 'bytenft-transak-payment-gateway'),
+	            'description' => __('Show a checkbox for user consent during checkout.', 'bytenft-payment-gateway'),
 	            'default'     => 'no',
 	        ],
 
@@ -425,10 +425,10 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	public function generate_accounts_repeater_html($key, $data)
 	{
 
-		$option_value = get_option('woocommerce_bnfttransak_payment_gateway_accounts', []);
+		$option_value = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
 		$option_value = maybe_unserialize($option_value);
-		$active_account = get_option('bnfttransak_active_account', 0); // Store active account ID
-		$global_settings = get_option('woocommerce_bnfttransak_settings', []);
+		$active_account = get_option('bytenft_active_account', 0); // Store active account ID
+		$global_settings = get_option('woocommerce_bytenft_settings', []);
 		$global_settings = maybe_unserialize($global_settings);
 		$sandbox_enabled = !empty($global_settings['sandbox']) && $global_settings['sandbox'] === 'yes';
 
@@ -440,24 +440,24 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			</th>
 			<td class="forminp">
 				<div id="global-error" class="error-message" style="color: red; margin-bottom: 10px;"></div>
-				<div class="bnfttransak-accounts-container">
+				<div class="bytenft-accounts-container">
 					<?php if (!empty($option_value)): ?>
-						<div class="bnfttransak-sync-account">
-							<span id="bnfttransak-sync-status"></span>
-							<button class="button" class="bnfttransak-sync-accounts" id="bnfttransak-sync-accounts"><span><i class="fa fa-refresh" aria-hidden="true"></i></span> <?php esc_html_e('Sync Accounts', 'bytenft-transak-payment-gateway'); ?></button>
+						<div class="bytenft-sync-account">
+							<span id="bytenft-sync-status"></span>
+							<button class="button" class="bytenft-sync-accounts" id="bytenft-sync-accounts"><span><i class="fa fa-refresh" aria-hidden="true"></i></span> <?php esc_html_e('Sync Accounts', 'bytenft-payment-gateway'); ?></button>
 						</div>
 					<?php endif; ?>
 
 
 					<?php if (empty($option_value)): ?>
-						<div class="empty-account"><?php esc_html_e('No accounts available. Please add one to continue.', 'bytenft-transak-payment-gateway'); ?></div>
+						<div class="empty-account"><?php esc_html_e('No accounts available. Please add one to continue.', 'bytenft-payment-gateway'); ?></div>
 					<?php else: ?>
 						<?php foreach (array_values($option_value) as $index => $account): ?>
 							<?php
 							$live_status = (!empty($account['live_status'])) ? $account['live_status'] : '';
 							$sandbox_status = (!empty($account['sandbox_status'])) ? $account['sandbox_status'] : 'unknown';
 							?>
-							<div class="bnfttransak-account" data-index="<?php echo esc_attr($index); ?>">
+							<div class="bytenft-account" data-index="<?php echo esc_attr($index); ?>">
 								<input type="hidden" name="accounts[<?php echo esc_attr($index); ?>][live_status]"
 									value="<?php echo esc_attr($account['live_status'] ?? ''); ?>">
 								<input type="hidden" name="accounts[<?php echo esc_attr($index); ?>][sandbox_status]"
@@ -466,7 +466,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 									<h4>
 										<span class="account-name-display">
-											<?php echo !empty($account['title']) ? esc_html($account['title']) : esc_html__('Untitled Account', 'bytenft-transak-payment-gateway'); ?>
+											<?php echo !empty($account['title']) ? esc_html($account['title']) : esc_html__('Untitled Account', 'bytenft-payment-gateway'); ?>
 										</span>
 										&nbsp;<i class="fa fa-caret-down <?php echo esc_attr($this->id); ?>-toggle-btn" aria-hidden="true"></i>
 									</h4>
@@ -478,9 +478,9 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 									    <?php echo esc_attr(strtolower($sandbox_enabled ? ($sandbox_status ?? '') : ($live_status ?? ''))); ?>">
 												<?php
 												if ($sandbox_enabled) {
-													echo esc_html__('Sandbox Account Status: ', 'bytenft-transak-payment-gateway') . esc_html(ucfirst($sandbox_status));
+													echo esc_html__('Sandbox Account Status: ', 'bytenft-payment-gateway') . esc_html(ucfirst($sandbox_status));
 												} else {
-													echo esc_html__('Live Account Status: ', 'bytenft-transak-payment-gateway') . esc_html(ucfirst($live_status));
+													echo esc_html__('Live Account Status: ', 'bytenft-payment-gateway') . esc_html(ucfirst($live_status));
 												} ?>
 											</span>
 										</div>
@@ -493,17 +493,17 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 								<div class="<?php echo esc_attr($this->id); ?>-info">
 									<div class="add-blog title-priority">
 										<div class="account-input account-name">
-											<label><?php esc_html_e('Account Name', 'bytenft-transak-payment-gateway'); ?></label>
+											<label><?php esc_html_e('Account Name', 'bytenft-payment-gateway'); ?></label>
 											<input type="text" class="account-title"
 												name="accounts[<?php echo esc_attr($index); ?>][title]"
-												placeholder="<?php esc_attr_e('Account Title', 'bytenft-transak-payment-gateway'); ?>"
+												placeholder="<?php esc_attr_e('Account Title', 'bytenft-payment-gateway'); ?>"
 												value="<?php echo esc_attr($account['title'] ?? ''); ?>">
 										</div>
 										<div class="account-input priority-name">
-											<label><?php esc_html_e('Priority', 'bytenft-transak-payment-gateway'); ?></label>
+											<label><?php esc_html_e('Priority', 'bytenft-payment-gateway'); ?></label>
 											<input type="number" class="account-priority"
 												name="accounts[<?php echo esc_attr($index); ?>][priority]"
-												placeholder="<?php esc_attr_e('Priority', 'bytenft-transak-payment-gateway'); ?>"
+												placeholder="<?php esc_attr_e('Priority', 'bytenft-payment-gateway'); ?>"
 												value="<?php echo esc_attr($account['priority'] ?? '1'); ?>" min="1">
 										</div>
 									</div>
@@ -511,16 +511,16 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 									<div class="add-blog">
 
 										<div class="account-input">
-											<label><?php esc_html_e('Live Keys', 'bytenft-transak-payment-gateway'); ?></label>
+											<label><?php esc_html_e('Live Keys', 'bytenft-payment-gateway'); ?></label>
 											<input type="text" class="live-public-key"
 												name="accounts[<?php echo esc_attr($index); ?>][live_public_key]"
-												placeholder="<?php esc_attr_e('Public Key', 'bytenft-transak-payment-gateway'); ?>"
+												placeholder="<?php esc_attr_e('Public Key', 'bytenft-payment-gateway'); ?>"
 												value="<?php echo esc_attr($account['live_public_key'] ?? ''); ?>">
 										</div>
 										<div class="account-input">
 											<input type="text" class="live-secret-key"
 												name="accounts[<?php echo esc_attr($index); ?>][live_secret_key]"
-												placeholder="<?php esc_attr_e('Secret Key', 'bytenft-transak-payment-gateway'); ?>"
+												placeholder="<?php esc_attr_e('Secret Key', 'bytenft-payment-gateway'); ?>"
 												value="<?php echo esc_attr($account['live_secret_key'] ?? ''); ?>">
 										</div>
 									</div>
@@ -536,7 +536,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 											name="accounts[<?php echo esc_attr( $index ); ?>][has_sandbox]"
 											<?php checked( $account['has_sandbox'] == 'on' ); ?>>
 										<label for="<?php echo esc_attr( $checkbox_id ); ?>">
-											<?php esc_html_e( 'Do you have the sandbox keys?', 'bytenft-transak-payment-gateway' ); ?>
+											<?php esc_html_e( 'Do you have the sandbox keys?', 'bytenft-payment-gateway' ); ?>
 										</label>
 									</div>
 
@@ -551,16 +551,16 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 									    <div class="add-blog">
 									        <div class="account-input">
-									            <label><?php esc_html_e('Sandbox Keys', 'bytenft-transak-payment-gateway'); ?></label>
+									            <label><?php esc_html_e('Sandbox Keys', 'bytenft-payment-gateway'); ?></label>
 									            <input type="text" class="sandbox-public-key"
 									                   name="accounts[<?php echo esc_attr($index); ?>][sandbox_public_key]"
-									                   placeholder="<?php esc_attr_e('Public Key', 'bytenft-transak-payment-gateway'); ?>"
+									                   placeholder="<?php esc_attr_e('Public Key', 'bytenft-payment-gateway'); ?>"
 									                   value="<?php echo esc_attr($account['sandbox_public_key'] ?? ''); ?>">
 									        </div>
 									        <div class="account-input">
 									            <input type="text" class="sandbox-secret-key"
 									                   name="accounts[<?php echo esc_attr($index); ?>][sandbox_secret_key]"
-									                   placeholder="<?php esc_attr_e('Secret Key', 'bytenft-transak-payment-gateway'); ?>"
+									                   placeholder="<?php esc_attr_e('Secret Key', 'bytenft-payment-gateway'); ?>"
 									                   value="<?php echo esc_attr($account['sandbox_secret_key'] ?? ''); ?>">
 									        </div>
 									    </div>
@@ -569,10 +569,10 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 							</div>
 						<?php endforeach; ?>
 					<?php endif; ?>
-					<?php wp_nonce_field('bnfttransak_accounts_nonce_action', 'bnfttransak_accounts_nonce'); ?>
+					<?php wp_nonce_field('bytenft_accounts_nonce_action', 'bytenft_accounts_nonce'); ?>
 					<div class="add-account-btn">
-						<button type="button" class="button bnfttransak-add-account">
-							<span>+</span> <?php esc_html_e('Add Account', 'bytenft-transak-payment-gateway'); ?>
+						<button type="button" class="button bytenft-add-account">
+							<span>+</span> <?php esc_html_e('Add Account', 'bytenft-payment-gateway'); ?>
 						</button>
 					</div>
 				</div>
@@ -590,7 +590,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	public function process_payment($order_id, $used_accounts = [])
 	{
 		global $wpdb;
-		$logger_context = ['source' => 'bytenft-transak-payment-gateway'];
+		$logger_context = ['source' => 'bytenft-payment-gateway'];
 
 		// Retrieve client IP
 		$ip_address = isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'])) : '';
@@ -610,7 +610,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		if (count($request_timestamps) >= $max_requests) {
 			wc_get_logger()->warning("Rate limit exceeded for IP: {$ip_address}", $logger_context);
-			wc_add_notice(__('Too many requests. Please try again later.', 'bytenft-transak-payment-gateway'), 'error');
+			wc_add_notice(__('Too many requests. Please try again later.', 'bytenft-payment-gateway'), 'error');
 			return ['result' => 'fail'];
 		}
 
@@ -622,13 +622,13 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$order = wc_get_order($order_id);
 		if (!$order) {
 			wc_get_logger()->error("Invalid order ID: {$order_id}", $logger_context);
-			wc_add_notice(__('Invalid order.', 'bytenft-transak-payment-gateway'), 'error');
+			wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
 			return ['result' => 'fail'];
 		}
 
 		// **Sandbox Mode Handling**
 		if ($this->sandbox) {
-			$test_note = __('This is a test order processed in sandbox mode.', 'bytenft-transak-payment-gateway');
+			$test_note = __('This is a test order processed in sandbox mode.', 'bytenft-payment-gateway');
 			$existing_notes = get_comments(['post_id' => $order->get_id(), 'type' => 'order_note', 'approve' => 'approve']);
 
 			if (!array_filter($existing_notes, fn($note) => trim($note->comment_content) === trim($test_note))) {
@@ -649,7 +649,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					wc_get_logger()->info("Sending notification to account '{$last_failed_account['title']}' due to no available alternatives.", $logger_context);
 					$this->send_account_switch_email($last_failed_account, $account);
 				}
-				wc_add_notice(__('No available payment accounts.', 'bytenft-transak-payment-gateway'), 'error');
+				wc_add_notice(__('No available payment accounts.', 'bytenft-payment-gateway'), 'error');
 				return ['result' => 'fail'];
 			}
 
@@ -680,7 +680,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			    $merchant_status_response['status'] !== 'success'
 			) {
 			    wc_get_logger()->warning("Account '{$account['title']}' failed merchant status check.", [
-			        'source'  => 'bytenft-transak-payment-gateway',
+			        'source'  => 'bytenft-payment-gateway',
 			        'context' => [
 			            'order_id'      => $order_id,
 			            'account_title' => $account['title'] ?? 'unknown',
@@ -704,10 +704,10 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$lock_key = $raw_lock_key ? preg_replace('/\s+/', '_', trim($raw_lock_key)) : null;
 
 			// Add order note mentioning account name
-			$order->add_order_note(__('Processing Payment Via: ', 'bytenft-transak-payment-gateway') . $account['title']);
+			$order->add_order_note(__('Processing Payment Via: ', 'bytenft-payment-gateway') . $account['title']);
 
 			// **Prepare API Data**
-			$data = $this->bnfttransak_prepare_payment_data($order, $public_key, $secret_key);
+			$data = $this->bytenft_prepare_payment_data($order, $public_key, $secret_key);
 
 			// **Check Transaction Limit**
 			$transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
@@ -754,7 +754,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					if ($last_failed_account) {
 						$this->send_account_switch_email($last_failed_account, $account);
 					}
-					wc_add_notice(__('All accounts have reached their transaction limit.', 'bytenft-transak-payment-gateway'), 'error');
+					wc_add_notice(__('All accounts have reached their transaction limit.', 'bytenft-payment-gateway'), 'error');
 					return ['result' => 'fail'];
 				}
 			}
@@ -764,7 +764,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$apiPath = '/api/request-payment';
 			$url = esc_url($this->base_url . $apiPath);
 
-			$order->update_meta_data('_order_origin', 'bnfttransak_payment_gateway');
+			$order->update_meta_data('_order_origin', 'bytenft_payment_gateway');
 			$order->save();
 
 			$response = wp_remote_post($url, [
@@ -784,7 +784,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				if (!empty($lock_key)) {
 					$this->release_lock($lock_key);
 				}
-				wc_add_notice(__('Payment error: Unable to process.', 'bytenft-transak-payment-gateway'), 'error');
+				wc_add_notice(__('Payment error: Unable to process.', 'bytenft-payment-gateway'), 'error');
 				return ['result' => 'fail'];
 			}
 
@@ -793,7 +793,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			wc_get_logger()->info(
 			    'Payment API raw response',
 			    [
-			        'source'  => 'bytenft-transak-payment-gateway',
+			        'source'  => 'bytenft-payment-gateway',
 			        'context' => [
 						'url'=>$url,
 			            'order_id' => $order_id,
@@ -806,21 +806,21 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			if (!empty($response_data['status']) && $response_data['status'] === 'success' && !empty($response_data['data']['payment_link'])) {
 				if ($last_failed_account) {
-					wc_get_logger()->info("Sending email before returning success to: '{$last_failed_account['title']}'", ['source' => 'bytenft-transak-payment-gateway']);
+					wc_get_logger()->info("Sending email before returning success to: '{$last_failed_account['title']}'", ['source' => 'bytenft-payment-gateway']);
 					$this->send_account_switch_email($last_failed_account, $account);
 				}
 				//$last_successful_account = $account;
 				// Save pay_id to order meta
 				$pay_id = $response_data['data']['pay_id'] ?? '';
 				if (!empty($pay_id)) {
-					$order->update_meta_data('_bnfttransak_pay_id', $pay_id);
+					$order->update_meta_data('_bytenft_pay_id', $pay_id);
 				}
 
 				$table_name = $wpdb->prefix . 'order_payment_link';
 
 				// Add simple cache to avoid hitting DB on every request
-				$cache_key    = 'bnfttransak_table_exists_' . md5($table_name);
-				$cache_group  = 'bnfttransak_payment_gateway';
+				$cache_key    = 'bytenft_table_exists_' . md5($table_name);
+				$cache_group  = 'bytenft_payment_gateway';
 
 				$table_exists = wp_cache_get($cache_key, $cache_group);
 
@@ -853,7 +853,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				    dbDelta($create_sql);
 
 				    wc_get_logger()->info("Created missing `$table_name` table.", [
-				        'source' => 'bytenft-transak-payment-gateway',
+				        'source' => 'bytenft-payment-gateway',
 				        'context' => ['table' => $table_name],
 				    ]);
 				}
@@ -876,7 +876,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 
 				wc_get_logger()->info('Stored order payment link to DB.', [
-				    'source'  => 'bytenft-transak-payment-gateway',
+				    'source'  => 'bytenft-payment-gateway',
 				    'context' => [
 				        'order_id' => $order_id,
 				        'uuid'     => $pay_id,
@@ -885,13 +885,13 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				]);
 
 				// **Update Order Status**
-				$order->update_status('pending', __('Payment pending.', 'bytenft-transak-payment-gateway'));
+				$order->update_status('pending', __('Payment pending.', 'bytenft-payment-gateway'));
 
 				// **Add Order Note (If Not Exists)**
 				// translators: %s represents the account title.
 				$new_note = sprintf(
 					/* translators: %s represents the account title. */
-					esc_html__('Payment initiated via ByteNFT transak. Awaiting your completion ( %s )', 'bytenft-transak-payment-gateway'),
+					esc_html__('Payment initiated via ByteNFT. Awaiting your completion ( %s )', 'bytenft-payment-gateway'),
 					esc_html($account['title'])
 				);
 				$existing_notes = $order->get_customer_order_notes();
@@ -907,7 +907,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				wc_get_logger()->info(
 				    'Received successful payment API response. Saving order payment link data.',
 				    [
-				        'source'  => 'bytenft-transak-payment-gateway',
+				        'source'  => 'bytenft-payment-gateway',
 				        'context' => [
 				            'order_id'       => $order_id,
 				            'uuid'           => $uuid,
@@ -928,20 +928,20 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			// **Handle Payment Failure**
-			$error_message = isset($response_data['message']) ? sanitize_text_field($response_data['message']) : __('Payment failed.', 'bytenft-transak-payment-gateway');
+			$error_message = isset($response_data['message']) ? sanitize_text_field($response_data['message']) : __('Payment failed.', 'bytenft-payment-gateway');
 			wc_get_logger()->error("Final payment failure using '{$account['title']}': $error_message", $logger_context);
 			// **Add Order Note for Failed Payment**
 			$order->add_order_note(
 				sprintf(
 					/* translators: 1: Account title, 2: Error message. */
-					esc_html__('Payment failed using account: %1$s. Error: %2$s', 'bytenft-transak-payment-gateway'),
+					esc_html__('Payment failed using account: %1$s. Error: %2$s', 'bytenft-payment-gateway'),
 					esc_html($account['title']),
 					esc_html($error_message)
 				)
 			);
 
 			// Add WooCommerce error notice
-			wc_add_notice(__('Payment error: ', 'bytenft-transak-payment-gateway') . $error_message, 'error');
+			wc_add_notice(__('Payment error: ', 'bytenft-payment-gateway') . $error_message, 'error');
 			if (!empty($lock_key)) {
 				$this->release_lock($lock_key);
 			}
@@ -950,19 +950,19 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	// Display the "Test Order" tag in admin order details
-	public function bnfttransak_display_test_order_tag($order)
+	public function bytenft_display_test_order_tag($order)
 	{
 		if (get_post_meta($order->get_id(), '_is_test_order', true)) {
-			echo '<p><strong>' . esc_html__('Test Order', 'bytenft-transak-payment-gateway') . '</strong></p>';
+			echo '<p><strong>' . esc_html__('Test Order', 'bytenft-payment-gateway') . '</strong></p>';
 		}
 	}
 
-	private function bnfttransak_get_return_url_base()
+	private function bytenft_get_return_url_base()
 	{
-		return rest_url('/bnfttransak/v1/data');
+		return rest_url('/bytenft/v1/data');
 	}
 
-	private function bnfttransak_prepare_payment_data($order, $api_public_key, $api_secret)
+	private function bytenft_prepare_payment_data($order, $api_public_key, $api_secret)
 	{
 		$order_id = $order->get_id(); // Validate order ID
 		// Check if sandbox mode is enabled
@@ -997,17 +997,17 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				[
 					'order_id' => $order_id, // Include order ID or any other identifier
 					'key' => $order->get_order_key(),
-					'nonce' => wp_create_nonce('bnfttransak_payment_nonce'), // Create a nonce for verification
+					'nonce' => wp_create_nonce('bytenft_payment_nonce'), // Create a nonce for verification
 					'mode' => 'wp',
 				],
-				$this->bnfttransak_get_return_url_base() // Use the updated base URL method
+				$this->bytenft_get_return_url_base() // Use the updated base URL method
 			)
 		);
 
-		$ip_address = sanitize_text_field($this->bnfttransak_get_client_ip());
+		$ip_address = sanitize_text_field($this->bytenft_get_client_ip());
 
 		if (empty($order_id)) {
-			wc_get_logger()->error('Order ID is missing or invalid.', ['source' => 'bytenft-transak-payment-gateway']);
+			wc_get_logger()->error('Order ID is missing or invalid.', ['source' => 'bytenft-payment-gateway']);
 			return ['result' => 'fail'];
 		}
 
@@ -1022,7 +1022,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		foreach ($meta_data_array as $key => $value) {
 			$meta_data_array[$key] = sanitize_text_field($value); // Sanitize each field
 			if (is_object($value) || is_resource($value)) {
-				wc_get_logger()->error('Invalid value for key ' . $key . ': ' . wp_json_encode($value), ['source' => 'bytenft-transak-payment-gateway']);
+				wc_get_logger()->error('Invalid value for key ' . $key . ': ' . wp_json_encode($value), ['source' => 'bytenft-payment-gateway']);
 			}
 		}
 
@@ -1055,7 +1055,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	// Helper function to get client IP address
-	private function bnfttransak_get_client_ip()
+	private function bytenft_get_client_ip()
 	{
 		$ip = '';
 
@@ -1082,7 +1082,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * @param WC_Order $order The WooCommerce order object.
 	 * @return array Modified line items array.
 	 */
-	public function bnfttransak_add_custom_label_to_order_row($line_items, $order)
+	public function bytenft_add_custom_label_to_order_row($line_items, $order)
 	{
 		// Get the custom meta field value (e.g. '_order_origin')
 		$order_origin = $order->get_meta('_order_origin');
@@ -1099,11 +1099,11 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	/**
 	 * WooCommerce not active notice.
 	 */
-	public function bnfttransak_woocommerce_not_active_notice()
+	public function bytenft_woocommerce_not_active_notice()
 	{
 		echo '<div class="error">
         <p>' .
-			esc_html__('ByteNFT transak Payment Gateway requires WooCommerce to be installed and active.', 'bytenft-transak-payment-gateway') .
+			esc_html__('ByteNFT Payment Gateway requires WooCommerce to be installed and active.', 'bytenft-payment-gateway') .
 			'</p>
     </div>';
 	}
@@ -1126,16 +1126,16 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		if ('yes' === $this->get_option('show_consent_checkbox')) {
 			// Add user consent checkbox with escaping
 			echo '<p class="form-row form-row-wide">
-                <label for="bnfttransak_consent">
-                    <input type="checkbox" id="bnfttransak_consent" name="bnfttransak_consent" /> ' .
-				esc_html__('I consent to the collection of my data to process this payment', 'bytenft-transak-payment-gateway') .
+                <label for="bytenft_consent">
+                    <input type="checkbox" id="bytenft_consent" name="bytenft_consent" /> ' .
+				esc_html__('I consent to the collection of my data to process this payment', 'bytenft-payment-gateway') .
 				'
                 </label>
             </p>';
 
 			// Add nonce field for security
 
-			wp_nonce_field('bnfttransak_payment', 'bnfttransak_nonce');
+			wp_nonce_field('bytenft_payment', 'bytenft_nonce');
 		}
 	}
 
@@ -1151,18 +1151,18 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// Check if the consent checkbox setting is enabled
 		if ($this->get_option('show_consent_checkbox') === 'yes') {
 			// Sanitize and validate the nonce field
-			$nonce = isset($_POST['bnfttransak_nonce']) ? sanitize_text_field(wp_unslash($_POST['bnfttransak_nonce'])) : '';
-			if (empty($nonce) || !wp_verify_nonce($nonce, 'bnfttransak_payment')) {
-				wc_add_notice(__('Nonce verification failed. Please try again.', 'bytenft-transak-payment-gateway'), 'error');
+			$nonce = isset($_POST['bytenft_nonce']) ? sanitize_text_field(wp_unslash($_POST['bytenft_nonce'])) : '';
+			if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
+				wc_add_notice(__('Nonce verification failed. Please try again.', 'bytenft-payment-gateway'), 'error');
 				return false;
 			}
 
 			// Sanitize the consent checkbox input
-			$consent = isset($_POST['bnfttransak_consent']) ? sanitize_text_field(wp_unslash($_POST['bnfttransak_consent'])) : '';
+			$consent = isset($_POST['bytenft_consent']) ? sanitize_text_field(wp_unslash($_POST['bytenft_consent'])) : '';
 
 			// Validate the consent checkbox was checked
 			if ($consent !== 'on') {
-				wc_add_notice(__('You must consent to the collection of your data to process this payment.', 'bytenft-transak-payment-gateway'), 'error');
+				wc_add_notice(__('You must consent to the collection of your data to process this payment.', 'bytenft-payment-gateway'), 'error');
 				return false;
 			}
 		}
@@ -1173,39 +1173,39 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	/**
 	 * Enqueue stylesheets for the plugin.
 	 */
-	public function bnfttransak_enqueue_styles_and_scripts()
+	public function bytenft_enqueue_styles_and_scripts()
 	{
 		if (is_checkout()) {
 			// Enqueue stylesheets
 			wp_enqueue_style(
-				'bnfttransak-payment-loader-styles',
+				'bytenft-payment-loader-styles',
 				plugins_url('../assets/css/frontend.css', __FILE__),
 				[], // Dependencies (if any)
 				'1.0', // Version number
 				'all' // Media
 			);
 
-			// Enqueue bnfttransak.js script
+			// Enqueue bytenft.js script
 			wp_enqueue_script(
-				'bnfttransak-js',
-				plugins_url('../assets/js/bytenft-transak.js', __FILE__),
+				'bytenft-js',
+				plugins_url('../assets/js/bytenft.js', __FILE__),
 				['jquery'], // Dependencies
 				'1.0', // Version number
 				true // Load in footer
 			);
 
-			// Localize script with parameters that need to be passed to bytenft-transak.js
-			wp_localize_script('bnfttransak-js', 'bnfttransak_params', [
+			// Localize script with parameters that need to be passed to bytenft.js
+			wp_localize_script('bytenft-js', 'bytenft_params', [
 				'ajax_url' => admin_url('admin-ajax.php'),
 				'checkout_url' => wc_get_checkout_url(),
-				'bnfttransak_loader' => plugins_url('../assets/images/loader.gif', __FILE__),
-				'bnfttransak_nonce' => wp_create_nonce('bnfttransak_payment'), // Create a nonce for verification
+				'bytenft_loader' => plugins_url('../assets/images/loader.gif', __FILE__),
+				'bytenft_nonce' => wp_create_nonce('bytenft_payment'), // Create a nonce for verification
 				'payment_method' => $this->id,
 			]);
 		}
 	}
 
-	function bnfttransak_admin_scripts($hook)
+	function bytenft_admin_scripts($hook)
 	{
 
 		if (
@@ -1216,22 +1216,22 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// Enqueue Admin CSS
-		wp_enqueue_style('bnfttransak-font-awesome', plugins_url('../assets/css/font-awesome.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . '../assets/css/font-awesome.css'), 'all');
+		wp_enqueue_style('bytenft-font-awesome', plugins_url('../assets/css/font-awesome.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . '../assets/css/font-awesome.css'), 'all');
 
 		// Enqueue Admin CSS
-		wp_enqueue_style('bnfttransak-admin-css', plugins_url('../assets/css/admin.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . '../assets/css/admin.css'), 'all');
+		wp_enqueue_style('bytenft-admin-css', plugins_url('../assets/css/admin.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . '../assets/css/admin.css'), 'all');
 
 		// Register and enqueue your script
-		wp_enqueue_script('bnfttransak-admin-script', plugins_url('../assets/js/bytenft-transak-admin.js', __FILE__), ['jquery'], filemtime(plugin_dir_path(__FILE__) . '../assets/js/bytenft-transak-admin.js'), true);
+		wp_enqueue_script('bytenft-admin-script', plugins_url('../assets/js/bytenft-admin.js', __FILE__), ['jquery'], filemtime(plugin_dir_path(__FILE__) . '../assets/js/bytenft-admin.js'), true);
 
-		wp_localize_script('bnfttransak-admin-script', 'bnfttransak_admin_data', [
+		wp_localize_script('bytenft-admin-script', 'bytenft_admin_data', [
 			'ajax_url' => admin_url('admin-ajax.php'),
-			'nonce' => wp_create_nonce('bnfttransak_sync_nonce'),
+			'nonce' => wp_create_nonce('bytenft_sync_nonce'),
 			'gateway_id' => $this->id,
 		]);
 	}
 
-	public function bnft_transak_hide_custom_payment_gateway_conditionally($available_gateways)
+	public function bytenft_hide_custom_payment_gateway_conditionally($available_gateways)
 	{
 		$gateway_id = $this->id;
 
@@ -1239,7 +1239,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	        return $available_gateways;
 	    }
 
-	    $cache_key = 'bnfttransak_gateway_visibility_' . $gateway_id;
+	    $cache_key = 'bytenft_gateway_visibility_' . $gateway_id;
 
 		 // Unique cache/log key per cart state
 	    $cart_hash = WC()->cart ? WC()->cart->get_cart_hash() : 'no_cart';
@@ -1249,7 +1249,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	        return $available_gateways;
 	    }
 
-	    $cache_key = 'bnfttransak_gateway_visibility_' . $gateway_id . '_' . $cart_hash;
+	    $cache_key = 'bytenft_gateway_visibility_' . $gateway_id . '_' . $cart_hash;
 
 	    // ✅ Avoid running multiple times for the same cart_hash in the same request
 	    static $processed_hashes = [];
@@ -1455,7 +1455,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	            'api_secret_key' => $secret_key,
 	        ];
 
-	        $cache_base = 'bnfttransak_daily_limit_' . md5($public_key . $amount);
+	        $cache_base = 'bytenft_daily_limit_' . md5($public_key . $amount);
 
 	        $status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 30, $force_refresh);
 	        if (!empty($status_data['status']) && $status_data['status'] === 'success') {
@@ -1536,7 +1536,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	private function hide_gateway($available_gateways, $gateway_id)
 	{
 	    unset($available_gateways[$gateway_id]);
-	    $GLOBALS['bnfttransak_gateway_visibility_' . $this->id] = $available_gateways;
+	    $GLOBALS['bytenft_gateway_visibility_' . $this->id] = $available_gateways;
 	    return $available_gateways;
 	}
 
@@ -1550,7 +1550,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	    $cart_hash = isset($context['cart_hash']) ? $context['cart_hash'] : 'no_cart';
 
 	    // Make the log key unique for both the event key and current cart state
-	    $log_key = 'bnfttransak_log_once_' . md5($key . $this->id . $cart_hash);
+	    $log_key = 'bytenft_log_once_' . md5($key . $this->id . $cart_hash);
 
 	    // Check if we've already logged for this cart state
 	    if (WC()->session->get($log_key)) {
@@ -1584,7 +1584,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		if (!$is_empty && !$is_filled) {
 			/* Translators: %d is the keys are valid or leave empty.*/
-			return sprintf(__('Account %d is invalid. Please fill all fields or leave the account empty.', 'bytenft-transak-payment-gateway'), $index + 1);
+			return sprintf(__('Account %d is invalid. Please fill all fields or leave the account empty.', 'bytenft-payment-gateway'), $index + 1);
 		}
 
 		return true;
@@ -1611,7 +1611,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// If the account is neither empty nor fully filled, it's invalid
 			if (!$is_empty && !$is_filled) {
 				/* Translators: %d is the keys are valid or leave empty.*/
-				$errors[] = sprintf(__('Account %d is invalid. Please fill all fields or leave the account empty.', 'bytenft-transak-payment-gateway'), $index + 1);
+				$errors[] = sprintf(__('Account %d is invalid. Please fill all fields or leave the account empty.', 'bytenft-payment-gateway'), $index + 1);
 			} elseif ($is_filled) {
 				// If the account is fully filled, add it to the valid accounts array
 				$valid_accounts[] = $account;
@@ -1679,7 +1679,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private function get_all_accounts()
 	{
-	    $accounts = get_option('woocommerce_bnfttransak_payment_gateway_accounts', []);
+	    $accounts = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
 
 	    if (is_string($accounts)) {
 	        $unserialized = maybe_unserialize($accounts);
@@ -1687,7 +1687,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	        wc_get_logger()->debug(
 			    'Unserialized accounts.',
 			    [
-			        'source'  => 'bytenft-transak-payment-gateway',
+			        'source'  => 'bytenft-payment-gateway',
 			        'context' => [
 			            'accounts' => $accounts,
 			        ],
@@ -1721,14 +1721,14 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 
-	function bnfttransak_enqueue_admin_styles($hook)
+	function bytenft_enqueue_admin_styles($hook)
 	{
 		// Load only on WooCommerce settings pages
 		if (strpos($hook, 'woocommerce') === false) {
 			return;
 		}
 
-		wp_enqueue_style('bnfttransak-admin-style', plugin_dir_url(__FILE__) . 'assets/css/admin-style.css', [], '1.0.0');
+		wp_enqueue_style('bytenft-admin-style', plugin_dir_url(__FILE__) . 'assets/css/admin-style.css', [], '1.0.0');
 	}
 
 	/**
@@ -1736,7 +1736,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 */
 	private function send_account_switch_email($oldAccount, $newAccount)
 	{
-		$tytenfttransakApiUrl = $this->get_api_url('/api/switch-account-email'); // byteNFT API Endpoint
+		$btyenftApiUrl = $this->get_api_url('/api/switch-account-email'); // byteNFT API Endpoint
 
 		// Use the credentials of the old (current) account to authenticate
 		$api_key = $this->sandbox ? $oldAccount['sandbox_public_key'] : $oldAccount['live_public_key'];
@@ -1762,7 +1762,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		];
 
 		// Send data to byteNFT API
-		$response = wp_remote_post($tytenfttransakApiUrl, [
+		$response = wp_remote_post($btyenftApiUrl, [
 			'method' => 'POST',
 			'timeout' => 30,
 			'body' => json_encode($emailData),
@@ -1772,7 +1772,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		// Handle API response
 		if (is_wp_error($response)) {
-			wc_get_logger()->error('Failed to send switch email: ' . $response->get_error_message(), ['source' => 'bytenft-transak-payment-gateway']);
+			wc_get_logger()->error('Failed to send switch email: ' . $response->get_error_message(), ['source' => 'bytenft-payment-gateway']);
 			return false;
 		}
 
@@ -1782,17 +1782,17 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		// Check if authentication failed
 		if ($response_code == 401 || $response_code == 403 || (!empty($response_data['error']) && strpos($response_data['error'], 'invalid credentials') !== false)) {
-			wc_get_logger()->error('Email Sending Failed : Authentication failed: Invalid API key or secret for old account', ['source' => 'bytenft-transak-payment-gateway']);
+			wc_get_logger()->error('Email Sending Failed : Authentication failed: Invalid API key or secret for old account', ['source' => 'bytenft-payment-gateway']);
 			return false; // Stop further execution
 		}
 
 		// Check if the API response has errors
 		if (!empty($response_data['error'])) {
-			wc_get_logger()->error('byteNFT API Error: ' . json_encode($response_data), ['source' => 'bytenft-transak-payment-gateway']);
+			wc_get_logger()->error('byteNFT API Error: ' . json_encode($response_data), ['source' => 'bytenft-payment-gateway']);
 			return false;
 		}
 
-		wc_get_logger()->info("Switch email successfully sent to: '{$oldAccount['title']}'", ['source' => 'bytenft-transak-payment-gateway']);
+		wc_get_logger()->info("Switch email successfully sent to: '{$oldAccount['title']}'", ['source' => 'bytenft-payment-gateway']);
 		return true;
 	}
 
@@ -1804,7 +1804,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		global $wpdb;
 
 		// Fetch all accounts ordered by priority
-		$settings = get_option('woocommerce_bnfttransak_payment_gateway_accounts', []);
+		$settings = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
 
 		if (is_string($settings)) {
 			$settings = maybe_unserialize($settings);
@@ -1839,7 +1839,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// Concurrency Handling: Lock the selected account
 		foreach ($available_accounts as $account) {
 			$sanitized_title = preg_replace('/\s+/', '_', $account['title']);
-			$lock_key = "bnfttransak_lock_{$sanitized_title}";
+			$lock_key = "bytenft_lock_{$sanitized_title}";
 
 			// Try to acquire lock
 			if ($this->acquire_lock($lock_key)) {
@@ -1862,7 +1862,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	    $existing_lock = get_option($lock_key);
 	    if ($existing_lock && intval($existing_lock) > $now) {
 	        // Lock already held by another process
-	        wc_get_logger()->info("Lock already held for '{$lock_key}', skipping.", ['source' => 'bytenft-transak-payment-gateway']);
+	        wc_get_logger()->info("Lock already held for '{$lock_key}', skipping.", ['source' => 'bytenft-payment-gateway']);
 	        return false;
 	    }
 
@@ -1870,7 +1870,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	    $lock_value = $now + $lock_timeout;
 	    update_option($lock_key, $lock_value, false);
 
-	    wc_get_logger()->info("Lock acquired for '{$lock_key}'", ['source' => 'bytenft-transak-payment-gateway']);
+	    wc_get_logger()->info("Lock acquired for '{$lock_key}'", ['source' => 'bytenft-payment-gateway']);
 	    return true;
 	}
 
@@ -1884,7 +1884,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		delete_option($lock_key);
 
 		// Log the release of the lock
-		wc_get_logger()->info("Released lock for '{$lock_key}'", ['source' => 'bytenft-transak-payment-gateway']);
+		wc_get_logger()->info("Released lock for '{$lock_key}'", ['source' => 'bytenft-payment-gateway']);
 	}
 
 
@@ -1920,11 +1920,11 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						$ip_address = sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'] ?? ''));
 						wc_get_logger()->info(
 							"Potential SQL Injection Attempt - Field: $field_label, Value: $value, IP: {$ip_address}",
-							['source' => 'bytenft-transak-payment-gateway']
+							['source' => 'bytenft-payment-gateway']
 						);
 						// This comment must be directly above the i18n function call with no blank line
 						/* translators: %s is the field label, like "Email Address" or "Username". */
-						$errors[] = sprintf(esc_html__('Please enter a valid "%s".', 'bytenft-transak-payment-gateway'), $field_label);
+						$errors[] = sprintf(esc_html__('Please enter a valid "%s".', 'bytenft-payment-gateway'), $field_label);
 						break; // Stop checking other patterns for this field
 					}
 				}

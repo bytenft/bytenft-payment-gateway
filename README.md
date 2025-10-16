@@ -1,11 +1,11 @@
-# ByteNFT Transak Payment Gateway
+# ByteNFT Payment Gateway
 
-The ByteNFT Transak Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fiat payments to sell products on your WooCommerce store.
+The ByteNFT Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fiat payments to sell products on your WooCommerce store.
 
 ## Plugin Information
 
-**Contributors:** ByteNFT Transak  
-**Tags:** woocommerce, payment gateway, fiat, ByteNFT Transak  
+**Contributors:** ByteNFT  
+**Tags:** woocommerce, payment gateway, fiat, ByteNFT  
 **Requires at least:** 6.2  
 **Tested up to:** 6.7  
 **Stable tag:** 1.0.2  
@@ -14,11 +14,11 @@ The ByteNFT Transak Payment Gateway plugin for WooCommerce 8.9+ allows you to ac
 
 ## Support
 
-For any issues or enhancement requests with this plugin, please contact the ByteNFT Transak support team. Ensure you provide your plugin, WooCommerce, and WordPress version where applicable to expedite troubleshooting.
+For any issues or enhancement requests with this plugin, please contact the ByteNFT support team. Ensure you provide your plugin, WooCommerce, and WordPress version where applicable to expedite troubleshooting.
 
 ## Getting Started
 
-1. Obtain your API keys from your ByteNFT Transak dashboard in your Developer Settings - API Keys.
+1. Obtain your API keys from your ByteNFT dashboard in your Developer Settings - API Keys.
 2. Follow the plugin installation instructions below.
 3. You are ready to take payments in your WooCommerce store!
 
@@ -33,7 +33,7 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 
 ## 1. Download Plugin from GitHub
 
-- Visit the GitHub repository for the ByteNFT Transak Payment Gateway plugin at [GitHub Repository URL](https://github.com/bytenft/bytenft-transak-payment-gateway).
+- Visit the GitHub repository for the ByteNFT Payment Gateway plugin at [GitHub Repository URL](https://github.com/bytenft/bytenft-payment-gateway).
 - Download the plugin ZIP file to your local machine.
 
 ## 2. Install the Plugin in WordPress
@@ -52,20 +52,20 @@ For any issues or enhancement requests with this plugin, please contact the Byte
   Log in to your WordPress Admin Dashboard.
 - **Navigate to Installed Plugins:**
   Go to `Plugins` > `Installed Plugins`.
-- **Activate ByteNFT Transak Payment Gateway:**
-  - Locate the ByteNFT Transak Payment Gateway plugin in the list.
+- **Activate ByteNFT Payment Gateway:**
+  - Locate the ByteNFT Payment Gateway plugin in the list.
   - Click `Activate` to enable the plugin.
 
-## 4. Obtain API Keys from ByteNFT Transak Developer Settings Dashboard
+## 4. Obtain API Keys from ByteNFT Developer Settings Dashboard
 
-- **Log in to ByteNFT Transak Account:**
-  Visit the ByteNFT Transak website and log in to your account.
+- **Log in to ByteNFT Account:**
+  Visit the ByteNFT website and log in to your account.
 - **Navigate to Developer Settings to get API Keys:**
   Once logged in, find and access the Developer Settings.
 - **Generate or Retrieve API Keys:**
   If API keys are not already generated, you can create new ones.
   Locate the API Keys or Credentials section.
-  Generate or retrieve the required API keys (e.g., Public Key, Secret Key) needed for integration with the ByteNFT Transak Payment Gateway plugin.
+  Generate or retrieve the required API keys (e.g., Public Key, Secret Key) needed for integration with the ByteNFT Payment Gateway plugin.
 
 ## 5. Update API Keys in WooCommerce Settings
 
@@ -74,14 +74,14 @@ For any issues or enhancement requests with this plugin, please contact the Byte
   Go to `WooCommerce` > `Settings`.
 - **Access the Payments Tab:**
   Click on the `Payments` tab at the top of the settings page.
-- **Select ByteNFT Transak Payment Gateway:**
-  Scroll down to find and select the ByteNFT Transak Payment Gateway among the available payment methods.
+- **Select ByteNFT Payment Gateway:**
+  Scroll down to find and select the ByteNFT Payment Gateway among the available payment methods.
 
 - **Add Plugin General Details:**
 
-  - **Title** : ByteNFT Transak Payment Gateway
+  - **Title** : ByteNFT Payment Gateway
     Description
-  - **Description** : Secure payments with ByteNFT Transak Payment Gateway.
+  - **Description** : Secure payments with ByteNFT Payment Gateway.
   - **Enable/Disable Sandbox Mode** : Toggle sandbox mode per account.
   - **Payment Accounts (Add Multiple Accounts)** :
     - **Adding a New Account**
@@ -98,7 +98,7 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 - **Save Changes:**
   Click `Save changes` at the bottom of the page to update and save your API key settings.
 
-## 6. Place Order via ByteNFT Transak Payment Option
+## 6. Place Order via ByteNFT Payment Option
 
 - **Visit Your Store Page and Add Products to Cart:**
   Navigate to your WordPress site's store page.
@@ -108,15 +108,15 @@ For any issues or enhancement requests with this plugin, please contact the Byte
   Go to your WordPress site's checkout page to review your order details.
 
 - **Check Available Payment Methods:**
-  Ensure that the ByteNFT Transak Payment Gateway option is visible among the available payment methods listed on the checkout page.
+  Ensure that the ByteNFT Payment Gateway option is visible among the available payment methods listed on the checkout page.
 
 - **Verify Integration:**
-  Confirm that customers can select the ByteNFT Transak Payment Gateway as a payment option when placing their orders.
+  Confirm that customers can select the ByteNFT Payment Gateway as a payment option when placing their orders.
 
 ## 7. Popup Window for Payment
 
 - **Secure Payment Processing:**
-  Upon selecting ByteNFT Transak, a secure popup window will open for payment processing.
+  Upon selecting ByteNFT, a secure popup window will open for payment processing.
 
 ## 8. Complete the Payment Process
 
@@ -134,7 +134,7 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 - **Verify Order Status:**
   Log in to your WordPress Admin Dashboard.
   Navigate to `WooCommerce` > `Orders` to view all orders.
-  Check for the latest orders placed using the ByteNFT Transak Payment Gateway to verify their status.
+  Check for the latest orders placed using the ByteNFT Payment Gateway to verify their status.
 
 ## Documentation
 
@@ -153,12 +153,12 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 
 ### Version 1.0.0 (Initial Release)
 
-- **Initial Release:** Launched the ByteNFT Transak Payment Gateway plugin with core payment integration functionality for WooCommerce.
+- **Initial Release:** Launched the ByteNFT Payment Gateway plugin with core payment integration functionality for WooCommerce.
 
 ## Support
 
 For customer support, visit: [https://pay.bytenft.xyz/reach-out](https://pay.bytenft.xyz/reach-out)
 
-## Why Choose ByteNFT Transak Payment Gateway?
+## Why Choose ByteNFT Payment Gateway?
 
-With the ByteNFT Transak Payment Gateway, you can easily transfer fiat payments to sell products. Choose ByteNFT Transak Payment Gateway as your WooCommerce payment gateway to access your funds quickly through a powerful and secure payment engine provided by ByteNFT Transak.
+With the ByteNFT Payment Gateway, you can easily transfer fiat payments to sell products. Choose ByteNFT Payment Gateway as your WooCommerce payment gateway to access your funds quickly through a powerful and secure payment engine provided by ByteNFT.

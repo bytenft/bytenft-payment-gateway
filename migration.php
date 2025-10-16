@@ -1,9 +1,9 @@
 <?php
 
-function bnfttransak_migrate_old_settings()
+function bytenft_migrate_old_settings()
 {
 	// First, check if beta option exists
-	$beta_accounts = get_option('woocommerce_bnfttransak_payment_gateway_accounts');
+	$beta_accounts = get_option('woocommerce_bytenft_payment_gateway_accounts');
 
 	if ($beta_accounts) {
 		$beta_accounts = maybe_unserialize($beta_accounts);
@@ -20,14 +20,14 @@ function bnfttransak_migrate_old_settings()
 			}, $beta_accounts);
 
 			// Save updated accounts back
-			update_option('woocommerce_bnfttransak_payment_gateway_accounts', serialize($enhanced_accounts));
-			bnfttransak_trigger_sync();
+			update_option('woocommerce_bytenft_payment_gateway_accounts', serialize($enhanced_accounts));
+			bytenft_trigger_sync();
 			return; // Migration complete for beta
 		}
 	}
 
-	// Fallback to legacy `woocommerce_bnfttransak_settings`
-	$old_settings = get_option('woocommerce_bnfttransak_settings');
+	// Fallback to legacy `woocommerce_bytenft_settings`
+	$old_settings = get_option('woocommerce_bytenft_settings');
 	$old_settings = maybe_unserialize($old_settings);
 	if (!$old_settings || !is_array($old_settings)) {
 		return; // Nothing to migrate
@@ -62,22 +62,22 @@ function bnfttransak_migrate_old_settings()
 		]
 	];
 
-	update_option('woocommerce_bnfttransak_payment_gateway_accounts', serialize($new_accounts));
-	bnfttransak_trigger_sync();
+	update_option('woocommerce_bytenft_payment_gateway_accounts', serialize($new_accounts));
+	bytenft_trigger_sync();
 }
 
-function bnfttransak_trigger_sync()
+function bytenft_trigger_sync()
 {
-	if (get_transient('bnfttransak_sync_lock')) {
+	if (get_transient('bytenft_sync_lock')) {
 		return; // Already triggered recently
 	}
-	set_transient('bnfttransak_sync_lock', true, 5 * MINUTE_IN_SECONDS);
+	set_transient('bytenft_sync_lock', true, 5 * MINUTE_IN_SECONDS);
 
-	if (class_exists('BYTENFT_TRANSAK_PAYMENT_GATEWAY_Loader')) {
-		$loader = BYTENFT_TRANSAK_PAYMENT_GATEWAY_Loader::get_instance();
+	if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
+		$loader = BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
 		if (method_exists($loader, 'handle_cron_event')) {
 			wc_get_logger()->info('Sync account for migration started.', [
-				'source' => 'bytenft-transak-payment-gateway',
+				'source' => 'bytenft-payment-gateway',
 				'context' => ['sync_id' => uniqid('migrate_', true)]
 			]);
 			$loader->handle_cron_event();
@@ -85,24 +85,24 @@ function bnfttransak_trigger_sync()
 	}
 }
 
-function bnfttransak_on_plugin_activate() {
+function bytenft_on_plugin_activate() {
 	// Migrate settings
-	if (function_exists('bnfttransak_migrate_old_settings')) {
-		bnfttransak_migrate_old_settings();
+	if (function_exists('bytenft_migrate_old_settings')) {
+		bytenft_migrate_old_settings();
 	}
 
 	// Activate cron
-	if (class_exists('BYTENFT_TRANSAK_PAYMENT_GATEWAY_Loader')) {
-		BYTENFT_TRANSAK_PAYMENT_GATEWAY_Loader::get_instance()->activate_cron_job();
+	if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
+		BYTENFT_PAYMENT_GATEWAY_Loader::get_instance()->activate_cron_job();
 	}
 }
 
-function bnfttransak_on_plugin_deactivate() {
+function bytenft_on_plugin_deactivate() {
 	// Deactivate cron
-	if (class_exists('BYTENFT_TRANSAK_PAYMENT_GATEWAY_Loader')) {
-		BYTENFT_TRANSAK_PAYMENT_GATEWAY_Loader::get_instance()->deactivate_cron_job();
+	if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
+		BYTENFT_PAYMENT_GATEWAY_Loader::get_instance()->deactivate_cron_job();
 	}
 }
 
-register_activation_hook(BYTENFT_TRANSAK_PAYMENT_GATEWAY_FILE, 'bnfttransak_on_plugin_activate');
-register_deactivation_hook(BYTENFT_TRANSAK_PAYMENT_GATEWAY_FILE, 'bnfttransak_on_plugin_deactivate');
+register_activation_hook(BYTENFT_PAYMENT_GATEWAY_FILE, 'bytenft_on_plugin_activate');
+register_deactivation_hook(BYTENFT_PAYMENT_GATEWAY_FILE, 'bytenft_on_plugin_deactivate');
