@@ -36,43 +36,62 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 
 	private function bytenft_verify_api_key($api_key)
 	{
-		// Sanitize the API key parameter early
-		$api_key = sanitize_text_field($api_key);
+	    $api_key = sanitize_text_field($api_key);
 
-		// Get ByteNFT settingss
-		$bytenft_settings = get_option('woocommerce_bytenft_payment_gateway_accounts');
-		$bytenft_settings = get_option('woocommerce_bytenft_settings');
+	    // Retrieve plugin options
+	    $accounts_data = get_option('woocommerce_bytenft_payment_gateway_accounts');
+	    $general_settings = get_option('woocommerce_bytenft_settings');
 
-		if (!$bytenft_settings || empty($bytenft_settings)) {
-			return false; // No accounts available
-		}
+	    $this->logger->info('Raw settings loaded', [
+	        'source' => 'bytenft-payment-gateway',
+	        'accounts_data' => $accounts_data,
+	        'general_settings' => $general_settings,
+	    ]);
 
-		$accounts = $bytenft_settings;
+	    if (empty($accounts_data)) {
+	        $this->logger->warning('No account data found', ['source' => 'bytenft-payment-gateway']);
+	        return false;
+	    }
 
-		$sandbox = isset($bytenft_settings['sandbox']) && $bytenft_settings['sandbox'] === 'yes';
+	    // If it's a single account array, wrap it inside an array for consistency
+	    if (isset($accounts_data['live_public_key']) || isset($accounts_data['sandbox_public_key'])) {
+	        $accounts_data = [ $accounts_data ];
+	    }
 
-		$this->logger->info('Accounts to evaluate inside bytenft_verify_api_key fnc :', [
-		    'source' => 'bytenft-payment-gateway',
-		    'context' => $accounts,
-			'sandbox' => $sandbox,
-			'$bytenft_settings'=>$bytenft_settings
-		]);
+	    $sandbox = isset($general_settings['sandbox']) && $general_settings['sandbox'] === 'yes';
 
-		foreach ($accounts as $account) {
-			$public_key = $sandbox ? sanitize_text_field($account['sandbox_public_key']) : sanitize_text_field($account['live_public_key']);
+	    foreach ($accounts_data as $account_id => $account) {
+	        // Ensure valid array
+	        if (!is_array($account)) {
+	            $this->logger->warning('Skipping invalid account entry', [
+	                'source' => 'bytenft-payment-gateway',
+	                'account_id' => $account_id,
+	                'account_value' => $account
+	            ]);
+	            continue;
+	        }
 
-			$this->logger->info(' check public_key ::  '.$public_key, array('source' => 'bytenft-payment-gateway'));
+	        $public_key = $sandbox
+	            ? sanitize_text_field($account['sandbox_public_key'] ?? '')
+	            : sanitize_text_field($account['live_public_key'] ?? '');
 
-			// Use a secure hash comparison
-			if (!empty($public_key) && hash_equals($public_key, $api_key)) {
-				$this->logger->info('keys are matched ', array('source' => 'bytenft-payment-gateway'));
-				
-				return true;
-			}
-		}
+	        $this->logger->info('Checking public key :: ' . $public_key, [
+	            'source' => 'bytenft-payment-gateway',
+	            'sandbox' => $sandbox,
+	        ]);
 
-		return false;
+	        if (!empty($public_key) && hash_equals($public_key, $api_key)) {
+	            $this->logger->info('Keys matched successfully', [
+	                'source' => 'bytenft-payment-gateway',
+	                'account_id' => $account_id,
+	            ]);
+	            return true;
+	        }
+	    }
+
+	    return false;
 	}
+
 	/**
 	 * Handles incoming ByteNFT API requests to update order status.
 	 *
