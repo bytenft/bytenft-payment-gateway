@@ -1,4 +1,4 @@
-.bnfttransak-loader {
+.bytenft-loader {
   position: fixed;
   display: none;
   left: 0;
@@ -9,7 +9,7 @@
   z-index: 9999;
 }
 
-.bnfttransak-loader img {
+.bytenft-loader img {
   margin: auto;
   position: absolute;
   top: 0;
@@ -20,7 +20,7 @@
   border-radius: 100%;
 }
 
-.bnfttransak-loader-background {
+.bytenft-loader-background {
   display: none;
   position: fixed;
   top: 0;

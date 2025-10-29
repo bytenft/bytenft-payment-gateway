@@ -8,16 +8,16 @@ jQuery(function ($) {
     var isPollingActive = false;
     let popupWindow = null;
 
-    var loaderUrl = bnfttransak_params.bnfttransak_loader ? encodeURI(bnfttransak_params.bnfttransak_loader) : '';
+    var loaderUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
     $('body').append(
-        '<div class="bnfttransak-loader-background"></div>' +
-        '<div class="bnfttransak-loader"><img src="' + loaderUrl + '" alt="Loading..." /></div>'
+        '<div class="bytenft-loader-background"></div>' +
+        '<div class="bytenft-loader"><img src="' + loaderUrl + '" alt="Loading..." /></div>'
     );
 
     // Prevent default WooCommerce form submission for our method
     $('form.checkout').on('checkout_place_order', function () {
         var selectedPaymentMethod = $('input[name="payment_method"]:checked').val();
-        if (selectedPaymentMethod === bnfttransak_params.payment_method) {
+        if (selectedPaymentMethod === bytenft_params.payment_method) {
             return false;
         }
     });
@@ -26,9 +26,9 @@ jQuery(function ($) {
     function markCheckoutFormIfNeeded() {
         var $form = $("form.checkout");
         var selectedMethod = $form.find('input[name="payment_method"]:checked').val();
-        var expectedId = bnfttransak_params.payment_method + '-checkout-form';
+        var expectedId = bytenft_params.payment_method + '-checkout-form';
 
-        if (selectedMethod === bnfttransak_params.payment_method) {
+        if (selectedMethod === bytenft_params.payment_method) {
             $form.attr('id', expectedId);
         } else {
             // Only remove the ID if it matches ours
@@ -39,9 +39,9 @@ jQuery(function ($) {
     }
 
     function bindCheckoutHandler() {
-        var formId = '#' + bnfttransak_params.payment_method + '-checkout-form';
-        $(formId).off("submit.bytenft-transak").on("submit.bytenft-transak", function (e) {
-            if ($(this).find('input[name="payment_method"]:checked').val() === bnfttransak_params.payment_method) {
+        var formId = '#' + bytenft_params.payment_method + '-checkout-form';
+        $(formId).off("submit.bytenft").on("submit.bytenft", function (e) {
+            if ($(this).find('input[name="payment_method"]:checked').val() === bytenft_params.payment_method) {
                 handleFormSubmit.call(this, e);
                 return false;
             }
@@ -85,7 +85,7 @@ jQuery(function ($) {
         isSubmitting = true;
 
         var selectedPaymentMethod = $form.find('input[name="payment_method"]:checked').val();
-        if (selectedPaymentMethod !== bnfttransak_params.payment_method) {
+        if (selectedPaymentMethod !== bytenft_params.payment_method) {
             isSubmitting = false;
             return true;
         }
@@ -94,7 +94,7 @@ jQuery(function ($) {
         originalButtonText = $button.text();
         $button.prop('disabled', true).text('Processing...');
 
-        $('.bnfttransak-loader-background, .bnfttransak-loader').show();
+        $('.bytenft-loader-background, .bytenft-loader').show();
 
         var data = $form.serialize();
 
@@ -160,11 +160,11 @@ jQuery(function ($) {
             paymentStatusInterval = setInterval(function () {
                 $.ajax({
                     type: 'POST',
-                    url: bnfttransak_params.ajax_url,
+                    url: bytenft_params.ajax_url,
                     data: {
-                        action: 'bnfttransak_check_payment_status',
+                        action: 'bytenft_check_payment_status',
                         order_id: orderId,
-                        security: bnfttransak_params.bnfttransak_nonce,
+                        security: bytenft_params.bytenft_nonce,
                     },
                     dataType: 'json',
                     success: function (statusResponse) {
@@ -200,11 +200,11 @@ jQuery(function ($) {
 
                     $.ajax({
                         type: 'POST',
-                        url: bnfttransak_params.ajax_url,
+                        url: bytenft_params.ajax_url,
                         data: {
-                            action: 'bnfttransak_popup_closed_event',
+                            action: 'bytenft_popup_closed_event',
                             order_id: orderId,
-                            security: bnfttransak_params.bnfttransak_nonce,
+                            security: bytenft_params.bytenft_nonce,
                         },
                         dataType: 'json',
                         success: function (response) {
@@ -224,7 +224,7 @@ jQuery(function ($) {
     }
 
     function handleResponse(response, $form) {
-        $('.bnfttransak-loader-background, .bnfttransak-loader').hide();
+        $('.bytenft-loader-background, .bytenft-loader').hide();
         $('.wc_er').remove();
 
         try {
@@ -265,6 +265,6 @@ jQuery(function ($) {
         if ($button) {
             $button.prop('disabled', false).text(originalButtonText);
         }
-        $('.bnfttransak-loader-background, .bnfttransak-loader').hide();
+        $('.bytenft-loader-background, .bytenft-loader').hide();
     }
 });

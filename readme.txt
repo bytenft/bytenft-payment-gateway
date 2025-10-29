@@ -1,17 +1,17 @@
-=== ByteNFT Transak Payment Gateway ===
-Contributors: ByteNFT Transak
-Tags: woocommerce, payment gateway, fiat, ByteNFT Transak
+=== ByteNFT Payment Gateway ===
+Contributors: ByteNFT
+Tags: woocommerce, payment gateway, fiat, ByteNFT
 Requires at least: 5.0
 Tested up to: 6.8
-Stable tag: 1.0.2
+Stable tag: 1.0.3
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
-The ByteNFT Transak Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fiat payments to sell products on your WooCommerce store.
+The ByteNFT Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fiat payments to sell products on your WooCommerce store.
 
 == Description ==
 
-This plugin integrates ByteNFT Transak Payment Gateway with WooCommerce, enabling you to accept fiat payments. 
+This plugin integrates ByteNFT Payment Gateway with WooCommerce, enabling you to accept fiat payments. 
 
 == Installation ==
 
@@ -27,6 +27,9 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 == Changelog ==
 
+= 1.0.3 =
+* Added **Sardine payment support** to enhance security, compliance, and fraud protection for transactions.
+
 = 1.0.2 =
 * Added support for multiple currencies to enhance payment flexibility.
 
@@ -38,6 +41,9 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.3 =
+* Update to this version to enable Sardine integration for improved fraud prevention and secure transaction processing.
 
 = 1.0.2 =
 * Introduces multi-currency support, allowing greater flexibility and a smoother checkout experience for international customers.

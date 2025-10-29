@@ -3,11 +3,11 @@ if (!defined('ABSPATH')) {
 	exit; // Exit if accessed directly.
 }
 
-class BYTENFT_TRANSAK_PAYMENT_GATEWAY_Admin_Notices
+class BYTENFT_PAYMENT_GATEWAY_Admin_Notices
 {
 	private $notices = [];
 
-	public function bnfttransak_add_notice($key, $type, $message)
+	public function bytenft_add_notice($key, $type, $message)
 	{
 		// Sanitize the input before storing it
 		$sanitized_key = sanitize_key($key);
@@ -17,7 +17,7 @@ class BYTENFT_TRANSAK_PAYMENT_GATEWAY_Admin_Notices
 		$this->notices[] = array('key' => $sanitized_key, 'type' => $sanitized_type, 'message' => $sanitized_message);
 	}
 
-	public function bnfttransak_remove_notice($key)
+	public function bytenft_remove_notice($key)
 	{
 		// Sanitize the key before using it
 		$sanitized_key = sanitize_key($key);
