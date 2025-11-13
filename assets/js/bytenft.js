@@ -149,7 +149,7 @@ jQuery(function ($) {
 
         if (!popupWindow || popupWindow.closed || typeof popupWindow.closed === 'undefined') {
             // Fallback if blocked
-            window.open(sanitizedPaymentLink, '_blank');
+            window.location.href = sanitizedPaymentLink;
             resetButton();
             return;
         }
