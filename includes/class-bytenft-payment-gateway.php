@@ -709,6 +709,23 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// **Prepare API Data**
 			$data = $this->bytenft_prepare_payment_data($order, $public_key, $secret_key);
 
+			// Check if data preparation failed (e.g., phone validation error)
+			if (is_array($data) && isset($data['result']) && $data['result'] === 'fail') {
+				// Validation error already logged and notice added in bytenft_prepare_payment_data
+				// Don't add notice again to avoid duplicate error messages
+				wc_get_logger()->error('Payment data preparation failed - stopping payment process', [
+					'source' => 'bytenft-payment-gateway',
+					'order_id' => $order->get_id(),
+					'error' => $data['error'] ?? 'Unknown error',
+					'data' => $data
+				]);
+				if (!empty($lock_key)) {
+					$this->release_lock($lock_key);
+				}
+				// Return immediately - don't try other accounts
+				return ['result' => 'fail'];
+			}
+
 			// **Check Transaction Limit**
 			$transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
 			$transaction_limit_response = wp_remote_post($transactionLimitApiUrl, [
@@ -977,13 +994,37 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		// Get billing address details
 		$email = sanitize_text_field($order->get_billing_email());
-		$phone = sanitize_text_field($order->get_billing_phone());
+		$original_phone = $order->get_billing_phone();
+		$phone = sanitize_text_field($original_phone);
 
 		// Get billing country (ISO code like "US", "IN", etc.)
 		$country = $order->get_billing_country();
 
 		// Convert to country calling code
 		$country_code = WC()->countries->get_country_calling_code($country);
+		
+		// Use original phone for normalization (sanitize_text_field may remove + sign)
+		// We'll sanitize after normalization
+		$phone_for_normalization = $original_phone ?: $phone;
+		
+		// Normalize and validate phone number
+		$normalized = $this->bytenft_normalize_phone($phone_for_normalization, $country_code);
+		
+		// Handle validation failure
+		if (empty($normalized['is_valid']) || empty($normalized['phone'])) {
+			$error_message = $normalized['error'] ?? __('Phone number is required and cannot be empty.', 'bytenft-payment-gateway');
+			wc_get_logger()->error('Phone number validation failed', [
+				'source' => 'bytenft-payment-gateway',
+				'order_id' => $order->get_id(),
+				'original_phone' => $original_phone,
+				'error' => $error_message
+			]);
+			wc_add_notice($error_message, 'error');
+			return ['result' => 'fail', 'error' => $error_message];
+		}
+		
+		$phone = $normalized['phone'];
+		$country_code = $normalized['country_code'];
 
 		$billing_address_1 = sanitize_text_field($order->get_billing_address_1());
 		$billing_address_2 = sanitize_text_field($order->get_billing_address_2());
@@ -1053,6 +1094,113 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'curr_code' => sanitize_text_field($order->get_currency()),
 		];
 	}
+
+	/**
+ * Normalize and validate international phone number (E.164 safe)
+ * - US: exactly 10 digits required (excluding +1)
+ * - Other countries: 4–12 digits local part allowed
+ *
+ * @param string $phone Phone number input
+ * @param string $country_code Country code (e.g. "+1", "91", "+44")
+ * @return array ['phone' => string, 'country_code' => string, 'is_valid' => bool, 'error' => string|null]
+ */
+private function bytenft_normalize_phone($phone, $country_code)
+{
+    // Step 1: Clean inputs
+    $cleanedPhone = preg_replace('/[()\s-]/', '', $phone ?? '');
+    $countryCode = preg_replace('/[^0-9]/', '', $country_code ?? '');
+    $phoneNumber = preg_replace('/[^\d]/', '', $cleanedPhone);
+    
+    if (empty($phoneNumber)) {
+        return [
+            'phone' => '',
+            'country_code' => $country_code ?: '',
+            'is_valid' => false,
+            'error' => 'Empty phone number'
+        ];
+    }
+
+    // Step 2: Remove country code prefix if already included
+    if (!empty($countryCode) &&
+        strlen($phoneNumber) > strlen($countryCode) &&
+        strpos($phoneNumber, $countryCode) === 0
+    ) {
+        $normalizedPhone = substr($phoneNumber, strlen($countryCode));
+    } else {
+        $normalizedPhone = $phoneNumber;
+    }
+
+    // Step 3: Trim leading zeros
+    $normalizedPhone = ltrim($normalizedPhone, '0');
+
+    // Step 4: Determine local number length
+    $localLength = strlen($normalizedPhone);
+    $totalLength = strlen($countryCode . $normalizedPhone);
+
+    // Step 5: Validation logic
+    $requires10Digits = in_array($countryCode, ['1', '91']); // US and India
+    $europeCodes = ['33','34','39','31','44','46','47','48','49','41','45','358'];
+    
+    if ($requires10Digits) {
+        // US and India: exactly 10 digits required
+        if ($localLength !== 10) {
+            $error = $localLength < 10 
+                ? sprintf('Phone number is too short. Must have exactly 10 digits. Your number has %d digits.', $localLength)
+                : sprintf('Phone number is too long. Must have exactly 10 digits. Your number has %d digits.', $localLength);
+            return [
+                'phone' => $normalizedPhone,
+                'country_code' => '+' . $countryCode,
+                'is_valid' => false,
+                'error' => $error
+            ];
+        }
+    } elseif (in_array($countryCode, $europeCodes)) {
+        // 🇪🇺 Europe numbers (typical range)
+        $min = ($countryCode === '49' || $countryCode === '358') ? 5 : 8; // Germany & Finland exception
+        $max = ($countryCode === '49' || $countryCode === '358') ? 11 : 10;
+        if ($localLength < $min || $localLength > $max) {
+            return [
+                'phone' => $normalizedPhone,
+                'country_code' => '+' . $countryCode,
+                'is_valid' => false,
+                'error' => "European number invalid: should be $min-$max digits"
+            ];
+        }
+    } else {
+        //  Other countries: default 4–12 digits
+        if ($localLength < 4 || $localLength > 12) {
+            return [
+                'phone' => $normalizedPhone,
+                'country_code' => '+' . $countryCode,
+                'is_valid' => false,
+                'error' => 'Invalid local number length (4-12 digits allowed)'
+            ];
+        }
+    }
+
+    // Step 6: E.164 limit check
+    if ($totalLength > 15) {
+        return [
+            'phone' => $normalizedPhone,
+            'country_code' => '+' . $countryCode,
+            'is_valid' => false,
+            'error' => sprintf(
+                'Phone number is too long. Maximum allowed length is 15 digits (including country code). Your phone number has %d digits.',
+                $totalLength
+            )
+        ];
+    }
+
+    // Step 7: Return normalized result
+    return [
+        'phone' => $normalizedPhone,
+        'country_code' => '+' . $countryCode,
+        'is_valid' => true,
+        'error' => null
+    ];
+}
+
+
 
 	// Helper function to get client IP address
 	private function bytenft_get_client_ip()
