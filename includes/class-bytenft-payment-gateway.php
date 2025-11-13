@@ -1138,11 +1138,11 @@ private function bytenft_normalize_phone($phone, $country_code)
     $totalLength = strlen($countryCode . $normalizedPhone);
 
     // Step 5: Validation logic
-    $requires10Digits = in_array($countryCode, ['1', '91']); // US and India
+    $requires10Digits = in_array($countryCode, ['1']); // US
     $europeCodes = ['33','34','39','31','44','46','47','48','49','41','45','358'];
     
     if ($requires10Digits) {
-        // US and India: exactly 10 digits required
+        // US: exactly 10 digits required
         if ($localLength !== 10) {
             $error = $localLength < 10 
                 ? sprintf('Phone number is too short. Must have exactly 10 digits. Your number has %d digits.', $localLength)
