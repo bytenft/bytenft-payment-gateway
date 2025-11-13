@@ -1167,15 +1167,12 @@ private function bytenft_normalize_phone($phone, $country_code)
             ];
         }
     } else {
-        //  Other countries: default 4–12 digits
-        if ($localLength < 4 || $localLength > 12) {
-            return [
-                'phone' => $normalizedPhone,
-                'country_code' => '+' . $countryCode,
-                'is_valid' => false,
-                'error' => 'Invalid local number length (4-12 digits allowed)'
-            ];
-        }
+        return [
+            'phone' => $normalizedPhone,
+            'country_code' => '+' . $countryCode,
+            'is_valid' => false,
+            'error' => 'Only US and European numbers are allowed'
+        ];
     }
 
     // Step 6: E.164 limit check
