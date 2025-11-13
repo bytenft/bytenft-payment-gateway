@@ -1111,12 +1111,13 @@ private function bytenft_normalize_phone($phone, $country_code)
     $countryCode = preg_replace('/[^0-9]/', '', $country_code ?? '');
     $phoneNumber = preg_replace('/[^\d]/', '', $cleanedPhone);
     
+    // If phone number is empty, return early without validation
     if (empty($phoneNumber)) {
         return [
             'phone' => '',
             'country_code' => $country_code ?: '',
-            'is_valid' => false,
-            'error' => 'Empty phone number'
+            'is_valid' => true,
+            'error' => null
         ];
     }
 
@@ -1137,7 +1138,7 @@ private function bytenft_normalize_phone($phone, $country_code)
     $localLength = strlen($normalizedPhone);
     $totalLength = strlen($countryCode . $normalizedPhone);
 
-    // Step 5: Validation logic
+    // Step 5: Validation logic (only if phone number exists)
     $requires10Digits = in_array($countryCode, ['1']); // US
     $europeCodes = ['33','34','39','31','44','46','47','48','49','41','45','358'];
     
