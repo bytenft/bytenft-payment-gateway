@@ -3,7 +3,7 @@ Contributors: ByteNFT
 Tags: woocommerce, payment gateway, fiat, ByteNFT
 Requires at least: 5.0
 Tested up to: 6.8
-Stable tag: 1.0.3
+Stable tag: 1.0.4
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -27,6 +27,9 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 == Changelog ==
 
+= 1.0.4 =
+* Enhanced phone number normalization and validation with improved error messages.
+
 = 1.0.3 =
 * Added **Sardine payment support** to enhance security, compliance, and fraud protection for transactions.
 
@@ -41,6 +44,9 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.4 =
+* Update to this version for improved phone number validation and better error messages during checkout.
 
 = 1.0.3 =
 * Update to this version to enable Sardine integration for improved fraud prevention and secure transaction processing.
