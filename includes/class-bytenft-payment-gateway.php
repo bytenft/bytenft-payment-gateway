@@ -346,7 +346,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	            'title'       => __('Title', 'bytenft-payment-gateway'),
 	            'type'        => 'text',
 	            'description' => __('This controls the title which the user sees during checkout.', 'bytenft-payment-gateway'),
-	            'default'     => __('Pay with ByteNFT (Credit Cards, Apple Pay & Google Pay)', 'bytenft-payment-gateway'),
+	            'default'     => __('Complete Your Purchase via Card', 'bytenft-payment-gateway'),
 	            'desc_tip'    => true,
 	        ],
 
@@ -355,20 +355,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			    'type'        => 'textarea',
 			    'description' => __('Provide a brief description of the payment option.', 'bytenft-payment-gateway'),
 			    'default'     => __(
-			        '<p style="margin:0 0 8px; font-weight:bold; font-size:14px;">Important Information about Your Purchase</p>
-
-			        <p style="margin:0 0 6px; font-weight:bold; font-size:13px;">NFT Information</p>
-			        <p style="margin:0 0 10px; font-size:13px;">
-			            You are completing your NFT purchase through <strong>ByteNFT</strong>.<br>
-			            For your order, an NFT will be minted, purchased, and then burned as part of the process.<br>
-			            Please note this is a <strong>digital purchase</strong> and is <strong>non-refundable</strong>.
-			        </p>
-
-			        <p style="margin:0 0 6px; font-weight:bold; font-size:13px;">Bank Statement Information</p>
-			        <p style="margin:0; font-size:13px;">
-			            On your bank or card statement, this transaction will appear as <em>“BYTE”</em>.<br>
-			            Make sure you recognize this description to avoid confusion when reviewing your statement.
-			        </p>',
+			        '<p style="margin:0 0 6px; font-size:13px;">On your bank or card statement, this transaction will appear as from *ByteNFT.</p>
+			        <p style="margin:0 0 6px; font-size:13px;">Note this description to avoid confusion when reviewing your purchasing activity.</p>
+			        ',
 			        'bytenft-payment-gateway'
 			    ),
 			    'desc_tip'    => true,
