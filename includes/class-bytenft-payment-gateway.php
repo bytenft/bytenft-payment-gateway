@@ -346,7 +346,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	            'title'       => __('Title', 'bytenft-payment-gateway'),
 	            'type'        => 'text',
 	            'description' => __('This controls the title which the user sees during checkout.', 'bytenft-payment-gateway'),
-	            'default'     => __('Buy with USDC Using Your Card', 'bytenft-payment-gateway'),
+	            'default'     => __('Buy with USDC Using Your Credit/Debit Card, Apple Pay or Google Pay — Secure, Modern Checkout 🔐', 'bytenft-payment-gateway'),
 	            'desc_tip'    => true,
 	        ],
 
