@@ -3,7 +3,7 @@ Contributors: ByteNFT
 Tags: woocommerce, payment gateway, fiat, ByteNFT
 Requires at least: 5.0
 Tested up to: 6.8
-Stable tag: 1.0.4
+Stable tag: 1.0.5
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -27,6 +27,10 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 == Changelog ==
 
+= 1.0.5 =
+* Updated plugin initialization hook priority on `plugins_loaded` from 11 to 10 for improved load order.
+* Updated the default plugin title.
+
 = 1.0.4 =
 * Enhanced phone number normalization and validation with improved error messages.
 
@@ -44,6 +48,9 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.5 =
+* Recommended update to ensure correct plugin load order and updated default title.
 
 = 1.0.4 =
 * Update to this version for improved phone number validation and better error messages during checkout.
