@@ -83,6 +83,43 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_action('woocommerce_admin_order_data_after_order_details', [$this, 'bytenft_display_test_order_tag']);
 		add_filter('woocommerce_admin_order_preview_line_items', [$this, 'bytenft_add_custom_label_to_order_row'], 10, 2);
 		add_filter('woocommerce_available_payment_gateways', [$this, 'bytenft_hide_custom_payment_gateway_conditionally']);
+
+		add_action('woocommerce_after_checkout_validation', function ($data, $errors) {
+			$blockedStates = [
+				'NY',       // State Abbreviation
+				'AK',       // State Abbreviation
+			];
+			
+			if (!isset($data['payment_method']) || $data['payment_method'] !== 'bytenft') {
+				return;
+			}
+			
+			$ip = $_SERVER['REMOTE_ADDR'];
+			//$ip = '24.24.24.24';
+			$response = wp_remote_get("http://ip-api.com/json/{$ip}?fields=status,countryCode,region,regionName");
+
+			if (is_wp_error($response)) {
+				return;
+			}
+
+			$body = json_decode(wp_remote_retrieve_body($response), true);
+
+			if ($body['status'] !== 'success') {
+				return;
+			}
+			
+			if ($body && $body['countryCode'] === 'US') {
+
+				if (in_array($body['region'], $blockedStates)) {
+					$regionName = $body['regionName'];
+					$errors->add(
+						'geo_block',
+						__('This payment method is not available in your '.$regionName.' region.')
+					);
+				}
+			}
+
+		}, 10, 2);
 	}
 
 	/**
@@ -1671,7 +1708,7 @@ private function bytenft_normalize_phone($phone, $country_code)
 	private function hide_gateway($available_gateways, $gateway_id)
 	{
 	    unset($available_gateways[$gateway_id]);
-	    $GLOBALS['bytenft_gateway_visibility_' . $this->id] = $available_gateways;
+	    	$GLOBALS['bytenft_gateway_visibility_' . $this->id] = $available_gateways;
 	    return $available_gateways;
 	}
 
