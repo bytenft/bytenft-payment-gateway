@@ -230,14 +230,20 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		if ($order->has_status('failed') || (isset($response_data['transaction_status']) && $response_data['transaction_status'] == "failed")) {
 			wc_add_notice( 'Payment Failed: Transaction declined, please try another card.', 'error' );
 			$order->update_status('failed', 'Order marked as failed by ByteNFT.');
-			wp_send_json_success(['status' => 'failed']);
+			wp_send_json_success(['status' => 'failed', 'redirect_url' => $payment_return_url]);
 			exit;
 		}
 		
 		if ($order->has_status('cancelled') || (isset($response_data['transaction_status']) && $response_data['transaction_status'] == "canceled")) {
+			if (WC()->cart) {
+				WC()->cart->empty_cart();
+				WC()->session->cleanup_sessions();
+				WC()->session->destroy_session();
+				WC()->session->set_customer_session_cookie( false );
+			}
 			wc_add_notice( 'Payment Canceled: The Payment method canceled your transaction.', 'error' );
 			$order->update_status('cancelled', 'Order marked as canceled by ByteNFT.');
-			wp_send_json_success(['status' => 'cancelled']);
+			wp_send_json_success(['status' => 'cancelled', 'redirect_url' => $order->get_cancel_order_url()]);
 			exit;
 		}
 
@@ -367,7 +373,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 						try {
 							wc_add_notice( 'Payment Failed: Transaction declined, please try another card.', 'error' );
 							$order->update_status('failed', 'Order marked as failed by ByteNFT.');
-							wp_send_json_success(['message' => 'Order status updated to failed.', 'order_id' => $order_id]);
+							wp_send_json_success(['message' => 'Order status updated to failed.', 'order_id' => $order_id, 'redirect_url' => $payment_return_url]);
 						} catch (Exception $e) {
 							wp_send_json_error(['message' => 'Failed to update order status: ' . $e->getMessage()]);
 						}
@@ -375,6 +381,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 					case 'canceled':
 					case 'expired':
 						try {
+							if (WC()->cart) {
+								WC()->cart->empty_cart();
+								WC()->session->cleanup_sessions();
+								WC()->session->destroy_session();
+								WC()->session->set_customer_session_cookie( false );
+							}
 							wc_add_notice( 'Payment Canceled: The Payment method canceled your transaction.', 'error' );
 							$order->update_status('cancelled', 'Order marked as canceled by ByteNFT.');
 							wp_send_json_success(['message' => 'Order status updated to canceled.', 'order_id' => $order_id, 'redirect_url' => $order->get_cancel_order_url()]);
