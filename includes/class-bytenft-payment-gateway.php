@@ -355,8 +355,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			    'type'        => 'textarea',
 			    'description' => __('Provide a brief description of the payment option.', 'bytenft-payment-gateway'),
 			    'default'     => __(
-			        '<p style="margin:0 0 6px; font-size:13px;">On your bank or card statement, this transaction will appear as from *ByteNFT.</p>
-			        <p style="margin:0 0 6px; font-size:13px;">Note this description to avoid confusion when reviewing your purchasing activity.</p>
+			        '<p style="margin:0 0 6px; font-size:13px;">Use a Credit Card, Debit Card or Google Pay to complete your purchase via USDC.</p>
+			        <p style="margin:0 0 6px; font-size:13px;">The transaction will appear on your bank or card statement as *ByteNFT</p>
 			        ',
 			        'bytenft-payment-gateway'
 			    ),
