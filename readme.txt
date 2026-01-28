@@ -3,7 +3,7 @@ Contributors: ByteNFT
 Tags: woocommerce, payment gateway, fiat, ByteNFT
 Requires at least: 5.0
 Tested up to: 6.8
-Stable tag: 1.0.5
+Stable tag: 1.0.6
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -27,6 +27,11 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 == Changelog ==
 
+= 1.0.6 =
+* Fixed expired and manually cancelled order redirection to the Success Page with correct status in the portal.
+* Improved validation messages to specify exactly what needs to be corrected (email, address, etc.).
+* Updated the default plugin title for better clarity.
+
 = 1.0.5 =
 * Updated plugin initialization hook priority on `plugins_loaded` from 11 to 10 for improved load order.
 * Updated the default plugin title.
@@ -48,6 +53,11 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.6 =
+* Expired and manually cancelled orders now redirect correctly with proper status.
+* Validation messages now specify exactly what needs to be corrected.
+* Default plugin title updated for clarity.
 
 = 1.0.5 =
 * Recommended update to ensure correct plugin load order and updated default title.
