@@ -379,7 +379,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 						}
 						break;
 					case 'canceled':
-					case 'expired':
 						try {
 							if (WC()->cart) {
 								WC()->cart->empty_cart();
