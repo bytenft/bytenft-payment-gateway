@@ -63,6 +63,15 @@ jQuery(function ($) {
     markCheckoutFormIfNeeded();
     bindCheckoutHandler();
 
+    
+    $('#billing_first_name, #billing_last_name, #billing_city').on('input', function () {
+        this.value = this.value.replace(/[^A-Za-z\s]/g, ''); 
+    });
+
+    $('#billing_address_1').on('input', function () {
+        this.value = this.value.replace(/[^A-Za-z0-9\s,.\-#]/g, '');
+    });
+
     function handleFormSubmit(e) {
         e.preventDefault();
         var $form = $(this);
