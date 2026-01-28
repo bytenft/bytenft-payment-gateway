@@ -614,6 +614,43 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
 			return ['result' => 'fail'];
 		}
+		
+		//BeaverTech Code Change start
+		$current_order_status = $order->get_status();
+		if ($current_order_status === 'completed') {
+			if (WC()->cart) {
+				WC()->cart->empty_cart();
+				WC()->session->cleanup_sessions();
+				WC()->session->destroy_session();
+				WC()->session->set_customer_session_cookie( false );
+
+			}
+
+			// Return a successful response to DFin Sell API.
+			$payment_return_url = esc_url($order->get_checkout_order_received_url());
+			return [
+				'result'       => 'success',
+				'order_id'     => $order->get_id(),
+				'payment_status'     => 'success',
+				'redirect_url' => esc_url($order->get_checkout_order_received_url()),
+			];
+		}elseif($current_order_status === 'cancelled'){
+			if (WC()->cart) {
+				WC()->cart->empty_cart();
+				WC()->session->cleanup_sessions();
+				WC()->session->destroy_session();
+				WC()->session->set_customer_session_cookie( false );
+			}
+			
+			return [
+				'result'       => 'success',
+				'order_id'     => $order->get_id(),
+				'payment_status'     => 'success',
+				'redirect_url' => esc_url($order->get_cancel_order_url()),
+			];
+			
+		}
+		//BeaverTech Code Change end
 
 		// **Sandbox Mode Handling**
 		if ($this->sandbox) {
