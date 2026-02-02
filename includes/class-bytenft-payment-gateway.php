@@ -235,6 +235,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	    if (empty($errors)) {
 	        update_option('woocommerce_bytenft_payment_gateway_accounts', $valid_accounts);
+
+			// Remove the default "Settings saved" notice
+    		add_filter('pre_update_option_woocommerce_bytenft_payment_gateway_accounts', '__return_false');
+
+
 	        $this->admin_notices->bytenft_add_notice('settings_success', 'notice notice-success', __('Settings saved successfully.', 'bytenft-payment-gateway'));
 	        $this->log_info('Account settings updated successfully.', ['count' => count($valid_accounts)]);
 
