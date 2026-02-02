@@ -1320,305 +1320,205 @@ private function bytenft_normalize_phone($phone, $country_code)
 	{
 		$gateway_id = $this->id;
 
-	    if (!isset($available_gateways[$gateway_id])) {
-	        return $available_gateways;
-	    }
-
-	    $cache_key = 'bytenft_gateway_visibility_' . $gateway_id;
-
-		 // Unique cache/log key per cart state
-	    $cart_hash = WC()->cart ? WC()->cart->get_cart_hash() : 'no_cart';
-
-		// Skip logging if cart_hash is empty or 'no_cart' (cart not initialized)
-	    if (empty($cart_hash) || $cart_hash === 'no_cart') {
-	        return $available_gateways;
-	    }
-
-	    $cache_key = 'bytenft_gateway_visibility_' . $gateway_id . '_' . $cart_hash;
-
-	    // ✅ Avoid running multiple times for the same cart_hash in the same request
-	    static $processed_hashes = [];
-	    if (in_array($cart_hash, $processed_hashes, true)) {
-	        return $available_gateways;
-	    }
-	    $processed_hashes[] = $cart_hash;
-
-		$this->log_info_once_per_session(
-	        'gateway_check_start_' . $cart_hash,
-	        'Payment Option Check Started',
-	        ['cart_hash' => $cart_hash]
-	    );
-
-		// ✅ Handle both page load & AJAX differently
-	    $is_ajax_order_review = (
-	        defined('DOING_AJAX') &&
-	        DOING_AJAX &&
-	        isset($_REQUEST['wc-ajax']) &&
-	        $_REQUEST['wc-ajax'] === 'update_order_review'
-	    );
-
-	   $this->log_info_once_per_session(
-		    'request_context_' . $cart_hash,
-		    'Checking payment option visibility',
-		    [
-		        'cart_hash'       => $cart_hash,
-		        'Request Type'    => $is_ajax_order_review ? 'Cart update (AJAX)' : 'Checkout page load',
-		        'On Checkout Page'=> is_checkout() ? 'Yes' : 'No'
-		    ]
-		);
-
-
-	    $amount = 0.00;
-
-	   if (!empty($GLOBALS['bytenft_payment_gateway_cache'][$cache_key])) {
-			return $GLOBALS['bytenft_payment_gateway_cache'][$cache_key];
+		if (!isset($available_gateways[$gateway_id])) {
+			return $available_gateways;
 		}
 
-	    if (!is_checkout() && !$is_ajax_order_review) {
-		    return $available_gateways;
+		$cart_hash = WC()->cart ? WC()->cart->get_cart_hash() : 'no_cart';
+		if (empty($cart_hash) || $cart_hash === 'no_cart') {
+			return $available_gateways;
 		}
 
-	    if (is_admin()) {
-			$this->log_info_once_per_session(
-			    'in_admin_' . $cart_hash,
-			    'Payment option check skipped (admin area)',
-			    ['cart_hash' => $cart_hash]
-			);
+		$cache_key = 'bytenft_gateway_visibility_' . $gateway_id . '_' . $cart_hash;
 
-			$this->log_info_once_per_session(
-			    'gateway_check_end_' . $cart_hash,
-			    'Payment Option Check Finished',
-			    ['cart_hash' => $cart_hash]
-			);
-
-	        $this->get_updated_account();
-	        return $available_gateways;
-	    }
-	   
-	    if (WC()->cart) {
-	        if ($is_ajax_order_review) {
-	            // During AJAX, cart totals are often not recalculated yet
-	            // Get from totals array instead of get_total('raw')
-	            $totals = WC()->cart->get_totals();
-	            $amount = isset($totals['total']) ? (float) $totals['total'] : 0.00;
-
-	            // If still zero but cart has items, skip hiding for now
-	            if ($amount < 0.01 && WC()->cart->get_cart_contents_count() > 0) {
-	               $this->log_info_once_per_session(
-					    'ajax_skip_' . $cart_hash,
-					    'Skipping hide during AJAX recalculation (cart has items, amount 0)',
-					    ['cart_hash' => $cart_hash]
-					);
-
-					$this->log_info_once_per_session(
-					    'gateway_check_end_' . $cart_hash,
-					    'Payment Option Check Finished',
-					    ['cart_hash' => $cart_hash]
-					);
-	                return $available_gateways;
-	            }
-	        } else {
-	            // Normal page load
-	            $amount = (float) WC()->cart->get_total('raw');
-	            if ($amount < 0.01) {
-	                // Try fallback
-	                $totals = WC()->cart->get_totals();
-	                if (!empty($totals['total'])) {
-	                    $amount = (float) $totals['total'];
-	                }
-	            }
-	        }
-	    }
-
-	    $this->log_info_once_per_session(
-		    'cart_amount_' . $cart_hash,
-		    'Cart total detected',
-		    [
-		        'Amount'    => $amount,
-		        'cart_hash' => $cart_hash
-		    ]
-		);
-
-	    // Hide if truly below minimum
-	    if ($amount < 0.01) {
-			$this->log_info_once_per_session(
-			    'hide_reason_low_amount_' . $cart_hash,
-			    'Payment option hidden: order total below minimum',
-			    [
-			        'cart_hash' => $cart_hash,
-			        'Amount'    => $amount
-			    ]
-			);
-			$this->log_info_once_per_session(
-			    'gateway_check_end_' . $cart_hash,
-			    'Payment Option Check Finished',
-			    ['cart_hash' => $cart_hash]
-			);
-
-	        return $this->hide_gateway($available_gateways, $gateway_id);
-	    }
-
-	    $amount = number_format($amount, 2, '.', '');
-
-	    // Get accounts
-	    if (!method_exists($this, 'get_all_accounts')) {
-	       $this->log_info_once_per_session(
-			    'missing_get_all_accounts_' . $cart_hash,
-			    'Gateway misconfigured: missing account retrieval method',
-			    ['cart_hash' => $cart_hash]
-			);
-			$this->log_info_once_per_session(
-			    'gateway_check_end_' . $cart_hash,
-			    'Payment Option Check Finished',
-			    ['cart_hash' => $cart_hash]
-			);
-
-	        return $this->hide_gateway($available_gateways, $gateway_id);
-	    }
-
-	    $accounts = $this->get_all_accounts();
-
-		$this->log_info_once_per_session(
-		    'account_check_' . $cart_hash,
-		    'Checking payment provider accounts',
-		    [
-				'accounts' => $accounts,
-		        'Number of Accounts Found' => count($accounts),
-		        'cart_hash' => $cart_hash
-		    ]
-		);
-
-
-	    if (empty($accounts)) {
-	        $this->log_info_once_per_session(
-			    'no_accounts_' . $cart_hash,
-			    'Payment option hidden: no merchant accounts configured',
-			    ['cart_hash' => $cart_hash]
-			);
-			$this->log_info_once_per_session(
-			    'gateway_check_end_' . $cart_hash,
-			    'Payment Option Check Finished',
-			    ['cart_hash' => $cart_hash]
-			);
-
-	        return $this->hide_gateway($available_gateways, $gateway_id);
-	    }
-
-	    usort($accounts, fn($a, $b) => $a['priority'] <=> $b['priority']);
-
-	    $transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
-	    $accStatusApiUrl = $this->get_api_url('/api/check-merchant-status');
-
-	    $user_account_active = false;
-	    $all_accounts_limited = true;
-
-	   $this->log_info_once_per_session(
-		    'account_check_' . $cart_hash,
-		    'Evaluating accounts for availability',
-		    [
-		        'cart_hash' => $cart_hash,
-		        'Amount'    => $amount,
-		        'Accounts'  => $accounts
-		    ]
-		);
-
-
-	   $force_refresh = (
-		    isset($_GET['refresh_accounts'], $_GET['_wpnonce']) &&
-		    $_GET['refresh_accounts'] === '1' &&
-		    wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'refresh_accounts_nonce')
-		);
-
-	    foreach ($accounts as $account) {
-	        $public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
-	        $secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
-
-	        $data = [
-	            'is_sandbox'     => $this->sandbox,
-	            'amount'         => $amount,
-	            'api_public_key' => $public_key,
-	            'api_secret_key' => $secret_key,
-	        ];
-
-	        $cache_base = 'bytenft_daily_limit_' . md5($public_key . $amount);
-
-	        $status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 30, $force_refresh);
-	        if (!empty($status_data['status']) && $status_data['status'] === 'success') {
-	            $user_account_active = true;
-	        }
-
-	        $limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit');
-	       $this->log_info_once_per_session(
-			    'limit_response_' . $public_key . '_' . $cart_hash,
-			    'Transaction limit response',
-			    [
-			        'cart_hash' => $cart_hash,
-			        'Sandbox'   => $this->sandbox,
-			        'Data'      => $limit_data
-			    ]
-			);
-
-
-	        if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {
-	            $all_accounts_limited = false;
-	        }
-
-	        if ($user_account_active && !$all_accounts_limited) {
-	            break;
-	        }
-	    }
-
-	    if (!$user_account_active) {
-	       $this->log_info_once_per_session(
-			    'no_active_accounts_' . $cart_hash,
-			    'Payment option hidden: no active accounts',
-			    ['cart_hash' => $cart_hash]
-			);
-
-			$this->log_info_once_per_session(
-			    'gateway_check_end_' . $cart_hash,
-			    'Payment Option Check Finished',
-			    ['cart_hash' => $cart_hash]
-			);
-
-	        return $this->hide_gateway($available_gateways, $gateway_id);
-	    }
-
-	    if ($all_accounts_limited) {
-	       $this->log_info_once_per_session(
-			    'accounts_limited_' . $cart_hash,
-			    'Payment option hidden: all accounts reached transaction limits',
-			    ['cart_hash' => $cart_hash]
-			);
-
-			$this->log_info_once_per_session(
-			    'gateway_check_end_' . $cart_hash,
-			    'Payment Option Check Finished',
-			    ['cart_hash' => $cart_hash]
-			);
-
-	        return $this->hide_gateway($available_gateways, $gateway_id);
-	    }
-
-		$this->log_info_once_per_session(
-		    'gateway_active_' . $cart_hash,
-		    'Payment option available: account active and within limits',
-		    ['cart_hash' => $cart_hash]
-		);
-
-		// End log
-		$this->log_info_once_per_session(
-		    'gateway_check_end_' . $cart_hash,
-		    'Payment Option Check Finished',
-		    ['cart_hash' => $cart_hash]
-		);
-
-
-	    if (!isset($GLOBALS['bytenft_payment_gateway_cache'])) {
-			$GLOBALS['bytenft_payment_gateway_cache'] = [];
+		// Avoid multiple runs per cart_hash in the same request
+		static $processed_hashes = [];
+		if (in_array($cart_hash, $processed_hashes, true)) {
+			return $available_gateways;
 		}
-		$GLOBALS['bytenft_payment_gateway_cache'][$cache_key] = $available_gateways;
-	    return $available_gateways;
+		$processed_hashes[] = $cart_hash;
+
+		$this->log_info_once_per_session(
+			'gateway_check_start_' . $cart_hash,
+			'Checking ByteNFT payment option availability',
+			['cart_hash' => $cart_hash]
+		);
+
+		$is_ajax_order_review = (
+			defined('DOING_AJAX') &&
+			DOING_AJAX &&
+			isset($_REQUEST['wc-ajax']) &&
+			$_REQUEST['wc-ajax'] === 'update_order_review'
+		);
+
+		$this->log_info_once_per_session(
+			'request_context_' . $cart_hash,
+			'Checkout request detected',
+			[
+				'cart_hash'       => $cart_hash,
+				'Request Type'    => $is_ajax_order_review ? 'Cart update (AJAX)' : 'Checkout page load',
+				'On Checkout Page'=> is_checkout() ? 'Yes' : 'No'
+			]
+		);
+
+		if (!is_checkout() && !$is_ajax_order_review) {
+			return $available_gateways;
+		}
+
+		if (!WC()->cart) {
+			return $available_gateways;
+		}
+
+		// Get cart total
+		$amount = $is_ajax_order_review
+			? (float) (WC()->cart->get_totals()['total'] ?? 0)
+			: (float) WC()->cart->get_total('raw');
+
+		if ($amount < 0.01) {
+			$totals = WC()->cart->get_totals();
+			if (!empty($totals['total'])) {
+				$amount = (float) $totals['total'];
+			}
+		}
+
+		$this->log_info_once_per_session(
+			'cart_amount_' . $cart_hash,
+			'Cart total detected',
+			['Amount' => $amount]
+		);
+
+		if ($amount < 0.01) {
+			$this->log_info_once_per_session(
+				'hide_reason_low_amount_' . $cart_hash,
+				'ByteNFT payment option hidden: order total is too low',
+				['Amount' => $amount]
+			);
+			$this->log_info_once_per_session(
+				'gateway_check_end_' . $cart_hash,
+				'ByteNFT payment option check finished'
+			);
+			return $this->hide_gateway($available_gateways, $gateway_id);
+		}
+
+		if (!method_exists($this, 'get_all_accounts')) {
+			$this->log_info_once_per_session(
+				'missing_get_all_accounts_' . $cart_hash,
+				'ByteNFT plugin misconfigured: account retrieval method missing'
+			);
+			$this->log_info_once_per_session(
+				'gateway_check_end_' . $cart_hash,
+				'ByteNFT payment option check finished'
+			);
+			return $this->hide_gateway($available_gateways, $gateway_id);
+		}
+
+		$accounts = $this->get_all_accounts();
+
+		$accounts_summary = array_map(function($acc) {
+			return [
+				'Account Name'           => $acc['title'] ?? '(no title)',
+				'Live Account Active'    => (!empty($acc['live_status']) && $acc['live_status'] === 'Active') ? 'Yes' : 'No',
+				'Sandbox Account Active' => (!empty($acc['has_sandbox']) && $acc['has_sandbox'] === 'on' && !empty($acc['sandbox_status']) && $acc['sandbox_status'] === 'Active') ? 'Yes' : 'No',
+			];
+		}, $accounts);
+
+		$this->log_info_once_per_session(
+			'account_check_summary_' . $cart_hash,
+			'ByteNFT account status summary',
+			[
+				'accounts_summary' => $accounts_summary,
+				'Total Accounts'   => count($accounts_summary)
+			]
+		);
+
+		if (empty($accounts)) {
+			$this->log_info_once_per_session(
+				'no_accounts_' . $cart_hash,
+				'ByteNFT payment option hidden: no accounts configured'
+			);
+			$this->log_info_once_per_session(
+				'gateway_check_end_' . $cart_hash,
+				'ByteNFT payment option check finished'
+			);
+			return $this->hide_gateway($available_gateways, $gateway_id);
+		}
+
+		usort($accounts, fn($a, $b) => $a['priority'] <=> $b['priority']);
+
+		$transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
+		$accStatusApiUrl        = $this->get_api_url('/api/check-merchant-status');
+
+		$user_account_active = false;
+		$all_accounts_limited = true;
+
+		$force_refresh = (
+			isset($_GET['refresh_accounts'], $_GET['_wpnonce']) &&
+			$_GET['refresh_accounts'] === '1' &&
+			wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'refresh_accounts_nonce')
+		);
+
+		foreach ($accounts as $account) {
+			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
+			$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
+
+			$data = [
+				'is_sandbox'     => $this->sandbox,
+				'amount'         => $amount,
+				'api_public_key' => $public_key,
+				'api_secret_key' => $secret_key,
+			];
+
+			$cache_base = 'bytenft_daily_limit_' . md5($public_key . $amount);
+
+			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 30, $force_refresh);
+			if (!empty($status_data['status']) && $status_data['status'] === 'success') {
+				$user_account_active = true;
+			}
+
+			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit');
+			if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {
+				$all_accounts_limited = false;
+			}
+
+			if ($user_account_active && !$all_accounts_limited) {
+				break;
+			}
+		}
+
+		if (!$user_account_active) {
+			$this->log_info_once_per_session(
+				'no_active_accounts_' . $cart_hash,
+				'ByteNFT payment option hidden: no active accounts'
+			);
+			$this->log_info_once_per_session(
+				'gateway_check_end_' . $cart_hash,
+				'ByteNFT payment option check finished'
+			);
+			return $this->hide_gateway($available_gateways, $gateway_id);
+		}
+
+		if ($all_accounts_limited) {
+			$this->log_info_once_per_session(
+				'accounts_limited_' . $cart_hash,
+				'ByteNFT payment option hidden: all accounts have reached their transaction limits'
+			);
+			$this->log_info_once_per_session(
+				'gateway_check_end_' . $cart_hash,
+				'ByteNFT payment option check finished'
+			);
+			return $this->hide_gateway($available_gateways, $gateway_id);
+		}
+
+		$this->log_info_once_per_session(
+			'gateway_active_' . $cart_hash,
+			'ByteNFT payment option is visible: account is active'
+		);
+		$this->log_info_once_per_session(
+			'gateway_check_end_' . $cart_hash,
+			'ByteNFT payment option check finished'
+		);
+
+		return $available_gateways;
 	}
 
 	private function hide_gateway($available_gateways, $gateway_id)
