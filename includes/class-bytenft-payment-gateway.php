@@ -884,7 +884,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				if ($lock_key) $this->release_lock($lock_key);
 
-				return ['payment_link'=>esc_url($resp_data['data']['payment_link']),'result'=>'success'];
+				return [
+					'result'   => 'success',
+					'redirect' => esc_url($resp_data['data']['payment_link']),
+				];
+
 			}
 
 			// --------------------------
