@@ -626,6 +626,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		if ($status === 'completed' || $status === 'cancelled') {
 			if (WC()->cart) {
 				WC()->cart->empty_cart();
+				WC()->session->cleanup_sessions();
+				WC()->session->destroy_session();
+				WC()->session->set_customer_session_cookie( false );
 			}
 
 			$redirect = $status === 'completed' 
@@ -851,20 +854,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					],
 					['%d','%s','%s','%s','%s','%s']
 				);
-
-
-				// --------------------------
-				// WooCommerce Attribution
-				// --------------------------
-				if (!$order->get_meta('_bytenft_attribution_set') && function_exists('wc_get_container')) {
-					$container = wc_get_container();
-					if ($container->has(\Automattic\WooCommerce\Internal\Orders\OrderAttributionController::class)) {
-						$controller = $container->get(\Automattic\WooCommerce\Internal\Orders\OrderAttributionController::class);
-						$controller->maybe_set_order_attribution($order);
-						$order->update_meta_data('_bytenft_attribution_set',1);
-						$order->save();
-					}
-				}
 
 				// --------------------------
 				// Update Order Status and Notes
