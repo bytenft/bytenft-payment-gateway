@@ -1782,56 +1782,57 @@ private function bytenft_normalize_phone($phone, $country_code)
 	 * Get the next available payment account, handling concurrency.
 	 */
 	private function get_next_available_account($used_accounts = [])
-	{
-		global $wpdb;
+    {
+        global $wpdb;
 
-		// Fetch all accounts ordered by priority
-		$settings = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
+        // Fetch all accounts ordered by priority
+        $settings = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
 
-		if (is_string($settings)) {
-			$settings = maybe_unserialize($settings);
-		}
+        if (is_string($settings)) {
+            $settings = maybe_unserialize($settings);
+        }
 
-		if (!is_array($settings)) {
-			return false;
-		}
+        if (!is_array($settings)) {
+            return false;
+        }
 
-		$mode = $this->sandbox ? 'sandbox' : 'live';
-		$status_key = $mode . '_status';
-		$public_key = $mode . '_public_key';
-		$secret_key = $mode . '_secret_key';
+        $mode = $this->sandbox ? 'sandbox' : 'live';
+        $status_key = $mode . '_status';
+        $public_key = $mode . '_public_key';
+        $secret_key = $mode . '_secret_key';
 
-		// Filter out used accounts and check correct mode status & keys
-		$available_accounts = array_filter($settings, function ($account) use ($used_accounts, $status_key, $public_key, $secret_key) {
-			return !in_array($account[$public_key], $used_accounts, true)
-				&& isset($account[$status_key]) && ($account[$status_key] === 'active' || $account[$status_key] === 'Active')
-				&& !empty($account[$public_key]) && !empty($account[$secret_key]);
-		});
+        // Filter out used accounts and check correct mode status & keys
+        $available_accounts = array_filter($settings, function ($account) use ($used_accounts, $status_key, $public_key, $secret_key) {
+            return !in_array($account[$public_key], $used_accounts, true)
+                && isset($account[$status_key]) && ($account[$status_key] === 'active' || $account[$status_key] === 'Active')
+                && !empty($account[$public_key]) && !empty($account[$secret_key]);
+        });
 
 
-		if (empty($available_accounts)) {
-			return false;
-		}
+        if (empty($available_accounts)) {
+            return false;
+        }
 
-		// Sort by priority (lower number = higher priority)
-		usort($available_accounts, function ($a, $b) {
-			return $a['priority'] <=> $b['priority'];
-		});
+        // Sort by priority (lower number = higher priority)
+        usort($available_accounts, function ($a, $b) {
+            return $a['priority'] <=> $b['priority'];
+        });
 
-		// Concurrency Handling: Lock the selected account
-		foreach ($available_accounts as $account) {
-			$sanitized_title = preg_replace('/\s+/', '_', $account['title']);
-			$lock_key = "bytenft_lock_{$sanitized_title}";
+        // Concurrency Handling: Lock the selected account
+        foreach ($available_accounts as $account) {
+            $sanitized_title = preg_replace('/\s+/', '_', $account['title']);
+            $lock_key = "bytenft_lock_{$sanitized_title}";
+            $account['lock_key'] = $lock_key;
+            return $account;
+            // Try to acquire lock
+            // if ($this->acquire_lock($lock_key)) {
+            //     $account['lock_key'] = $lock_key;
+            //     return $account;
+            // }
+        }
 
-			// Try to acquire lock
-			// if ($this->acquire_lock($lock_key)) {
-			// 	$account['lock_key'] = $lock_key;
-			// 	return $account;
-			// }
-		}
-
-		return false;
-	}
+        return false;
+    }
 
 	/**
 	 * Acquire a lock to prevent concurrent access to the same account.
