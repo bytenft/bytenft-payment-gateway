@@ -1824,10 +1824,10 @@ private function bytenft_normalize_phone($phone, $country_code)
 			$lock_key = "bytenft_lock_{$sanitized_title}";
 
 			// Try to acquire lock
-			if ($this->acquire_lock($lock_key)) {
-				$account['lock_key'] = $lock_key;
-				return $account;
-			}
+			// if ($this->acquire_lock($lock_key)) {
+			// 	$account['lock_key'] = $lock_key;
+			// 	return $account;
+			// }
 		}
 
 		return false;
