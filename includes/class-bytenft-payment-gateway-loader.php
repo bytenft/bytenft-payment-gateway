@@ -54,8 +54,22 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('wp_ajax_bytenft_manual_sync', [$this, 'bytenft_manual_sync_callback']);
 		add_filter('cron_schedules', [$this, 'bytenft_add_cron_interval']);
 		add_action('bytenft_cron_event', [$this, 'handle_cron_event']);
+		add_action('wp_ajax_bytenft_block_gateway_process', [$this,'handle_bytenft_gateway_ajax']);
+		add_action('wp_ajax_nopriv_bytenft_block_gateway_process', [$this,'handle_bytenft_gateway_ajax']); 
 	}
-
+	
+	function handle_bytenft_gateway_ajax(){
+		$bytenftPayment = new BYTENFT_PAYMENT_GATEWAY();
+		$orderID = WC()->session->get('store_api_draft_order');	
+		
+		$status = [];
+		if($orderID){
+			$status = $bytenftPayment->process_payment($orderID);
+		}
+		
+		wp_send_json($status);
+		die;
+	}
 
 	/**
 	 * Initializes the plugin.

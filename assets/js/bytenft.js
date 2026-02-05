@@ -21,6 +21,14 @@ jQuery(function ($) {
             return false;
         }
     });
+    
+    $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button').on('click', function () {
+	var selectedPaymentMethod = $('input[name="radio-control-wc-payment-method-options"]:checked').val();
+	// Prevent WooCommerce default behavior for your custom method
+	if (selectedPaymentMethod === bytenft_params.payment_method) {
+		return false; // Stop WooCommerce default script
+	}
+    });
 
     // Assign or remove custom form ID based on selected method
     function markCheckoutFormIfNeeded() {
@@ -46,6 +54,13 @@ jQuery(function ($) {
                 return false;
             }
         });
+        $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button').on("click", function (e) {
+		// Check if the custom payment method is selected
+		if ($('input[name="radio-control-wc-payment-method-options"]:checked').val() === bytenft_params.payment_method) {
+			handleFormSubmit.call($('form.wc-block-checkout__form'), e);
+			return false; // Prevent other handlers
+		}
+	});
     }
 
     // Handle WooCommerce hooks
@@ -92,36 +107,75 @@ jQuery(function ($) {
         }
 
         isSubmitting = true;
-
-        var selectedPaymentMethod = $form.find('input[name="payment_method"]:checked').val();
+	
+	if ($form.find('input[name="radio-control-wc-payment-method-options"]:checked').val()) {
+		var selectedPaymentMethod = $form.find('input[name="radio-control-wc-payment-method-options"]:checked').val();
+		$button = $form.find('button.wc-block-components-checkout-place-order-button');
+	}else{
+		var selectedPaymentMethod = $form.find('input[name="payment_method"]:checked').val();
+		$button = $form.find('button[type="submit"][name="woocommerce_checkout_place_order"]');
+        }
         if (selectedPaymentMethod !== bytenft_params.payment_method) {
             isSubmitting = false;
             return true;
         }
 
-        $button = $form.find('button[type="submit"][name="woocommerce_checkout_place_order"]');
-        originalButtonText = $button.text();
-        $button.prop('disabled', true).text('Processing...');
+        if ($form.find('input[name="radio-control-wc-payment-method-options"]:checked').val()) {
+		// Disable the submit button immediately to prevent further clicks
+		$button = $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button');
+		originalButtonText = $button.text();
+		$button.prop('disabled', true).text('Processing...');
+	}else{
+		// Disable the submit button immediately to prevent further clicks
+		$button = $form.find('button[type="submit"][name="woocommerce_checkout_place_order"]');
+		originalButtonText = $button.text();
+		$button.prop('disabled', true).text('Processing...');
+	}
 
         $('.bytenft-loader-background, .bytenft-loader').show();
 
         var data = $form.serialize();
-
-        $.ajax({
-            type: 'POST',
-            url: wc_checkout_params.checkout_url,
-            data: data,
-            dataType: 'json',
-            success: function (response) {
-                handleResponse(response, $form);
-            },
-            error: function () {
-                handleError($form);
-            },
-            complete: function () {
-                isSubmitting = false;
-            },
-        });
+	if ($form.find('input[name="radio-control-wc-payment-method-options"]:checked').val()) {
+		isBlock = true;
+		$('.wc_er, .wc-block-components-notice-banner').remove();
+		$.ajax({
+			method: 'POST',
+			url: bytenft_params.ajax_url,
+			data: {
+					action: 'bytenft_block_gateway_process',
+					nonce: bytenft_params.bytenft_nonce
+					
+			},
+			success: function (response) {
+				handleResponse(response, $form);
+			},
+			error: function () {
+				handleError($form);
+			},
+			complete: function ($) {
+				isSubmitting = false; // Always reset isSubmitting to false in case of success or error
+				if (window.wp?.data) {
+					wp.data.dispatch('wc/store/cart').recalculateTotals();
+				}
+			},
+		});
+	}else{
+		$.ajax({
+		    type: 'POST',
+		    url: wc_checkout_params.checkout_url,
+		    data: data,
+		    dataType: 'json',
+		    success: function (response) {
+		        handleResponse(response, $form);
+		    },
+		    error: function () {
+		        handleError($form);
+		    },
+		    complete: function () {
+		        isSubmitting = false;
+		    },
+		});
+        }
 
         return false;
     }
@@ -161,75 +215,131 @@ jQuery(function ($) {
             window.location.href = sanitizedPaymentLink;
             resetButton();
             return;
+        }else{
+
+		// Polling for payment status (common for all)
+		if (!isPollingActive) {
+		    isPollingActive = true;
+		    paymentStatusInterval = setInterval(function () {
+		        $.ajax({
+		            type: 'POST',
+		            url: bytenft_params.ajax_url,
+		            data: {
+		                action: 'bytenft_check_payment_status',
+		                order_id: orderId,
+		                security: bytenft_params.bytenft_nonce,
+		            },
+		            dataType: 'json',
+		            success: function (statusResponse) {
+		                if (['success', 'failed', 'cancelled'].includes(statusResponse.data.status)) {
+		                    clearInterval(paymentStatusInterval);
+		                    clearInterval(popupInterval);
+		                    isPollingActive = false;
+
+		                    try {
+		                        if (popupWindow && !popupWindow.closed) {
+		                            popupWindow.close(); // won’t close iOS tab, but safe
+		                        }
+		                    } catch (e) {
+		                        console.warn('Unable to close popup window:', e);
+		                    }
+
+		                    if (statusResponse.data.redirect_url) {
+		                        window.location.href = statusResponse.data.redirect_url;
+		                    }
+		                }
+		            }
+		        });
+		    }, 5000);
+		}
+		popupInterval = setInterval(function () {
+			if (popupWindow.closed) {
+				clearInterval(popupInterval);
+				clearInterval(paymentStatusInterval);
+				// isPollingActive = false; // Reset polling active flag when popup closes
+
+				// API call when popup closes
+				$.ajax({
+					type: 'POST',
+				        url: bytenft_params.ajax_url,
+				        data: {
+				            action: 'bytenft_popup_closed_event',
+				            order_id: orderId,
+				            security: bytenft_params.bytenft_nonce,
+				        },
+				        dataType: 'json',
+					cache: false,
+					processData: true,
+					success: function (response) {
+					    if (response.success === true) {
+					        clearInterval(paymentStatusInterval);
+					        clearInterval(popupInterval);
+
+					        // Log for debugging
+					        console.log('Popup closed response:', response);
+
+							$(document.body).trigger('update_checkout');
+					        $(".wc-block-components-notice-banner").remove();
+
+					        // Redirect if redirect_url exists (for any status)
+					        if (response.data && response.data.redirect_url) {
+					            // Use replace() to ensure redirect works even in popup-close timing
+					            window.location.replace(response.data.redirect_url);
+					        }else{
+								if(response.data.notices){
+									$(".wc-block-checkout__form").prepend('<div class="wc-block-components-notice-banner is-error"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M12 3.2c-4.8 0-8.8 3.9-8.8 8.8 0 4.8 3.9 8.8 8.8 8.8 4.8 0 8.8-3.9 8.8-8.8 0-4.8-4-8.8-8.8-8.8zm0 16c-4 0-7.2-3.3-7.2-7.2C4.8 8 8 4.8 12 4.8s7.2 3.3 7.2 7.2c0 4-3.2 7.2-7.2 7.2zM11 17h2v-6h-2v6zm0-8h2V7h-2v2z"></path></svg>'+response.data.notices+'<div>');
+								}
+								 window.scrollTo(0, 0);
+							}
+					    }else{
+					    	$(document.body).trigger('update_checkout');
+					        $(".wc-block-components-notice-banner").remove();
+					    }
+
+					    // isPollingActive = false;
+					},
+					error: function (xhr, status, error) {
+						console.error("AJAX Error: ", error);
+					},
+					complete: function () {
+						resetButton();
+					}
+				});
+			}
+		}, 500);
+			
+		// Popup/tab close event (try for all, works on desktop, partial on iOS)
+		/*popupInterval = setInterval(function () {
+		    try {
+		        if (popupWindow.closed) {
+		            clearInterval(popupInterval);
+		            clearInterval(paymentStatusInterval);
+		            isPollingActive = false;
+
+		            $.ajax({
+		                type: 'POST',
+		                url: bytenft_params.ajax_url,
+		                data: {
+		                    action: 'bytenft_popup_closed_event',
+		                    order_id: orderId,
+		                    security: bytenft_params.bytenft_nonce,
+		                },
+		                dataType: 'json',
+		                success: function (response) {
+		                    if (response.success && response.data.redirect_url) {
+		                        window.location.href = response.data.redirect_url;
+		                    }
+		                },
+		                complete: function () {
+		                    resetButton();
+		                }
+		            });
+		        }
+		    } catch (e) {
+		        console.warn('Popup check failed:', e);
+		    }
+		}, 500);*/
         }
-
-        // Polling for payment status (common for all)
-        if (!isPollingActive) {
-            isPollingActive = true;
-            paymentStatusInterval = setInterval(function () {
-                $.ajax({
-                    type: 'POST',
-                    url: bytenft_params.ajax_url,
-                    data: {
-                        action: 'bytenft_check_payment_status',
-                        order_id: orderId,
-                        security: bytenft_params.bytenft_nonce,
-                    },
-                    dataType: 'json',
-                    success: function (statusResponse) {
-                        if (['success', 'failed', 'cancelled'].includes(statusResponse.data.status)) {
-                            clearInterval(paymentStatusInterval);
-                            clearInterval(popupInterval);
-                            isPollingActive = false;
-
-                            try {
-                                if (popupWindow && !popupWindow.closed) {
-                                    popupWindow.close(); // won’t close iOS tab, but safe
-                                }
-                            } catch (e) {
-                                console.warn('Unable to close popup window:', e);
-                            }
-
-                            if (statusResponse.data.redirect_url) {
-                                window.location.href = statusResponse.data.redirect_url;
-                            }
-                        }
-                    }
-                });
-            }, 5000);
-        }
-
-        // Popup/tab close event (try for all, works on desktop, partial on iOS)
-        popupInterval = setInterval(function () {
-            try {
-                if (popupWindow.closed) {
-                    clearInterval(popupInterval);
-                    clearInterval(paymentStatusInterval);
-                    isPollingActive = false;
-
-                    $.ajax({
-                        type: 'POST',
-                        url: bytenft_params.ajax_url,
-                        data: {
-                            action: 'bytenft_popup_closed_event',
-                            order_id: orderId,
-                            security: bytenft_params.bytenft_nonce,
-                        },
-                        dataType: 'json',
-                        success: function (response) {
-                            if (response.success && response.data.redirect_url) {
-                                window.location.href = response.data.redirect_url;
-                            }
-                        },
-                        complete: function () {
-                            resetButton();
-                        }
-                    });
-                }
-            } catch (e) {
-                console.warn('Popup check failed:', e);
-            }
-        }, 500);
     }
 
     function handleResponse(response, $form) {

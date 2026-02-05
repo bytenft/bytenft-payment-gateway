@@ -875,6 +875,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				return [
 					'result'   => 'success',
+					'order_id'     => $order->get_id(),
+					'payment_status'     => $response_data['data']['payment_status'],
 					'redirect' => esc_url($resp_data['data']['payment_link']),
 				];
 
