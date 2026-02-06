@@ -37,12 +37,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	{
 
 		$this->base_url = BYTENFT_BASE_URL;
-
+		
 		$this->admin_notices = new BYTENFT_PAYMENT_GATEWAY_Admin_Notices();
 
 		add_action('admin_init', [$this, 'bytenft_handle_environment_check']);
 		add_action('admin_notices', [$this->admin_notices, 'display_notices']);
-		add_action('plugins_loaded', [$this, 'bytenft_init'], 10);
+		add_action('plugins_loaded', [$this, 'bytenft_init'], 11);
 
 		// Register the AJAX action callback for checking payment status
 		add_action('wp_ajax_bytenft_check_payment_status', array($this, 'bytenft_handle_check_payment_status_request'));
@@ -88,6 +88,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		// Register blocks gateway
 		$this->bytenft_init_blocks();
+		
+		add_action( 'enqueue_block_assets', [ $this, 'register_blocks_assets' ] );
 
 		// Initialize REST API
 		$rest_api = BYTENFT_PAYMENT_GATEWAY_REST_API::get_instance();
@@ -128,6 +130,35 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				});
 			}
 	
+	}
+	
+	public function register_blocks_assets() {
+		
+		if (is_checkout()) {
+			
+			wp_register_script(
+				'bytenft-blocks-js',
+				plugin_dir_url( DFINSELL_PAYMENT_GATEWAY_FILE ) . 'assets/js/bytenft-blocks.js',
+				[ 'wc-blocks-registry', 'wc-settings', 'wp-element' ],
+				'1.0.0',
+				true
+			);
+
+			$settings = get_option( 'woocommerce_bytenft_settings', [] );
+
+			wp_localize_script(
+				'bytenft-blocks-js',
+				'bytenft_params',
+				[ 'settings' => $settings,
+				 'ajax_url' => admin_url('admin-ajax.php'),
+				 'dfin_loader' => plugins_url('../assets/images/loader.gif', __FILE__),
+				 'bytenft_nonce' => wp_create_nonce('bytenft_payment'), 
+				 'checkout_url' => wc_get_checkout_url(),
+				 'payment_method' => 'bytenft' 
+				]
+			);
+	
+		}
 	}
 
 

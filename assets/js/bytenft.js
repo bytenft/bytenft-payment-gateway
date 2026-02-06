@@ -86,11 +86,11 @@ jQuery(function ($) {
     $('#billing_address_1').on('input', function () {
         this.value = this.value.replace(/[^A-Za-z0-9\s,.\-#]/g, '');
     });
-
+    var isBlock = false;
     function handleFormSubmit(e) {
         e.preventDefault();
         var $form = $(this);
-
+	$('.wc_er').remove();
         // ⚡️ OPEN POP-UP HERE - THIS IS THE CRITICAL CHANGE FOR SAFARI
         if (isIOS()) {
             popupWindow = window.open('about:blank', '_blank');
@@ -149,8 +149,8 @@ jQuery(function ($) {
 			success: function (response) {
 				handleResponse(response, $form);
 			},
-			error: function () {
-				handleError($form);
+			error: function (err) {
+				handleError($form, err);
 			},
 			complete: function ($) {
 				isSubmitting = false; // Always reset isSubmitting to false in case of success or error
@@ -232,6 +232,7 @@ jQuery(function ($) {
 		            dataType: 'json',
 		            success: function (statusResponse) {
 		                if (['success', 'failed', 'cancelled'].includes(statusResponse.data.status)) {
+		                    
 		                    clearInterval(paymentStatusInterval);
 		                    clearInterval(popupInterval);
 		                    isPollingActive = false;
@@ -245,6 +246,7 @@ jQuery(function ($) {
 		                    }
 
 		                    if (statusResponse.data.redirect_url) {
+		                    	$(document.body).trigger('update_checkout');
 		                        window.location.href = statusResponse.data.redirect_url;
 		                    }
 		                }
@@ -358,23 +360,33 @@ jQuery(function ($) {
                 if (isIOS() && popupWindow && !popupWindow.closed) {
                     popupWindow.close();
                 }
-                throw response.messages || 'An error occurred during checkout.';
+                if(isBlock == true){
+			displayError(response.error, $form);
+		}
+		else{
+			throw response.messages || 'An error occurred during checkout.';
+		}
             }
         } catch (err) {
             displayError(err, $form);
         }
     }
 
-    function handleError($form) {
+    function handleError($form, err) {
         $('.wc_er').remove();
-        $form.prepend('<div class="wc_er">An error occurred during checkout. Please try again.</div>');
+        $form.prepend('<div class="wc_er">'+err+'</div>');
         $('html, body').animate({ scrollTop: $('.wc_er').offset().top - 300 }, 500);
         resetButton();
     }
 
     function displayError(err, $form) {
-        $('.wc_er').remove();
-        $form.prepend('<div class="wc_er">' + err + '</div>');
+        if(isBlock == true){
+		$('.wc_er, .wc-block-components-notice-banner').remove();
+		$form.prepend('<div class="wc_er wc-block-components-notice-banner is-error"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M12 3.2c-4.8 0-8.8 3.9-8.8 8.8 0 4.8 3.9 8.8 8.8 8.8 4.8 0 8.8-3.9 8.8-8.8 0-4.8-4-8.8-8.8-8.8zm0 16c-4 0-7.2-3.3-7.2-7.2C4.8 8 8 4.8 12 4.8s7.2 3.3 7.2 7.2c0 4-3.2 7.2-7.2 7.2zM11 17h2v-6h-2v6zm0-8h2V7h-2v2z"></path></svg>' + err + '</div>');
+	}else{
+		$('.wc_er').remove();
+		$form.prepend('<div class="wc_er">' + err + '</div>');
+	}
         $('html, body').animate({ scrollTop: $('.wc_er').offset().top - 300 }, 500);
         resetButton();
     }

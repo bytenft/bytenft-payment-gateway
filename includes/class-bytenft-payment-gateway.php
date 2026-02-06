@@ -716,7 +716,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// Prepare Payment Data
 			// --------------------------
 			$data = $this->bytenft_prepare_payment_data($order, $public_key, $secret_key);
-
+			
 			if (is_array($data) && ($data['result'] ?? '') === 'fail') {
 				wc_get_logger()->error('Payment data preparation failed', [
 					'source'=>'bytenft-payment-gateway', 
@@ -724,7 +724,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'error'=>$data['error'] ?? 'Unknown'
 				]);
 				if ($lock_key) $this->release_lock($lock_key);
-				return ['result'=>'fail'];
+				return ['result'=>'fail', 'error' => $data['error']];
 			}
 
 			// --------------------------
@@ -759,7 +759,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				} else {
 					if ($last_failed_account) $this->send_account_switch_email($last_failed_account, $account);
 					wc_add_notice(__('All accounts have reached their transaction limit.', 'bytenft-payment-gateway'), 'error');
-					return ['result'=>'fail'];
+					return ['result'=>'fail', 'error' => 'All accounts have reached their transaction limit.'];
 				}
 			}
 
@@ -780,12 +780,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				],
 				'sslverify'=>true
 			]);
-
+			
 			if (is_wp_error($response)) {
 				wc_get_logger()->error("HTTP error: {$response->get_error_message()}", $logger_context);
 				if ($lock_key) $this->release_lock($lock_key);
 				wc_add_notice(__('Payment error: Unable to process.', 'bytenft-payment-gateway'), 'error');
-				return ['result'=>'fail'];
+				return ['result'=>'fail', 'error' => 'Payment error: Unable to process.'];
 			}
 
 			$resp_data = json_decode(wp_remote_retrieve_body($response), true);
@@ -897,7 +897,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			wc_add_notice(__('Payment error: ', 'bytenft-payment-gateway').$error_msg,'error');
 
 			if ($lock_key) $this->release_lock($lock_key);
-			return ['result'=>'fail'];
+			return ['result'=>'fail', 'error' => 'Payment error: Unable to process.'];
 		}
 	}
 
