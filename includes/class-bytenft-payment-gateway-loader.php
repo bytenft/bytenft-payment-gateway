@@ -135,7 +135,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	public function register_blocks_assets() {
 		
 		if (is_checkout()) {
-			
+			$image_url = plugin_dir_url( dirname( __FILE__ ) ) . 'assets/images/loader.gif';
 			wp_register_script(
 				'bytenft-blocks-js',
 				plugin_dir_url( BYTENFT_PAYMENT_GATEWAY_FILE ) . 'assets/js/bytenft-blocks.js',
@@ -151,7 +151,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'bytenft_params',
 				[ 'settings' => $settings,
 				 'ajax_url' => admin_url('admin-ajax.php'),
-				 'dfin_loader' => plugins_url('../assets/images/loader.gif', __FILE__),
+				 'bytenft_loader' => $image_url,
 				 'bytenft_nonce' => wp_create_nonce('bytenft_payment'), 
 				 'checkout_url' => wc_get_checkout_url(),
 				 'payment_method' => 'bytenft' 

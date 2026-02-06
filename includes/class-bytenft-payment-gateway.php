@@ -1257,6 +1257,7 @@ private function bytenft_normalize_phone($phone, $country_code)
 	public function bytenft_enqueue_styles_and_scripts()
 	{
 		if (is_checkout()) {
+			$image_url = plugin_dir_url( dirname( __FILE__ ) ) . 'assets/images/loader.gif';
 			// Enqueue stylesheets
 			wp_enqueue_style(
 				'bytenft-payment-loader-styles',
@@ -1279,7 +1280,7 @@ private function bytenft_normalize_phone($phone, $country_code)
 			wp_localize_script('bytenft-js', 'bytenft_params', [
 				'ajax_url' => admin_url('admin-ajax.php'),
 				'checkout_url' => wc_get_checkout_url(),
-				'bytenft_loader' => plugins_url('../assets/images/loader.gif', __FILE__),
+				'bytenft_loader' => $image_url,
 				'bytenft_nonce' => wp_create_nonce('bytenft_payment'), // Create a nonce for verification
 				'payment_method' => $this->id,
 			]);
