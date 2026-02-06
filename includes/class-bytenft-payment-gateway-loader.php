@@ -138,7 +138,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			
 			wp_register_script(
 				'bytenft-blocks-js',
-				plugin_dir_url( DFINSELL_PAYMENT_GATEWAY_FILE ) . 'assets/js/bytenft-blocks.js',
+				plugin_dir_url( BYTENFT_PAYMENT_GATEWAY_FILE ) . 'assets/js/bytenft-blocks.js',
 				[ 'wc-blocks-registry', 'wc-settings', 'wp-element' ],
 				'1.0.0',
 				true
