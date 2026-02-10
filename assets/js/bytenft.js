@@ -82,6 +82,14 @@ jQuery(function ($) {
 		this.value = this.value.replace(/[^A-Za-z\s]/g, ''); 
 	});
 
+	document.addEventListener('input', function (e) {
+        const target = e.target;
+        // Change this selector to your field name
+        if (target.id === 'billing-first_name' || target.id === 'billing-last_name' || target.id === 'billing-city') {
+        target.value = target.value.replace(/[^a-zA-Z\s]/g, '');
+        }
+    });
+
     $('#billing_address_1').on('input', function () {
         this.value = this.value.replace(/[^A-Za-z0-9\s,.\-#]/g, '');
     });

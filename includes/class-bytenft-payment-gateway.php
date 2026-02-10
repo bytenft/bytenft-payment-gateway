@@ -603,7 +603,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		if (count($timestamps) >= $max_requests) {
 			wc_get_logger()->warning("Rate limit exceeded for IP: {$ip_address}", $logger_context);
 			wc_add_notice(__('Too many requests. Please try again later.', 'bytenft-payment-gateway'), 'error');
-			return ['result' => 'fail'];
+			return ['result' => 'fail','error' => 'Too many requests. Please try again later.'];
 		}
 
 		$timestamps[] = $current_time;
@@ -616,7 +616,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		if (!$order) {
 			wc_get_logger()->error("Invalid order ID: {$order_id}", $logger_context);
 			wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
-			return ['result' => 'fail'];
+			return ['result' => 'fail','error' => 'Invalid order.'];
 		}
 
 		// --------------------------
@@ -676,7 +676,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					wc_get_logger()->info("No available accounts. Notification sent to '{$last_failed_account['title']}'", $logger_context);
 				}
 				wc_add_notice(__('No available payment accounts.', 'bytenft-payment-gateway'), 'error');
-				return ['result' => 'fail'];
+				return ['result' => 'fail','error' => 'No available payment accounts.'];
 			}
 
 			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
@@ -696,7 +696,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			];
 
 			$merchant_status = $this->get_cached_api_response($status_url, $merchant_data, $cache_key);
-
+			
 			if (!is_array($merchant_status) || ($merchant_status['status'] ?? '') !== 'success') {
 				wc_get_logger()->warning("Account '{$account['title']}' failed merchant status check.", [
 					'source' => 'bytenft-payment-gateway',
