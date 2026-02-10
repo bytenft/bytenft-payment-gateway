@@ -781,6 +781,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'sslverify'=>true
 			]);
 			
+			
 			if (is_wp_error($response)) {
 				wc_get_logger()->error("HTTP error: {$response->get_error_message()}", $logger_context);
 				if ($lock_key) $this->release_lock($lock_key);
@@ -790,11 +791,19 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$resp_data = json_decode(wp_remote_retrieve_body($response), true);
 			wc_get_logger()->info("Payment API raw response", ['source'=>'bytenft-payment-gateway','context'=>$resp_data]);
-
+			
 			// --------------------------
 			// Handle Success
 			// --------------------------
-			if (($resp_data['status'] ?? '') === 'success' && !empty($resp_data['data']['payment_link'])) {
+			
+			if(($resp_data['status'] ?? '') === 'error'){
+				return [
+					'result'   => 'fail',
+					'order_id'     => $order->get_id(),
+					'error'     => $resp_data['message']
+				];
+			}
+			elseif (($resp_data['status'] ?? '') === 'success' && !empty($resp_data['data']['payment_link'])) {
 				if ($last_failed_account) $this->send_account_switch_email($last_failed_account, $account);
 
 				$pay_id = $resp_data['data']['pay_id'] ?? '';
