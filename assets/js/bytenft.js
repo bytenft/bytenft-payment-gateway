@@ -79,12 +79,8 @@ jQuery(function ($) {
     bindCheckoutHandler();
 
 	$('#billing_first_name, #billing_last_name, #billing_city').on('input', function () {
-			this.value = this.value.replace(/[^A-Za-z\s]/g, ''); 
-		});
-
-	$('#billing-first_name, #billing-last_name, #billing-city').on('input', function () {
-			this.value = this.value.replace(/[^A-Za-z\s]/g, ''); 
-		});
+		this.value = this.value.replace(/[^A-Za-z\s]/g, ''); 
+	});
 
     $('#billing_address_1').on('input', function () {
         this.value = this.value.replace(/[^A-Za-z0-9\s,.\-#]/g, '');
