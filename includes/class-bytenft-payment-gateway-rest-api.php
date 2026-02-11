@@ -20,33 +20,6 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	{
 		// Initialize the logger
 		$this->logger = wc_get_logger();
-
-		add_action('rest_api_init', function () {
-	        // Remove WordPress's default CORS headers
-	        remove_filter('rest_pre_serve_request', 'rest_send_cors_headers');
-
-	        // Add custom CORS headers
-	        add_filter('rest_pre_serve_request', function ($value) {
-
-	            // Allow specific origin
-	            header('Access-Control-Allow-Origin: '.BYTENFT_BASE_URL);
-	            header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
-	            header('Access-Control-Allow-Headers: Authorization, Content-Type, X-WP-Nonce, User-Agent, Accept');
-	            header('Access-Control-Allow-Credentials: true');
-
-	           // Safely get the request method
-				$request_method = filter_input(INPUT_SERVER, 'REQUEST_METHOD', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-				$request_method = $request_method ? strtoupper($request_method) : '';
-
-				// Handle preflight request
-				if ($request_method === 'OPTIONS') {
-					status_header(200);
-					exit;
-				}
-
-	            return $value;
-	        }, 15);
-	    });
 	}
 
 	public function bytenft_register_routes()
@@ -175,9 +148,9 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$current_order_status = $order->get_status();
 		$target_order_status = $current_order_status; // Initialize with current status
 
-		if ($api_order_status === 'completed' || $api_order_status === 'cancelled' || $api_order_status === 'failed' || $api_order_status === 'expired') {
+		if ($api_order_status === 'completed') {
 			// Check if the current order status allows for a transition to 'completed' or 'processing'.
-			if (in_array($current_order_status, ['pending', 'failed'])) {
+			if (in_array($current_order_status, ['pending', 'failed', 'cancelled'])) {
 				// Get the configured order status from the payment gateway settings for successful payments.
 				$gateway_id = 'bytenft';
 				$payment_gateways = WC()->payment_gateways->payment_gateways();
@@ -207,9 +180,25 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 					WC()->cart->empty_cart();
 				}
 				$payment_return_url = $order->get_checkout_order_received_url();
-				return new WP_REST_Response(['success' => true, 'message' => 'Order status already updated or no change required', 'payment_return_url' => $payment_return_url, 'order_status'    => $order->get_status()], 200);
+				return new WP_REST_Response(['success' => true, 'message' => 'Order status already updated or no change required', 'payment_return_url' => $payment_return_url], 200);
 			}
-		}else {
+		}elseif ($api_order_status === 'failed') {
+		    // Only allow cancelling if current order is not already cancelled or completed
+		    if (!in_array($current_order_status, ['completed'])) {
+		        $target_order_status = 'failed';
+		    } else {
+		        $this->logger->info("Order {$order_id} is already in '{$current_order_status}' status. No change for duplicate 'failed' status.", ['source' => 'bytenft-payment-gateway']);
+		        return new WP_REST_Response(['success' => true, 'message' => 'Order already failed or completed', 'payment_return_url' => $order->get_checkout_order_received_url()], 200);
+		    }
+		}elseif ($api_order_status === 'cancelled') {
+		    // Only allow cancelling if current order is not already cancelled or completed
+		    if (!in_array($current_order_status, ['cancelled', 'completed'])) {
+		        $target_order_status = 'cancelled';
+		    } else {
+		        $this->logger->info("Order {$order_id} is already in '{$current_order_status}' status. No change for duplicate 'cancelled' status.", ['source' => 'bytenft-payment-gateway']);
+		        return new WP_REST_Response(['success' => true, 'message' => 'Order already cancelled or completed', 'payment_return_url' => $order->get_checkout_order_received_url()], 200);
+		    }
+		} else {
 			// If the API status is not 'completed', or if your system needs to handle other statuses
 			// (e.g., 'failed', 'refunded'), you would add logic here.
 			// For now, if it's not a 'completed' status, we might not want to change the status,
@@ -252,6 +241,6 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 
 		// Return a successful response to ByteNFT API.
 		$payment_return_url = $order->get_checkout_order_received_url();
-		return new WP_REST_Response(['success' => true, 'message' => 'Order status processed successfully', 'payment_return_url' => $payment_return_url, 'order_status'    => $order->get_status()], 200);
+		return new WP_REST_Response(['success' => true, 'message' => 'Order status processed successfully', 'payment_return_url' => $payment_return_url], 200);
 	}
 }
