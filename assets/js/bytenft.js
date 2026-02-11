@@ -225,42 +225,42 @@ jQuery(function ($) {
         }else{
 
 		// Polling for payment status (common for all)
-		if (!isPollingActive) {
-		    isPollingActive = true;
-		    paymentStatusInterval = setInterval(function () {
-		        $.ajax({
-		            type: 'POST',
-		            url: bytenft_params.ajax_url,
-		            data: {
-		                action: 'bytenft_check_payment_status',
-		                order_id: orderId,
-		                security: bytenft_params.bytenft_nonce,
-		            },
-		            dataType: 'json',
-		            success: function (statusResponse) {
-		                if (['success', 'failed', 'cancelled'].includes(statusResponse.data.status)) {
+		// if (!isPollingActive) {
+		//     isPollingActive = true;
+		//     paymentStatusInterval = setInterval(function () {
+		//         $.ajax({
+		//             type: 'POST',
+		//             url: bytenft_params.ajax_url,
+		//             data: {
+		//                 action: 'bytenft_check_payment_status',
+		//                 order_id: orderId,
+		//                 security: bytenft_params.bytenft_nonce,
+		//             },
+		//             dataType: 'json',
+		//             success: function (statusResponse) {
+		//                 if (['success', 'failed', 'cancelled'].includes(statusResponse.data.status)) {
 		                    
-		                    clearInterval(paymentStatusInterval);
-		                    clearInterval(popupInterval);
-		                    isPollingActive = false;
+		//                     clearInterval(paymentStatusInterval);
+		//                     clearInterval(popupInterval);
+		//                     isPollingActive = false;
 
-		                    try {
-		                        if (popupWindow && !popupWindow.closed) {
-		                            popupWindow.close(); // won’t close iOS tab, but safe
-		                        }
-		                    } catch (e) {
-		                        console.warn('Unable to close popup window:', e);
-		                    }
+		//                     try {
+		//                         if (popupWindow && !popupWindow.closed) {
+		//                             popupWindow.close(); // won’t close iOS tab, but safe
+		//                         }
+		//                     } catch (e) {
+		//                         console.warn('Unable to close popup window:', e);
+		//                     }
 
-		                    if (statusResponse.data.redirect_url) {
-		                    	$(document.body).trigger('update_checkout');
-		                        window.location.href = statusResponse.data.redirect_url;
-		                    }
-		                }
-		            }
-		        });
-		    }, 5000);
-		}
+		//                     if (statusResponse.data.redirect_url) {
+		//                     	$(document.body).trigger('update_checkout');
+		//                         window.location.href = statusResponse.data.redirect_url;
+		//                     }
+		//                 }
+		//             }
+		//         });
+		//     }, 5000);
+		// }
 		popupInterval = setInterval(function () {
 			if (popupWindow.closed) {
 				clearInterval(popupInterval);
@@ -362,18 +362,20 @@ jQuery(function ($) {
                 // openPaymentLink now handles loading the URL into the existing pop-up
                 openPaymentLink(paymentLink); 
                 $form.removeAttr('data-result').removeAttr('data-redirect-url');
-            } else {
-                // If there's an error, close the pre-opened pop-up
-                if (isIOS() && popupWindow && !popupWindow.closed) {
-                    popupWindow.close();
-                }
-                if(isBlock == true){
-			displayError(response.error, $form);
-		}
-		else{
-			throw response.messages || 'An error occurred during checkout.';
-		}
-            }
+            }else {
+				// Close pre-opened popup (mainly for iOS)
+				if (isIOS() && popupWindow && !popupWindow.closed) {
+					popupWindow.close();
+				}
+
+				if (isBlock === true) {
+					// Block checkout: directly show error
+					displayError(response.error || response.messages, $form);
+				} else {
+					// Classic checkout: Woo expects "messages"
+					throw response.messages || response.error || 'An error occurred during checkout.';
+				}
+			}
         } catch (err) {
             displayError(err, $form);
         }
