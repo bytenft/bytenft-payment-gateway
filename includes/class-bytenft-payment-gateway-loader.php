@@ -360,7 +360,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$payment_token = $order->get_meta('_bytenft_pay_id');
 		
 		// Proceed only if the order status is 'pending'
-		if ($order->get_status() === 'pending' || $order->get_status() === 'processing' || $order->get_status() === 'canceled') {
+		if ($order->get_status() === 'pending' || $order->get_status() === 'processing' || $order->get_status() === 'failed' || $order->get_status() === 'canceled') {
 			// Call the ByteNFT API to update status
 			$transactionStatusApiUrl = $this->get_api_url('/api/update-txn-status');
 			$response = wp_remote_post($transactionStatusApiUrl, [
