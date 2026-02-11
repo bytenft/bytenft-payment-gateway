@@ -224,43 +224,43 @@ jQuery(function ($) {
             return;
         }else{
 
-		// Polling for payment status (common for all)
-		// if (!isPollingActive) {
-		//     isPollingActive = true;
-		//     paymentStatusInterval = setInterval(function () {
-		//         $.ajax({
-		//             type: 'POST',
-		//             url: bytenft_params.ajax_url,
-		//             data: {
-		//                 action: 'bytenft_check_payment_status',
-		//                 order_id: orderId,
-		//                 security: bytenft_params.bytenft_nonce,
-		//             },
-		//             dataType: 'json',
-		//             success: function (statusResponse) {
-		//                 if (['success', 'failed', 'cancelled'].includes(statusResponse.data.status)) {
+		//Polling for payment status (common for all)
+		if (!isPollingActive) {
+		    isPollingActive = true;
+		    paymentStatusInterval = setInterval(function () {
+		        $.ajax({
+		            type: 'POST',
+		            url: bytenft_params.ajax_url,
+		            data: {
+		                action: 'bytenft_check_payment_status',
+		                order_id: orderId,
+		                security: bytenft_params.bytenft_nonce,
+		            },
+		            dataType: 'json',
+		            success: function (statusResponse) {
+		                if (['success', 'failed', 'cancelled'].includes(statusResponse.data.status)) {
 		                    
-		//                     clearInterval(paymentStatusInterval);
-		//                     clearInterval(popupInterval);
-		//                     isPollingActive = false;
+		                    clearInterval(paymentStatusInterval);
+		                    clearInterval(popupInterval);
+		                    isPollingActive = false;
 
-		//                     try {
-		//                         if (popupWindow && !popupWindow.closed) {
-		//                             popupWindow.close(); // won’t close iOS tab, but safe
-		//                         }
-		//                     } catch (e) {
-		//                         console.warn('Unable to close popup window:', e);
-		//                     }
+		                    try {
+		                        if (popupWindow && !popupWindow.closed) {
+		                            popupWindow.close(); // won’t close iOS tab, but safe
+		                        }
+		                    } catch (e) {
+		                        console.warn('Unable to close popup window:', e);
+		                    }
 
-		//                     if (statusResponse.data.redirect_url) {
-		//                     	$(document.body).trigger('update_checkout');
-		//                         window.location.href = statusResponse.data.redirect_url;
-		//                     }
-		//                 }
-		//             }
-		//         });
-		//     }, 5000);
-		// }
+		                    if (statusResponse.data.redirect_url) {
+		                    	$(document.body).trigger('update_checkout');
+		                        window.location.href = statusResponse.data.redirect_url;
+		                    }
+		                }
+		            }
+		        });
+		    }, 5000);
+		}
 		popupInterval = setInterval(function () {
 			if (popupWindow.closed) {
 				clearInterval(popupInterval);
