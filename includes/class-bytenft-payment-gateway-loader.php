@@ -65,6 +65,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$status = [];
 		if($orderID){
 			$status = $bytenftPayment->process_payment($orderID);
+		}else{
+		
+			wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
+			$status = ['result' => 'fail','error' => 'Invalid order.'];
 		}
 		
 		wp_send_json($status);
@@ -434,7 +438,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 						try {
 							wc_add_notice( 'Payment Failed: Transaction declined, please try another card.', 'error' );
 							$order->update_status('failed', 'Order marked as failed by ByteNFT.');
-							wp_send_json_success(['message' => 'Order status updated to failed.', 'order_id' => $order_id, 'redirect_url' => $payment_return_url]);
+							wp_send_json_success(['message' => 'Order status updated to failed.', 'order_id' => $order_id, 'notices' => 'Payment Failed: The Payment method rejected your transaction. Please use another card.']);
 						} catch (Exception $e) {
 							wp_send_json_error(['message' => 'Failed to update order status: ' . $e->getMessage()]);
 						}
@@ -449,7 +453,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 							}
 							wc_add_notice( 'Payment Canceled: The Payment method canceled your transaction.', 'error' );
 							$order->update_status('cancelled', 'Order marked as canceled by ByteNFT.');
-							wp_send_json_success(['message' => 'Order status updated to canceled.', 'order_id' => $order_id, 'redirect_url' => $order->get_cancel_order_url()]);
+							wp_send_json_success(['message' => 'Order status updated to canceled.', 'order_id' => $order_id, 'redirect_url' => $order->get_cancel_order_url(),'notices' => 'Payment Canceled: The Payment method cancelled your transaction.']);
 						} catch (Exception $e) {
 							wp_send_json_error(['message' => 'Failed to update order status: ' . $e->getMessage()]);
 						}
