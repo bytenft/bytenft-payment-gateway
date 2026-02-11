@@ -368,12 +368,10 @@ jQuery(function ($) {
 					popupWindow.close();
 				}
 
-				if (isBlock === true) {
-					// Block checkout: directly show error
-					displayError(response.error || response.messages, $form);
+				 if(isBlock == true){
+					displayError(response.error, $form);
 				} else {
-					// Classic checkout: Woo expects "messages"
-					throw response.messages || response.error || 'An error occurred during checkout.';
+					throw response.messages || 'An error occurred during checkout.';
 				}
 			}
         } catch (err) {
