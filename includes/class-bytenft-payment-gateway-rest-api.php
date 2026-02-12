@@ -20,33 +20,6 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	{
 		// Initialize the logger
 		$this->logger = wc_get_logger();
-		
-
-		add_action('rest_api_init', function () {
-			// Remove WordPress's default CORS headers
-			remove_filter('rest_pre_serve_request', 'rest_send_cors_headers');
-
-			// Add custom CORS headers
-			add_filter('rest_pre_serve_request', function ($value) {
-
-			    header('Access-Control-Allow-Origin: '.BYTENFT_BASE_URL);
-			    header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
-			    header('Access-Control-Allow-Headers: Authorization, Content-Type, X-WP-Nonce, User-Agent, Accept');
-			    header('Access-Control-Allow-Credentials: true');
-
-			   // Safely get the request method
-					$request_method = filter_input(INPUT_SERVER, 'REQUEST_METHOD', FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-					$request_method = $request_method ? strtoupper($request_method) : '';
-
-					// Handle preflight request
-					if ($request_method === 'OPTIONS') {
-						status_header(200);
-						exit;
-					}
-
-			    return $value;
-			}, 15);
-		    });
 	}
 
 	public function bytenft_register_routes()

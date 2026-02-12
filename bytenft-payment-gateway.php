@@ -7,7 +7,7 @@
  * Author URI: https://pay.bytenft.xyz/
  * Text Domain: bytenft-payment-gateway
  * Plugin URI: https://github.com/bytenft/bytenft-payment-gateway
- * Version: 1.0.6
+ * Version: 1.0.5
  * License: GPLv3 or later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  *
@@ -119,27 +119,28 @@ function bytenft_cancel_unpaid_order_action($order_id)
 		]);
 	}
 
-	$table_name  = $wpdb->prefix . 'order_payment_link';
-	$cache_key   = 'bytenft_payment_row_' . intval($order_id);
-	$cache_group = 'bytenft_payment_gateway';
+	// ====== Cancel Payment Link API ======
+	$table_name   = $wpdb->prefix . 'order_payment_link';
+	$cache_key    = 'bytenft_payment_row_' . $order_id;
+	$cache_group  = 'bytenft_payment_gateway';
 
 	$payment_row = wp_cache_get($cache_key, $cache_group);
 
 	if (false === $payment_row) {
-		// Escape table name safely
-		$safe_table_name = esc_sql($table_name);
+	    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table_name is safe, built from $wpdb->prefix
+	    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- direct query is safe and properly prepared
+	    $payment_row = $wpdb->get_row(
+	        $wpdb->prepare(
+	            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table_name is not user input
+	            "SELECT * FROM `{$table_name}` WHERE `order_id` = %d LIMIT 1",
+	            $order_id
+	        ),
+	        ARRAY_A
+	    );
 
-		// Build query safely: only $order_id is dynamic
-		$sql = "SELECT * FROM {$safe_table_name} WHERE order_id = %d LIMIT 1";
-
-		// PHPCS: ignore direct DB query warning here
-		// PHPCS: ignore PreparedSQL.NotPrepared warning for table name interpolation
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery
-		$payment_row = $wpdb->get_row($wpdb->prepare($sql, intval($order_id)), ARRAY_A);
-
-		if ($payment_row) {
-			wp_cache_set($cache_key, $payment_row, $cache_group, 5 * MINUTE_IN_SECONDS);
-		}
+	    if ($payment_row) {
+	        wp_cache_set($cache_key, $payment_row, $cache_group, 5 * MINUTE_IN_SECONDS);
+	    }
 	}
 
 	$uuid           = sanitize_text_field($payment_row['uuid'] ?? '');
