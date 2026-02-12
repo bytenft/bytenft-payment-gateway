@@ -1,6 +1,4 @@
 <?php
-if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
-
 // config.php
 if (!defined('BYTENFT_PROTOCOL')) {
     define('BYTENFT_PROTOCOL', is_ssl() ? 'https://' : 'http://');
