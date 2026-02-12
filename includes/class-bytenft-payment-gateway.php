@@ -932,26 +932,23 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return false;
 		}
 
-		// Regex to match all common PO Box variants
-		$pattern = '/\bP\.?\s*O\.?\s*B\.?\s*O\.?\s*X\b/i'; 
-		// Explanation:
-		// \b        = word boundary
-		// P\.?      = P followed by optional dot
-		// \s*       = any spaces
-		// O\.?      = O followed by optional dot
-		// B\.?O\.?X = optional dots and letters for variants like POB, P.O.BOX
-		// i         = case-insensitive
+		// Unified regex to catch all common PO Box variants with optional prefix/postfix
+		$pattern = '/
+			\bP        # P
+			\s*\.?\s*  # optional spaces and dot
+			O          # O
+			\s*\.?\s*  # optional spaces and dot
+			(B\.?\s*O\.?\s*X|BOX)  # B O X variants or BOX
+			[\w\-]*    # optional digits/letters/hyphen immediately after
+			\b
+		/ix';
 
-		// Also match POBOX without spaces/dots
-		$pattern2 = '/\bPOBOX\b/i';
-
-		if (preg_match($pattern, $address) || preg_match($pattern2, $address)) {
+		if (preg_match($pattern, $address)) {
 			return true;
 		}
 
 		return false;
 	}
-
 
 	// Display the "Test Order" tag in admin order details
 	public function bytenft_display_test_order_tag($order)
