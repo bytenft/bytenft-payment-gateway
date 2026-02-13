@@ -619,6 +619,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return ['result' => 'fail','error' => 'Invalid order.'];
 		}
 
+		$billing = $order->get_billing_address_1();
+		if ($this->is_po_box($billing)) {
+			wc_add_notice(__('PO Box addresses are not allowed.', 'bytenft-payment-gateway'), 'error');
+			return ['result' => 'fail','error' => 'PO Box addresses are not allowed.'];
+		}
+
 		// --------------------------
 		// Early Return for Completed / Cancelled Orders
 		// --------------------------
@@ -921,6 +927,18 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	private function bytenft_get_return_url_base()
 	{
 		return rest_url('/bytenft/v1/data');
+	}
+
+	private function is_po_box($address)
+	{
+		if (!$address) {
+			return false;
+		}
+
+		return preg_match(
+			'/P\s*\.?\s*O\s*\.?\s*B\s*\.?\s*O\s*\.?\s*X/i',
+			$address
+		) === 1;
 	}
 
 	private function bytenft_prepare_payment_data($order, $api_public_key, $api_secret)
