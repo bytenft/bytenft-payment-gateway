@@ -280,38 +280,6 @@ jQuery(function ($) {
 				});
 			}
 		}, 500);
-			
-		// Popup/tab close event (try for all, works on desktop, partial on iOS)
-		/*popupInterval = setInterval(function () {
-		    try {
-		        if (popupWindow.closed) {
-		            clearInterval(popupInterval);
-		            clearInterval(paymentStatusInterval);
-		            isPollingActive = false;
-
-		            $.ajax({
-		                type: 'POST',
-		                url: bytenft_params.ajax_url,
-		                data: {
-		                    action: 'bytenft_popup_closed_event',
-		                    order_id: orderId,
-		                    security: bytenft_params.bytenft_nonce,
-		                },
-		                dataType: 'json',
-		                success: function (response) {
-		                    if (response.success && response.data.redirect_url) {
-		                        window.location.href = response.data.redirect_url;
-		                    }
-		                },
-		                complete: function () {
-		                    resetButton();
-		                }
-		            });
-		        }
-		    } catch (e) {
-		        console.warn('Popup check failed:', e);
-		    }
-		}, 500);*/
         }
     }
 

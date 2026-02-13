@@ -602,7 +602,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		if (count($timestamps) >= $max_requests) {
 			wc_get_logger()->warning("Rate limit exceeded for IP: {$ip_address}", $logger_context);
-			wc_add_notice(__('Too many requests. Please try again later.', 'bytenft-payment-gateway'), 'error');
+			$this->add_unique_notice(__('Too many requests. Please try again later.', 'bytenft-payment-gateway'), 'error');
 			return ['result' => 'fail','error' => 'Too many requests. Please try again later.'];
 		}
 
@@ -615,8 +615,40 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$order = wc_get_order($order_id);
 		if (!$order) {
 			wc_get_logger()->error("Invalid order ID: {$order_id}", $logger_context);
-			wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
+			$this->add_unique_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
 			return ['result' => 'fail','error' => 'Invalid order.'];
+		}
+
+		$billing = $order->get_billing_address_1();
+		//$shipping = $order->get_shipping_address_1();
+
+		if ($this->is_po_box($billing)) {
+			$this->add_unique_notice(__('PO Box addresses are not allowed.', 'bytenft-payment-gateway'), 'error');
+			return ['result' => 'fail','error' => 'PO Box addresses are not allowed.'];
+		}
+
+		// --------------------------
+		// Early Return for Completed / Cancelled Orders
+		// --------------------------
+		$status = $order->get_status();
+		if ($status === 'completed' || $status === 'cancelled') {
+			if (WC()->cart) {
+				WC()->cart->empty_cart();
+				WC()->session->cleanup_sessions();
+				WC()->session->destroy_session();
+				WC()->session->set_customer_session_cookie( false );
+			}
+
+			$redirect = $status === 'completed' 
+				? esc_url($order->get_checkout_order_received_url()) 
+				: esc_url($order->get_cancel_order_url());
+
+			return [
+				'result' => 'success',
+				'order_id' => $order->get_id(),
+				'payment_status' => 'success',
+				'redirect_url' => $redirect,
+			];
 		}
 
 		// --------------------------
@@ -675,7 +707,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$this->send_account_switch_email($last_failed_account, null);
 					wc_get_logger()->info("No available accounts. Notification sent to '{$last_failed_account['title']}'", $logger_context);
 				}
-				wc_add_notice(__('No available payment accounts.', 'bytenft-payment-gateway'), 'error');
+				$this->add_unique_notice(__('No available payment accounts.', 'bytenft-payment-gateway'), 'error');
 				return ['result' => 'fail','error' => 'No available payment accounts.'];
 			}
 
@@ -758,7 +790,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					continue;
 				} else {
 					if ($last_failed_account) $this->send_account_switch_email($last_failed_account, $account);
-					wc_add_notice(__('All accounts have reached their transaction limit.', 'bytenft-payment-gateway'), 'error');
+					$this->add_unique_notice(__('All accounts have reached their transaction limit.', 'bytenft-payment-gateway'), 'error');
 					return ['result'=>'fail', 'error' => 'All accounts have reached their transaction limit.'];
 				}
 			}
@@ -785,7 +817,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if (is_wp_error($response)) {
 				wc_get_logger()->error("HTTP error: {$response->get_error_message()}", $logger_context);
 				if ($lock_key) $this->release_lock($lock_key);
-				wc_add_notice(__('Payment error: Unable to process.', 'bytenft-payment-gateway'), 'error');
+				$this->add_unique_notice(__('Payment error: Unable to process.', 'bytenft-payment-gateway'), 'error');
 				return ['result'=>'fail', 'error' => 'Payment error: Unable to process.'];
 			}
 
@@ -889,8 +921,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'redirect' => esc_url($resp_data['data']['payment_link']),
 				];
 
-			}
-
 			// --------------------------
 			// Handle Failure
 			// --------------------------
@@ -903,11 +933,43 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				esc_html($error_msg)
 			));
 
-			wc_add_notice(__('Payment error: ', 'bytenft-payment-gateway').$error_msg,'error');
+			$this->add_unique_notice(__('Payment error: ', 'bytenft-payment-gateway').$error_msg,'error');
 
 			if ($lock_key) $this->release_lock($lock_key);
 			return ['result'=>'fail', 'error' => 'Payment error: Unable to process.'];
 		}
+	}
+
+	private function add_unique_notice($message, $type = 'error') {
+		$existing_notices = wc_get_notices($type);
+
+		if (!in_array($message, $existing_notices, true)) {
+			wc_add_notice($message, $type);
+		}
+	}
+
+
+	private function is_po_box($address) {
+		if (empty($address)) {
+			return false;
+		}
+
+		// Unified regex to catch all common PO Box variants with optional prefix/postfix
+		$pattern = '/
+			\bP        # P
+			\s*\.?\s*  # optional spaces and dot
+			O          # O
+			\s*\.?\s*  # optional spaces and dot
+			(B\.?\s*O\.?\s*X|BOX)  # B O X variants or BOX
+			[\w\-]*    # optional digits/letters/hyphen immediately after
+			\b
+		/ix';
+
+		if (preg_match($pattern, $address)) {
+			return true;
+		}
+
+		return false;
 	}
 
 	// Display the "Test Order" tag in admin order details
@@ -963,7 +1025,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'original_phone' => $original_phone,
 				'error' => $error_message
 			]);
-			wc_add_notice($error_message, 'error');
+			$this->add_unique_notice($error_message, 'error');
 			return ['result' => 'fail', 'error' => $error_message];
 		}
 		
@@ -1243,7 +1305,7 @@ private function bytenft_normalize_phone($phone, $country_code)
 			// Sanitize and validate the nonce field
 			$nonce = isset($_POST['bytenft_nonce']) ? sanitize_text_field(wp_unslash($_POST['bytenft_nonce'])) : '';
 			if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
-				wc_add_notice(__('Nonce verification failed. Please try again.', 'bytenft-payment-gateway'), 'error');
+				$this->add_unique_notice(__('Nonce verification failed. Please try again.', 'bytenft-payment-gateway'), 'error');
 				return false;
 			}
 
@@ -1252,7 +1314,7 @@ private function bytenft_normalize_phone($phone, $country_code)
 
 			// Validate the consent checkbox was checked
 			if ($consent !== 'on') {
-				wc_add_notice(__('You must consent to the collection of your data to process this payment.', 'bytenft-payment-gateway'), 'error');
+				$this->add_unique_notice(__('You must consent to the collection of your data to process this payment.', 'bytenft-payment-gateway'), 'error');
 				return false;
 			}
 		}
@@ -1929,7 +1991,7 @@ private function bytenft_normalize_phone($phone, $country_code)
 		// Display all collected errors at once
 		if (!empty($errors)) {
 			foreach ($errors as $error) {
-				wc_add_notice($error, 'error');
+				$this->add_unique_notice($error, 'error');
 			}
 			return false;
 		}
