@@ -935,10 +935,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return false;
 		}
 
-		return preg_match(
-			'/P\s*\.?\s*O\s*\.?\s*B\s*\.?\s*O\s*\.?\s*X/i',
-			$address
-		) === 1;
+		$pattern = '/^(?!.*(?:(.*((p|post)[-.\s]*(o|off|office)[-.\s]*(box|bin)[-.\s]*)|.*((p |post)[-.\s]*(box|bin)[-.\s]*)))).*$/i';
+
+		return preg_match($pattern, $address) === 0;
 	}
 
 	private function bytenft_prepare_payment_data($order, $api_public_key, $api_secret)
