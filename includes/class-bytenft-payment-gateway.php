@@ -586,7 +586,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	{
 		global $wpdb;
 		$logger_context = ['source' => 'bytenft-payment-gateway'];
-
+		wc_clear_notices();
 		// --------------------------
 		// Rate Limiting
 		// --------------------------
@@ -602,7 +602,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		if (count($timestamps) >= $max_requests) {
 			wc_get_logger()->warning("Rate limit exceeded for IP: {$ip_address}", $logger_context);
-			wc_add_notice(__('Too many requests. Please try again later.', 'bytenft-payment-gateway'), 'error');
+			if ( is_checkout() ) {
+				wc_add_notice(__('Too many requests. Please try again later.', 'bytenft-payment-gateway'), 'error');
+			}
 			return ['result' => 'fail','error' => 'Too many requests. Please try again later.'];
 		}
 
@@ -615,13 +617,17 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$order = wc_get_order($order_id);
 		if (!$order) {
 			wc_get_logger()->error("Invalid order ID: {$order_id}", $logger_context);
-			wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
+			if ( is_checkout() ) {
+				wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
+			}
 			return ['result' => 'fail','error' => 'Invalid order.'];
 		}
 
 		$billing = $order->get_billing_address_1();
 		if ($this->is_po_box($billing)) {
-			wc_add_notice(__('PO Box addresses are not allowed.', 'bytenft-payment-gateway'), 'error');
+			if ( is_checkout() ) {
+				wc_add_notice(__('PO Box addresses are not allowed.', 'bytenft-payment-gateway'), 'error');
+			}
 			return ['result' => 'fail','error' => 'PO Box addresses are not allowed.'];
 		}
 
@@ -681,7 +687,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$this->send_account_switch_email($last_failed_account, null);
 					wc_get_logger()->info("No available accounts. Notification sent to '{$last_failed_account['title']}'", $logger_context);
 				}
-				wc_add_notice(__('No available payment accounts.', 'bytenft-payment-gateway'), 'error');
+				if ( is_checkout() ) {
+					wc_add_notice(__('No available payment accounts.', 'bytenft-payment-gateway'), 'error');
+				}
 				return ['result' => 'fail','error' => 'No available payment accounts.'];
 			}
 
@@ -764,7 +772,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					continue;
 				} else {
 					if ($last_failed_account) $this->send_account_switch_email($last_failed_account, $account);
-					wc_add_notice(__('All accounts have reached their transaction limit.', 'bytenft-payment-gateway'), 'error');
+					if ( is_checkout() ) {
+						wc_add_notice(__('All accounts have reached their transaction limit.', 'bytenft-payment-gateway'), 'error');
+					}
 					return ['result'=>'fail', 'error' => 'All accounts have reached their transaction limit.'];
 				}
 			}
@@ -791,7 +801,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if (is_wp_error($response)) {
 				wc_get_logger()->error("HTTP error: {$response->get_error_message()}", $logger_context);
 				if ($lock_key) $this->release_lock($lock_key);
-				wc_add_notice(__('Payment error: Unable to process.', 'bytenft-payment-gateway'), 'error');
+				if ( is_checkout() ) {
+					wc_add_notice(__('Payment error: Unable to process.', 'bytenft-payment-gateway'), 'error');
+				}
 				return ['result'=>'fail', 'error' => 'Payment error: Unable to process.'];
 			}
 
@@ -819,7 +831,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				}
 
 				// ✅ Classic Checkout expects notices + failure
-				wc_add_notice($error_msg, 'error');
+				if ( is_checkout() ) {
+					wc_add_notice($error_msg, 'error');
+				}
 
 				return [
 					'result' => 'failure'
@@ -924,8 +938,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				esc_html($account['title']),
 				esc_html($error_msg)
 			));
-
-			wc_add_notice(__('Payment error: ', 'bytenft-payment-gateway').$error_msg,'error');
+			if ( is_checkout() ) {
+				wc_add_notice(__('Payment error: ', 'bytenft-payment-gateway').$error_msg,'error');
+			}
 
 			if ($lock_key) $this->release_lock($lock_key);
 			return ['result'=>'fail', 'error' => 'Payment error: Unable to process.'];
