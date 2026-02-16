@@ -802,11 +802,17 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// Handle Success
 			// --------------------------
 			
-			if(($resp_data['status'] ?? '') === 'error'){
+			if (($resp_data['status'] ?? '') === 'error') {
+				$error_msg = sanitize_text_field(
+					$resp_data['message']
+					?? $resp_data['context']['message']
+					?? 'Payment failed.'
+				);
+
+				wc_add_notice($error_msg, 'error');
+
 				return [
-					'result'   => 'fail',
-					'order_id'     => $order->get_id(),
-					'error'     => $resp_data['message']
+					'result' => 'failure'
 				];
 			}
 			elseif (($resp_data['status'] ?? '') === 'success' && !empty($resp_data['data']['payment_link'])) {
