@@ -56,6 +56,19 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('bytenft_cron_event', [$this, 'handle_cron_event']);
 		add_action('wp_ajax_bytenft_block_gateway_process', [$this,'handle_bytenft_gateway_ajax']);
 		add_action('wp_ajax_nopriv_bytenft_block_gateway_process', [$this,'handle_bytenft_gateway_ajax']); 
+		add_action('wp', function () {
+		    // Allow notices ONLY on checkout page
+		    if ( ! is_checkout() ) {
+			remove_action(
+			    'woocommerce_before_checkout_form',
+			    'woocommerce_output_all_notices',
+			    10
+			);
+			// Clear queued notices (errors, success, info)
+			wc_clear_notices();
+		    }
+
+		});
 	}
 	
 	function handle_bytenft_gateway_ajax(){
