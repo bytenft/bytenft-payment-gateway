@@ -146,6 +146,7 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 - **Redirection Fixes:** Fixed expired and manually cancelled order redirection to the Success Page with correct status in the portal.
 - **Validation Improvements:** Validation messages now specify exactly what is incorrect (email, address, etc.) for better customer guidance.
 - **Default Title Updated:** Modified the default plugin title for better clarity and consistency.
+- **PO Box Restriction:** Added validation to prevent PO Box addresses during checkout to ensure compliance with payment processing requirements.
 
 ### Version 1.0.5
 - **Initialization Priority Updated:** Adjusted plugin initialization hook priority on `plugins_loaded` from `11` to `10` to ensure proper load order.
