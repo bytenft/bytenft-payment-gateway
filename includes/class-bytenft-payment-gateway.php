@@ -809,6 +809,16 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					?? 'Payment failed.'
 				);
 
+				if ($this->is_block_checkout_request()) {
+					// ✅ Block Checkout expects raw JSON
+					return [
+						'result'   => 'fail',
+						'order_id' => $order->get_id(),
+						'error'    => $error_msg
+					];
+				}
+
+				// ✅ Classic Checkout expects notices + failure
 				wc_add_notice($error_msg, 'error');
 
 				return [
@@ -920,6 +930,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ($lock_key) $this->release_lock($lock_key);
 			return ['result'=>'fail', 'error' => 'Payment error: Unable to process.'];
 		}
+	}
+
+	private function is_block_checkout_request() {
+		return wp_doing_ajax() && isset($_REQUEST['action']) 
+			&& $_REQUEST['action'] === 'bytenft_block_gateway_process';
 	}
 
 	// Display the "Test Order" tag in admin order details
