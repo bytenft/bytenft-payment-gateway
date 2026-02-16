@@ -194,82 +194,164 @@ jQuery(function ($) {
     // The preparePopup function is no longer needed in its current form
     // as we now open the pop-up directly in handleFormSubmit.
 
-    function openPaymentLink(paymentLink) {
-        var sanitizedPaymentLink = paymentLink;
-        var width = 700, height = 700;
-        var left = window.innerWidth / 2 - width / 2;
-        var top = window.innerHeight / 2 - height / 2;
-
-         if (isIOS()) {
-            // ⚡️ RE-USE THE PREVIOUSLY OPENED POP-UP
-            if (popupWindow && !popupWindow.closed) {
-                popupWindow.location.href = sanitizedPaymentLink;
-            } else {
-                // Fallback for unexpected cases
-                popupWindow = window.open(sanitizedPaymentLink, '_blank');
-            }
-        } else {
-            popupWindow = window.open(
-                sanitizedPaymentLink,
-                'paymentPopup',
-                'width=' + width + ',height=' + height +
-                ',scrollbars=yes,resizable=yes,top=' + top + ',left=' + left
-            );
-        }
-
-        if (!popupWindow || popupWindow.closed || typeof popupWindow.closed === 'undefined') {
-            // Fallback if blocked
-            window.location.href = sanitizedPaymentLink;
-            resetButton();
-            return;
-        }else{
-
+	function openPaymentLink(paymentLink) {
+		var sanitizedPaymentLink = paymentLink;
+		var width = 700, height = 700;
+		var left = window.innerWidth / 2 - width / 2;
+		var top = window.innerHeight / 2 - height / 2;
+	
+		// Enhanced loading HTML with persistent loader
+	    var loadingHTML = `
+	        <!DOCTYPE html>
+	        <html>
+	        <head>
+	            <meta charset="UTF-8">
+	            <style>
+	                body {
+	                    margin: 0;
+	                    display: flex;
+	                    justify-content: center;
+	                    align-items: center;
+	                    height: 100vh;
+	                    background: #f5f5f5;
+	                    font-family: Arial, sans-serif;
+	                }
+	                .loader-container {
+	                    text-align: center;
+	                }
+	                .spinner {
+	                    border: 4px solid #f3f3f3;
+	                    border-top: 4px solid #3498db;
+	                    border-radius: 50%;
+	                    width: 50px;
+	                    height: 50px;
+	                    animation: spin 1s linear infinite;
+	                    margin: 0 auto 20px;
+	                }
+	                @keyframes spin {
+	                    0% { transform: rotate(0deg); }
+	                    100% { transform: rotate(360deg); }
+	                }
+	                .message {
+	                    color: #333;
+	                    font-size: 16px;
+	                    margin-bottom: 10px;
+	                }
+	                .submessage {
+	                    color: #666;
+	                    font-size: 14px;
+	                }
+	            </style>
+	        </head>
+	        <body>
+	            <div class="loader-container">
+	                <div class="spinner"></div>
+	                <div class="message">Connecting to secure payment...</div>
+	                <div class="submessage">Please wait...</div>
+	            </div>
+	            <script>
+	                // Auto-redirect after brief moment
+	                setTimeout(function() {
+	                    window.location.href = '${sanitizedPaymentLink}';
+	                }, 1000);
+	            </script>
+	        </body>
+	        </html>
+	    `;
+	
+		if (isIOS()) {
+			// ⚡️ RE-USE THE PREVIOUSLY OPENED POP-UP
+			if (popupWindow && !popupWindow.closed) {
+				try {
+	                popupWindow.document.open();
+	                popupWindow.document.write(loadingHTML);
+	                popupWindow.document.close();
+	            } catch (e) {
+	                // Fallback if document write fails
+	                popupWindow.location.href = sanitizedPaymentLink;
+	            }
+			} else {
+				popupWindow = window.open('', '_blank');
+	            if (popupWindow) {
+	                try {
+	                    popupWindow.document.write(loadingHTML);
+	                    popupWindow.document.close();
+	                } catch (e) {
+	                    popupWindow.location.href = sanitizedPaymentLink;
+	                }
+	            }
+			}
+		} else {
+			// For Desktop - create popup with loading page
+	        popupWindow = window.open('', 'paymentPopup',
+	            'width=' + width + ',height=' + height +
+	            ',scrollbars=yes,resizable=yes,top=' + top + ',left=' + left
+	        );
+	        
+	        if (popupWindow) {
+	            try {
+	                popupWindow.document.write(loadingHTML);
+	                popupWindow.document.close();
+	            } catch (e) {
+	                // Fallback if document write fails
+	                popupWindow.location.href = sanitizedPaymentLink;
+	            }
+	        }
+		}
+	
+		if (!popupWindow || popupWindow.closed || typeof popupWindow.closed === 'undefined') {
+			// Fallback if blocked
+			window.location.href = sanitizedPaymentLink;
+			resetButton();
+			return;
+		}else{
+	
 		//Polling for payment status (common for all)
 		popupInterval = setInterval(function () {
 			if (popupWindow.closed) {
 				clearInterval(popupInterval);
 				clearInterval(paymentStatusInterval);
 				// isPollingActive = false; // Reset polling active flag when popup closes
-
+	
 				// API call when popup closes
 				$.ajax({
 					type: 'POST',
-				        url: bytenft_params.ajax_url,
-				        data: {
-				            action: 'bytenft_popup_closed_event',
-				            order_id: orderId,
-				            security: bytenft_params.bytenft_nonce,
-				        },
-				        dataType: 'json',
+						url: bytenft_params.ajax_url,
+						data: {
+							action: 'bytenft_popup_closed_event',
+							order_id: orderId,
+							security: bytenft_params.bytenft_nonce,
+						},
+						dataType: 'json',
 					cache: false,
 					processData: true,
 					success: function (response) {
-					    if (response.success === true) {
-					        clearInterval(paymentStatusInterval);
-					        clearInterval(popupInterval);
-
-					        // Log for debugging
-					        console.log('Popup closed response:', response);
-
+						if (response.success === true) {
+							clearInterval(paymentStatusInterval);
+							clearInterval(popupInterval);
+	
+							// Log for debugging
+							console.log('Popup closed response:', response);
+	
 							$(document.body).trigger('update_checkout');
-					        $(".wc-block-components-notice-banner").remove();
-
-					        // Redirect if redirect_url exists (for any status)
-					        if (response.data && response.data.redirect_url) {
-					            // Use replace() to ensure redirect works even in popup-close timing
-					            window.location.replace(response.data.redirect_url);
-					        }else{
+							$(".wc-block-components-notice-banner").remove();
+	
+							// Redirect if redirect_url exists (for any status)
+							if (response.data && response.data.redirect_url) {
+								// Use replace() to ensure redirect works even in popup-close timing
+								window.location.replace(response.data.redirect_url);
+							}else{
 								if(response.data.notices){
 									$(".wc-block-checkout__form").prepend('<div class="wc-block-components-notice-banner is-error"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M12 3.2c-4.8 0-8.8 3.9-8.8 8.8 0 4.8 3.9 8.8 8.8 8.8 4.8 0 8.8-3.9 8.8-8.8 0-4.8-4-8.8-8.8-8.8zm0 16c-4 0-7.2-3.3-7.2-7.2C4.8 8 8 4.8 12 4.8s7.2 3.3 7.2 7.2c0 4-3.2 7.2-7.2 7.2zM11 17h2v-6h-2v6zm0-8h2V7h-2v2z"></path></svg>'+response.data.notices+'<div>');
 								}
-								 window.scrollTo(0, 0);
+									window.scrollTo(0, 0);
 							}
-					    }else{
-					    	$(document.body).trigger('update_checkout');
-					        $(".wc-block-components-notice-banner").remove();
-					    }
-
-					    // isPollingActive = false;
+						}else{
+							$(document.body).trigger('update_checkout');
+							$(".wc-block-components-notice-banner").remove();
+						}
+	
+						// isPollingActive = false;
 					},
 					error: function (xhr, status, error) {
 						console.error("AJAX Error: ", error);
@@ -280,8 +362,8 @@ jQuery(function ($) {
 				});
 			}
 		}, 500);
-        }
-    }
+		}
+	}
 
     function handleResponse(response, $form) {
         $('.bytenft-loader-background, .bytenft-loader').hide();
