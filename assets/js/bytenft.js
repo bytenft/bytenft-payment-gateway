@@ -57,6 +57,30 @@ jQuery(function ($) {
         $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button').on("click", function (e) {
 		// Check if the custom payment method is selected
 		if ($('input[name="radio-control-wc-payment-method-options"]:checked').val() === bytenft_params.payment_method) {
+			$error_list = '';
+			$error_flag = false;
+			$('.wc_er, .wc-block-components-notice-banner').remove();
+			$('form.wc-block-checkout__form input').each(function(input){
+				
+				if (this.hasAttribute('required')){
+					const inputVal = $(this).val();
+					if(inputVal == ""){
+						$error_flag = true;
+						const inputLabel = $(this).attr("aria-label");
+						$error_list +='<li>'+inputLabel+' field required</li>';
+						$(this).focus();
+						$(this).blur();
+					}
+					
+					console.log($error_list)
+				}
+			});
+			if($error_flag == true){
+				$('form.wc-block-checkout__form').prepend('<div class="wc_er wc-block-components-notice-banner is-error"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M12 3.2c-4.8 0-8.8 3.9-8.8 8.8 0 4.8 3.9 8.8 8.8 8.8 4.8 0 8.8-3.9 8.8-8.8 0-4.8-4-8.8-8.8-8.8zm0 16c-4 0-7.2-3.3-7.2-7.2C4.8 8 8 4.8 12 4.8s7.2 3.3 7.2 7.2c0 4-3.2 7.2-7.2 7.2zM11 17h2v-6h-2v6zm0-8h2V7h-2v2z"></path></svg><ul style="margin:0">' + $error_list + '</ul></div>');
+				window.scrollTo(0, 0);
+				return false;
+			}
+    			
 			handleFormSubmit.call($('form.wc-block-checkout__form'), e);
 			return false; // Prevent other handlers
 		}
