@@ -586,7 +586,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	{
 		global $wpdb;
 		$logger_context = ['source' => 'bytenft-payment-gateway'];
-
+		wc_clear_notices();
 		// --------------------------
 		// Rate Limiting
 		// --------------------------
@@ -602,7 +602,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		if (count($timestamps) >= $max_requests) {
 			wc_get_logger()->warning("Rate limit exceeded for IP: {$ip_address}", $logger_context);
-			wc_add_notice(__('Too many requests. Please try again later.', 'bytenft-payment-gateway'), 'error');
+			if ( is_checkout() ) {
+				wc_add_notice(__('Too many requests. Please try again later.', 'bytenft-payment-gateway'), 'error');
+			}
 			return ['result' => 'fail','error' => 'Too many requests. Please try again later.'];
 		}
 
@@ -615,13 +617,17 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$order = wc_get_order($order_id);
 		if (!$order) {
 			wc_get_logger()->error("Invalid order ID: {$order_id}", $logger_context);
-			wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
+			if ( is_checkout() ) {
+				wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
+			}
 			return ['result' => 'fail','error' => 'Invalid order.'];
 		}
 
 		$billing = $order->get_billing_address_1();
 		if ($this->is_po_box($billing)) {
-			wc_add_notice(__('PO Box addresses are not allowed.', 'bytenft-payment-gateway'), 'error');
+			if ( is_checkout() ) {
+				wc_add_notice(__('PO Box addresses are not allowed.', 'bytenft-payment-gateway'), 'error');
+			}
 			return ['result' => 'fail','error' => 'PO Box addresses are not allowed.'];
 		}
 
@@ -681,7 +687,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$this->send_account_switch_email($last_failed_account, null);
 					wc_get_logger()->info("No available accounts. Notification sent to '{$last_failed_account['title']}'", $logger_context);
 				}
-				wc_add_notice(__('No available payment accounts.', 'bytenft-payment-gateway'), 'error');
+				if ( is_checkout() ) {
+					wc_add_notice(__('No available payment accounts.', 'bytenft-payment-gateway'), 'error');
+				}
 				return ['result' => 'fail','error' => 'No available payment accounts.'];
 			}
 
@@ -764,7 +772,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					continue;
 				} else {
 					if ($last_failed_account) $this->send_account_switch_email($last_failed_account, $account);
-					wc_add_notice(__('All accounts have reached their transaction limit.', 'bytenft-payment-gateway'), 'error');
+					if ( is_checkout() ) {
+						wc_add_notice(__('All accounts have reached their transaction limit.', 'bytenft-payment-gateway'), 'error');
+					}
 					return ['result'=>'fail', 'error' => 'All accounts have reached their transaction limit.'];
 				}
 			}
@@ -791,7 +801,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if (is_wp_error($response)) {
 				wc_get_logger()->error("HTTP error: {$response->get_error_message()}", $logger_context);
 				if ($lock_key) $this->release_lock($lock_key);
-				wc_add_notice(__('Payment error: Unable to process.', 'bytenft-payment-gateway'), 'error');
+				if ( is_checkout() ) {
+					wc_add_notice(__('Payment error: Unable to process.', 'bytenft-payment-gateway'), 'error');
+				}
 				return ['result'=>'fail', 'error' => 'Payment error: Unable to process.'];
 			}
 
@@ -819,7 +831,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				}
 
 				// ✅ Classic Checkout expects notices + failure
-				wc_add_notice($error_msg, 'error');
+				if ( is_checkout() ) {
+					wc_add_notice($error_msg, 'error');
+				}
 
 				return [
 					'result' => 'failure'
@@ -924,8 +938,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				esc_html($account['title']),
 				esc_html($error_msg)
 			));
-
-			wc_add_notice(__('Payment error: ', 'bytenft-payment-gateway').$error_msg,'error');
+			if ( is_checkout() ) {
+				wc_add_notice(__('Payment error: ', 'bytenft-payment-gateway').$error_msg,'error');
+			}
 
 			if ($lock_key) $this->release_lock($lock_key);
 			return ['result'=>'fail', 'error' => 'Payment error: Unable to process.'];
@@ -985,29 +1000,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// Convert to country calling code
 		$country_code = WC()->countries->get_country_calling_code($country);
 		
-		// Use original phone for normalization (sanitize_text_field may remove + sign)
-		// We'll sanitize after normalization
-		$phone_for_normalization = $original_phone ?: $phone;
+		$phone = $original_phone ?: $phone;
 		
-		// Normalize and validate phone number
-		$normalized = $this->bytenft_normalize_phone($phone_for_normalization, $country_code);
-		
-		// Handle validation failure (only check is_valid since phone is optional)
-		if (empty($normalized['is_valid'])) {
-			$error_message = $normalized['error'] ?? __('Phone number validation failed.', 'bytenft-payment-gateway');
-			wc_get_logger()->error('Phone number validation failed', [
-				'source' => 'bytenft-payment-gateway',
-				'order_id' => $order->get_id(),
-				'original_phone' => $original_phone,
-				'error' => $error_message
-			]);
-			wc_add_notice($error_message, 'error');
-			return ['result' => 'fail', 'error' => $error_message];
-		}
-		
-		$phone = $normalized['phone'];
-		$country_code = $normalized['country_code'];
-
 		$billing_address_1 = sanitize_text_field($order->get_billing_address_1());
 		$billing_address_2 = sanitize_text_field($order->get_billing_address_2());
 		$billing_city = sanitize_text_field($order->get_billing_city());
@@ -1076,111 +1070,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'curr_code' => sanitize_text_field($order->get_currency()),
 		];
 	}
-
-	/**
- * Normalize and validate international phone number (E.164 safe)
- * - US: exactly 10 digits required (excluding +1)
- * - Other countries: 4–12 digits local part allowed
- *
- * @param string $phone Phone number input
- * @param string $country_code Country code (e.g. "+1", "91", "+44")
- * @return array ['phone' => string, 'country_code' => string, 'is_valid' => bool, 'error' => string|null]
- */
-private function bytenft_normalize_phone($phone, $country_code)
-{
-    // Step 1: Clean inputs
-    $cleanedPhone = preg_replace('/[()\s-]/', '', $phone ?? '');
-    $countryCode = preg_replace('/[^0-9]/', '', $country_code ?? '');
-    $phoneNumber = preg_replace('/[^\d]/', '', $cleanedPhone);
-    
-    // If phone number is empty, return early without validation (phone is optional)
-    if (empty($phoneNumber)) {
-        return [
-            'phone' => '',
-            'country_code' => $country_code ?: '',
-            'is_valid' => true,
-            'error' => null
-        ];
-    }
-
-    // Step 2: Remove country code prefix if already included
-    if (!empty($countryCode) &&
-        strlen($phoneNumber) > strlen($countryCode) &&
-        strpos($phoneNumber, $countryCode) === 0
-    ) {
-        $normalizedPhone = substr($phoneNumber, strlen($countryCode));
-    } else {
-        $normalizedPhone = $phoneNumber;
-    }
-
-    // Step 3: Trim leading zeros
-    $normalizedPhone = ltrim($normalizedPhone, '0');
-
-    // Step 4: Determine local number length
-    $localLength = strlen($normalizedPhone);
-    $totalLength = strlen($countryCode . $normalizedPhone);
-
-    // Step 5: Validation logic
-    $requires10Digits = in_array($countryCode, ['1']); // US
-    $europeCodes = ['33','34','39','31','44','46','47','48','49','41','45','358'];
-    
-    if ($requires10Digits) {
-        // US: exactly 10 digits required
-        if ($localLength !== 10) {
-            $error = $localLength < 10 
-                ? sprintf('Phone number is too short. Must have exactly 10 digits. Your number has %d digits.', $localLength)
-                : sprintf('Phone number is too long. Must have exactly 10 digits. Your number has %d digits.', $localLength);
-            return [
-                'phone' => $normalizedPhone,
-                'country_code' => '+' . $countryCode,
-                'is_valid' => false,
-                'error' => $error
-            ];
-        }
-    } elseif (in_array($countryCode, $europeCodes)) {
-        // 🇪🇺 Europe numbers (typical range)
-        $min = ($countryCode === '49' || $countryCode === '358') ? 5 : 8; // Germany & Finland exception
-        $max = ($countryCode === '49' || $countryCode === '358') ? 11 : 10;
-        if ($localLength < $min || $localLength > $max) {
-            return [
-                'phone' => $normalizedPhone,
-                'country_code' => '+' . $countryCode,
-                'is_valid' => false,
-                'error' => "European number invalid: should be $min-$max digits"
-            ];
-        }
-    } else {
-        return [
-            'phone' => $normalizedPhone,
-            'country_code' => '+' . $countryCode,
-            'is_valid' => false,
-            'error' => 'Only US and European numbers are allowed'
-        ];
-    }
-
-    // Step 6: E.164 limit check
-    if ($totalLength > 15) {
-        return [
-            'phone' => $normalizedPhone,
-            'country_code' => '+' . $countryCode,
-            'is_valid' => false,
-            'error' => sprintf(
-                'Phone number is too long. Maximum allowed length is 15 digits (including country code). Your phone number has %d digits.',
-                $totalLength
-            )
-        ];
-    }
-
-    // Step 7: Return normalized result
-    return [
-        'phone' => $normalizedPhone,
-        'country_code' => '+' . $countryCode,
-        'is_valid' => true,
-        'error' => null
-    ];
-}
-
-
 
 	// Helper function to get client IP address
 	private function bytenft_get_client_ip()
