@@ -65,7 +65,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			    10
 			);
 			// Clear queued notices (errors, success, info)
-			wc_clear_notices();
+			if ( function_exists( 'wc_clear_notices' ) ) {
+				wc_clear_notices();
+			}
 		    }
 
 		});
