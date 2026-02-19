@@ -113,7 +113,6 @@ jQuery(function ($) {
                 <body style="margin:0; display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; font-family:sans-serif; background:#ffffff; text-align:center;">
                     <div style="padding:20px;">
                         ${logoUrl ? `<img src="${logoUrl}" style="max-width:150px; height:auto; margin-bottom:25px;" />` : ''}
-                        <div style="border:3px solid #f3f3f3; border-top:3px solid #3498db; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:0 auto 20px;"></div>
                         <h2 style="font-size:18px; color:#333; margin:0;">Connecting to secure payment...</h2>
                         <p style="font-size:14px; color:#777; margin-top:10px;">Please do not refresh or close this window.</p>
                     </div>
