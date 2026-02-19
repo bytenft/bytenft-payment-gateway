@@ -119,97 +119,111 @@ jQuery(function ($) {
     });
     var isBlock = false;
     function handleFormSubmit(e) {
-        e.preventDefault();
-        var $form = $(this);
-	$('.wc_er').remove();
-        // ⚡️ OPEN POP-UP HERE - THIS IS THE CRITICAL CHANGE FOR SAFARI
-        if (isIOS()) {
-            popupWindow = window.open('about:blank', '_blank');
-            if (!popupWindow) {
-                // Handle pop-up blocker case
-                alert('Pop-up blocker detected! Please disable it for this site and try again.');
-                return false;
-            }
-        }
-
-        if (isSubmitting) {
-            console.warn("Checkout already submitting...");
-            return false;
-        }
-
-        isSubmitting = true;
-	
-	if ($form.find('input[name="radio-control-wc-payment-method-options"]:checked').val()) {
-		var selectedPaymentMethod = $form.find('input[name="radio-control-wc-payment-method-options"]:checked').val();
-		$button = $form.find('button.wc-block-components-checkout-place-order-button');
-	}else{
-		var selectedPaymentMethod = $form.find('input[name="payment_method"]:checked').val();
-		$button = $form.find('button[type="submit"][name="woocommerce_checkout_place_order"]');
-        }
-        if (selectedPaymentMethod !== bytenft_params.payment_method) {
-            isSubmitting = false;
-            return true;
-        }
-
-        if ($form.find('input[name="radio-control-wc-payment-method-options"]:checked').val()) {
-		// Disable the submit button immediately to prevent further clicks
-		$button = $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button');
-		originalButtonText = $button.text();
-		$button.prop('disabled', true).text('Processing...');
-	}else{
-		// Disable the submit button immediately to prevent further clicks
-		$button = $form.find('button[type="submit"][name="woocommerce_checkout_place_order"]');
-		originalButtonText = $button.text();
-		$button.prop('disabled', true).text('Processing...');
-	}
-
-        $('.bytenft-loader-background, .bytenft-loader').show();
-
-        var data = $form.serialize();
-	if ($form.find('input[name="radio-control-wc-payment-method-options"]:checked').val()) {
-		isBlock = true;
+		e.preventDefault();
+		var $form = $(this);
+		
+		// 1. Clear previous errors
 		$('.wc_er, .wc-block-components-notice-banner').remove();
-		$.ajax({
-			method: 'POST',
-			url: bytenft_params.ajax_url,
-			data: {
+
+		// 2. Determine if we are using the Block Checkout or Classic Checkout
+		var isBlockCheckout = !!$form.find('input[name="radio-control-wc-payment-method-options"]:checked').val();
+		var selectedPaymentMethod = isBlockCheckout ? 
+			$form.find('input[name="radio-control-wc-payment-method-options"]:checked').val() : 
+			$form.find('input[name="payment_method"]:checked').val();
+
+		// 3. Exit if our payment method isn't the one selected
+		if (selectedPaymentMethod !== bytenft_params.payment_method) {
+			isSubmitting = false;
+			return true;
+		}
+
+		// 4. PRE-OPEN THE POPUP (Crucial for Safari)
+		// We open this immediately on the click event to avoid the "about:blank" UX.
+		var logoUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
+		popupWindow = window.open('', '_blank', 'width=700,height=700');
+		
+		if (popupWindow) {
+			popupWindow.document.write(`
+				<html>
+				<head><title>Secure Payment</title></head>
+				<body style="margin:0; display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; font-family:sans-serif; background:#ffffff; text-align:center;">
+					<div style="padding:20px;">
+						${logoUrl ? `<img src="${logoUrl}" style="max-width:150px; height:auto; margin-bottom:25px;" />` : ''}
+						<div style="border:3px solid #f3f3f3; border-top:3px solid #3498db; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:0 auto 20px;"></div>
+						<h2 style="font-size:18px; color:#333; margin:0;">Securing Connection...</h2>
+						<p style="font-size:14px; color:#777; margin-top:10px;">Please do not refresh or close this window.</p>
+					</div>
+					<style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+				</body>
+				</html>
+			`);
+		} else {
+			alert('Pop-up blocker detected! Please enable pop-ups to complete your payment.');
+			return false;
+		}
+
+		// 5. Check submission state
+		if (isSubmitting) {
+			console.warn("Checkout already submitting...");
+			return false;
+		}
+		isSubmitting = true;
+
+		// 6. UI Feedback (Disable Buttons)
+		if (isBlockCheckout) {
+			$button = $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button');
+		} else {
+			$button = $form.find('button[type="submit"][name="woocommerce_checkout_place_order"]');
+		}
+		
+		originalButtonText = $button.text();
+		$button.prop('disabled', true).text('Processing...');
+		$('.bytenft-loader-background, .bytenft-loader').show();
+
+		// 7. Execute AJAX based on checkout type
+		if (isBlockCheckout) {
+			isBlock = true;
+			$.ajax({
+				method: 'POST',
+				url: bytenft_params.ajax_url,
+				data: {
 					action: 'bytenft_block_gateway_process',
 					nonce: bytenft_params.bytenft_nonce
-					
-			},
-			success: function (response) {
-				handleResponse(response, $form);
-			},
-			error: function (err) {
-				handleError($form, err);
-			},
-			complete: function ($) {
-				isSubmitting = false; // Always reset isSubmitting to false in case of success or error
-				if (window.wp?.data) {
-					wp.data.dispatch('wc/store/cart').recalculateTotals();
+				},
+				success: function (response) {
+					handleResponse(response, $form);
+				},
+				error: function (err) {
+					handleError($form, "Server connection error.");
+				},
+				complete: function () {
+					isSubmitting = false;
+					if (window.wp?.data) {
+						wp.data.dispatch('wc/store/cart').recalculateTotals();
+					}
 				}
-			},
-		});
-	}else{
-		$.ajax({
-		    type: 'POST',
-		    url: wc_checkout_params.checkout_url,
-		    data: data,
-		    dataType: 'json',
-		    success: function (response) {
-		        handleResponse(response, $form);
-		    },
-		    error: function () {
-		        handleError($form);
-		    },
-		    complete: function () {
-		        isSubmitting = false;
-		    },
-		});
-        }
+			});
+		} else {
+			isBlock = false;
+			$.ajax({
+				type: 'POST',
+				url: wc_checkout_params.checkout_url,
+				data: $form.serialize(),
+				dataType: 'json',
+				success: function (response) {
+					handleResponse(response, $form);
+				},
+				error: function () {
+					handleError($form, "Error processing checkout.");
+				},
+				complete: function () {
+					isSubmitting = false;
+				}
+			});
+		}
 
-        return false;
-    }
+		return false;
+	}
 
     function isIOS() {
         return /iP(ad|hone|od)/.test(navigator.userAgent);
@@ -390,58 +404,49 @@ jQuery(function ($) {
 	}
 
     function handleResponse(response, $form) {
-        $('.bytenft-loader-background, .bytenft-loader').hide();
-        $('.wc_er').remove();
+		$('.bytenft-loader-background, .bytenft-loader').hide();
+		$('.wc_er').remove();
 
-        try {
-            if (response.result === 'success') {
-                orderId = response.order_id;
-                var paymentLink = response.redirect;
-                // openPaymentLink now handles loading the URL into the existing pop-up
-                openPaymentLink(paymentLink); 
-                $form.removeAttr('data-result').removeAttr('data-redirect-url');
-            }else {
-				// Close pre-opened popup (mainly for iOS)
-				if (isIOS() && popupWindow && !popupWindow.closed) {
-					popupWindow.close();
-				}
+		try {
+			if (response.result === 'success') {
+				orderId = response.order_id;
+				// openPaymentLink will now inject the real URL into our existing popupWindow
+				openPaymentLink(response.redirect); 
+			} else {
+				// CRITICAL: Close the empty popup because there's a validation error
+				if (popupWindow) popupWindow.close();
 
-				 // 🔥 Extract proper error message safely
-				var errorMessage =
-					response?.error ||
-					response?.messages ||
-					response?.context?.message ||
-					'An error occurred during checkout.';
-
-				if (isBlock === true) {
-					displayError(errorMessage, $form);
-				} else {
-					throw errorMessage;
-				}
+				var errorMessage = response?.error || response?.messages || 'Payment initialization failed.';
+				displayError(errorMessage, $form);
 			}
-        } catch (err) {
-            displayError(err, $form);
-        }
-    }
+		} catch (err) {
+			if (popupWindow) popupWindow.close();
+			displayError(err, $form);
+		}
+	}
 
     function handleError($form, err) {
-        $('.wc_er').remove();
-        $form.prepend('<div class="wc_er">'+err+'</div>');
-        $('html, body').animate({ scrollTop: $('.wc_er').offset().top - 300 }, 500);
-        resetButton();
-    }
-
-    function displayError(err, $form) {
-        if(isBlock == true){
-		$('.wc_er, .wc-block-components-notice-banner').remove();
-		$form.prepend('<div class="wc_er wc-block-components-notice-banner is-error"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path d="M12 3.2c-4.8 0-8.8 3.9-8.8 8.8 0 4.8 3.9 8.8 8.8 8.8 4.8 0 8.8-3.9 8.8-8.8 0-4.8-4-8.8-8.8-8.8zm0 16c-4 0-7.2-3.3-7.2-7.2C4.8 8 8 4.8 12 4.8s7.2 3.3 7.2 7.2c0 4-3.2 7.2-7.2 7.2zM11 17h2v-6h-2v6zm0-8h2V7h-2v2z"></path></svg>' + err + '</div>');
-	}else{
+		if (popupWindow) popupWindow.close(); // Close on AJAX failure
 		$('.wc_er').remove();
 		$form.prepend('<div class="wc_er">' + err + '</div>');
+		$('html, body').animate({ scrollTop: $('.wc_er').offset().top - 300 }, 500);
+		resetButton();
 	}
-        $('html, body').animate({ scrollTop: $('.wc_er').offset().top - 300 }, 500);
-        resetButton();
-    }
+
+    function displayError(err, $form) {
+		if (popupWindow) popupWindow.close(); // Close on Logic failure
+		
+		var isBlock = !!$form.find('input[name="radio-control-wc-payment-method-options"]:checked').val();
+		$('.wc_er, .wc-block-components-notice-banner').remove();
+
+		var errorHtml = isBlock ? 
+			'<div class="wc_er wc-block-components-notice-banner is-error">... ' + err + '</div>' : 
+			'<div class="wc_er">' + err + '</div>';
+
+		$form.prepend(errorHtml);
+		$('html, body').animate({ scrollTop: $('.wc_er').offset().top - 300 }, 500);
+		resetButton();
+	}
 
     function resetButton() {
         isSubmitting = false;
