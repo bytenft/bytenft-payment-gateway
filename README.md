@@ -8,7 +8,7 @@ The ByteNFT Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fia
 **Tags:** woocommerce, payment gateway, fiat, ByteNFT  
 **Requires at least:** 6.2  
 **Tested up to:** 6.9  
-**Stable tag:** 1.0.8  
+**Stable tag:** 1.0.9  
 **License:** GPLv3 or later  
 **License URI:** [GPLv3 License](https://www.gnu.org/licenses/gpl-3.0.html)
 
@@ -141,6 +141,9 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 The official documentation for this plugin is available at: [https://pay.bytenft.xyz/api/docs/wordpress-plugin](https://pay.bytenft.xyz/api/docs/wordpress-plugin)
 
 ## Changelog
+
+### Version 1.0.9
+- **Blank Page (White Screen) Fix:** Resolved an issue causing a blank white screen in certain environments due to unexpected output and initialization conflicts.
 
 ### Version 1.0.8
 - **Fatal Error Fix:** Wrapped `wc_clear_notices()` with function existence checks to prevent PHP fatal errors when WooCommerce is not loaded.
