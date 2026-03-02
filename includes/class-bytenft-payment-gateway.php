@@ -361,7 +361,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			    'type'        => 'textarea',
 			    'description' => __('Provide a brief description of the payment option.', 'bytenft-payment-gateway'),
 			    'default'     => __(
-			        '<p style="margin:0 0 6px; font-size:13px;">Use a Credit Card, Debit Card or Google Pay to complete your purchase via USDC.</p>
+			        '<p style="margin:0 0 6px; font-size:13px;">Use a Credit Card, Debit Card or Google Pay, Apple Pay to complete your purchase via USDC.</p>
 			        <p style="margin:0 0 6px; font-size:13px;">The transaction will appear on your bank or card statement as *ByteNFT</p>
 			        ',
 			        'bytenft-payment-gateway'
@@ -621,14 +621,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
 			}
 			return ['result' => 'fail','error' => 'Invalid order.'];
-		}
-
-		$billing = $order->get_billing_address_1();
-		if ($this->is_po_box($billing)) {
-			if ( is_checkout() ) {
-				wc_add_notice(__('PO Box addresses are not allowed.', 'bytenft-payment-gateway'), 'error');
-			}
-			return ['result' => 'fail','error' => 'PO Box addresses are not allowed.'];
 		}
 
 		// --------------------------
@@ -967,13 +959,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private function is_po_box($address)
 	{
-		if (!$address) {
-			return false;
-		}
-
-		$pattern = '/^(?!.*(?:(.*((p|post)[-.\s]*(o|off|office)[-.\s]*(box|bin)[-.\s]*)|.*((p |post)[-.\s]*(box|bin)[-.\s]*)))).*$/i';
-
-		return preg_match($pattern, $address) === 0;
+		return !empty($address) && preg_match('/P[\s\.\-]*O[\s\.\-]*B[\s\.\-]*O[\s\.\-]*X/i', $address);
 	}
 
 	private function bytenft_prepare_payment_data($order, $api_public_key, $api_secret)
@@ -1026,6 +1012,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		if (empty($order_id)) {
 			wc_get_logger()->error('Order ID is missing or invalid.', ['source' => 'bytenft-payment-gateway']);
 			return ['result' => 'fail'];
+		}
+
+		if ($this->is_po_box($billing_address_1)) {
+			if ( is_checkout() ) {
+				wc_add_notice(__('PO Box addresses are not allowed.', 'bytenft-payment-gateway'), 'error');
+			}
+			return ['result' => 'fail','error' => 'PO Box addresses are not allowed.'];
 		}
 
 		// Create the meta data array

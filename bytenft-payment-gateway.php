@@ -2,7 +2,7 @@
 
 /**
  * Plugin Name: ByteNFT Payment Gateway
- * Description: This plugin enables secure USD payments via debit cards, Apple Pay, and Coinbase. It provides a seamless checkout experience with instant USDC conversion and no wallet setup required.
+ * Description: Use a Credit Card, Debit Card or Google Pay, Apple Pay to complete your purchase via USDC. The transaction will appear on your bank or card statement as *ByteNFT.
  * Author: ByteNFT
  * Author URI: https://pay.bytenft.xyz/
  * Text Domain: bytenft-payment-gateway
