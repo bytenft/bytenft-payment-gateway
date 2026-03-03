@@ -83,6 +83,7 @@ jQuery(function ($) {
         this.value = this.value.replace(/[^A-Za-z0-9\s,.\-#]/g, '');
     });
 
+    // ----- Form submission -----
     function handleFormSubmit(e) {
         e.preventDefault();
         var $form = $(this);
@@ -98,11 +99,10 @@ jQuery(function ($) {
             return true;
         }
 
-        // Prevent multiple submissions
         if (isSubmitting) return false;
         isSubmitting = true;
 
-        // Pre-open popup with loader
+        // Pre-open popup
         var logoUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
         popupWindow = window.open('', '_blank', 'width=700,height=700');
 
@@ -116,7 +116,6 @@ jQuery(function ($) {
                         <h2 style="font-size:18px; color:#333; margin:0;">Connecting to secure payment...</h2>
                         <p style="font-size:14px; color:#777; margin-top:10px;">Please do not refresh or close this window.</p>
                     </div>
-                    <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
                 </body>
                 </html>
             `);
@@ -146,38 +145,63 @@ jQuery(function ($) {
         return false;
     }
 
-    function openPaymentLink(paymentLink) {
-        if (popupWindow && !popupWindow.closed) {
-            popupWindow.location.href = paymentLink;
-        } else {
-            // Fallback to same window if popup blocked
-            window.location.href = paymentLink;
-        }
-
-        // Polling for popup close
-        popupInterval = setInterval(function () {
-            if (!popupWindow || popupWindow.closed) {
-                clearInterval(popupInterval);
-                clearInterval(paymentStatusInterval);
-
-                $.post(bytenft_params.ajax_url, {
-                    action: 'bytenft_popup_closed_event',
-                    order_id: orderId,
-                    security: bytenft_params.bytenft_nonce
-                }, function(response) {
-                    $(document.body).trigger('update_checkout');
-                    if (response.success && response.data?.redirect_url) {
-                        window.location.replace(response.data.redirect_url);
-                    } else if (response.data?.notices) {
-                        $(".wc-block-checkout__form").prepend('<div class="wc-block-components-notice-banner is-error">' + response.data.notices + '</div>');
-                        window.scrollTo(0, 0);
-                    }
-                    resetButton();
-                }, 'json');
-            }
-        }, 500);
+    // ----- Open payment link & start polling -----
+   function openPaymentLink(paymentLink) {
+    if (popupWindow && !popupWindow.closed) {
+        popupWindow.location.href = paymentLink;
+    } else {
+        // fallback
+        window.location.href = paymentLink;
+        return;
     }
 
+    // Start polling backend every 2s
+    paymentStatusInterval = setInterval(function () {
+        $.post(bytenft_params.ajax_url, {
+            action: 'bytenft_check_payment_status',
+            order_id: orderId,
+            security: bytenft_params.bytenft_nonce
+        }, function (response) {
+            if (response.success && response.synced_to_wp) {
+                clearInterval(paymentStatusInterval);
+                clearInterval(popupInterval);
+
+                if (popupWindow && !popupWindow.closed) popupWindow.close();
+                if (response.redirect_url) {
+                    window.location.href = response.redirect_url;
+                } else {
+                    console.warn('Redirect URL missing from response');
+                }
+                resetButton();
+            }
+        }, 'json');
+    }, 2000);
+
+    // Detect popup closed manually
+    popupInterval = setInterval(function () {
+        if (!popupWindow || popupWindow.closed) {
+            clearInterval(popupInterval);
+            // Keep polling until synced even if user closes popup
+            if (!paymentStatusInterval) {
+                paymentStatusInterval = setInterval(function () {
+                    $.post(bytenft_params.ajax_url, {
+                        action: 'bytenft_check_payment_status',
+                        order_id: orderId,
+                        security: bytenft_params.bytenft_nonce
+                    }, function (response) {
+                        if (response.success && response.synced_to_wp) {
+                            clearInterval(paymentStatusInterval);
+                            if (response.redirect_url) window.location.href = response.redirect_url;
+                            resetButton();
+                        }
+                    }, 'json');
+                }, 2000);
+            }
+        }
+    }, 500);
+}
+
+    // ----- Response handlers -----
     function handleResponse(response, $form) {
         $('.wc_er').remove();
         try {
