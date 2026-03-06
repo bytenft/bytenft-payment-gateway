@@ -43,6 +43,7 @@ BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
 
 add_action('woocommerce_cancel_unpaid_order', 'bytenft_cancel_unpaid_order_action');
 add_action('woocommerce_order_status_cancelled', 'bytenft_cancel_unpaid_order_action');
+add_action('woocommerce_order_status_changed', 'bytenft_cancel_unpaid_order_action', 10, 4);
 
 /**
  * Cancels an unpaid order after a specified timeout.
@@ -96,107 +97,110 @@ function bytenft_cancel_unpaid_order_action($order_id)
 		return;
 	}
 
-	$pending_time = get_post_meta($order_id, '_pending_order_time', true);
-	$pending_time = is_numeric($pending_time) ? (int) $pending_time : 0;
+	if ($order->get_status() === 'cancelled') {
+		$pending_time = get_post_meta($order_id, '_pending_order_time', true);
+		$pending_time = is_numeric($pending_time) ? (int) $pending_time : 0;
 
-	if ($order->has_status('pending')) {
-		if ((time() - $pending_time) < (30 * 60)) {
-			wc_get_logger()->info('Order still within pending timeout. Skipping cancel.', [
+		if ($order->has_status('pending')) {
+			if ((time() - $pending_time) < (30 * 60)) {
+				wc_get_logger()->info('Order still within pending timeout. Skipping cancel.', [
+					'source'  => 'bytenft-payment-gateway',
+					'context' => ['order_id' => $order_id],
+				]);
+				return;
+			}
+
+			$order->update_status('cancelled', 'Order automatically cancelled due to unpaid timeout.');
+			wc_reduce_stock_levels($order_id);
+			wp_cache_delete('bytenft_payment_link_uuid_' . $order_id, 'bytenft_payment_gateway');
+			wp_cache_delete('bytenft_payment_row_' . $order_id, 'bytenft_payment_gateway'); // Clear row cache
+
+			wc_get_logger()->info('Order auto-cancelled due to unpaid timeout.', [
 				'source'  => 'bytenft-payment-gateway',
 				'context' => ['order_id' => $order_id],
+			]);
+		}
+
+		$table_name  = $wpdb->prefix . 'order_payment_link';
+		$cache_key   = 'bytenft_payment_row_' . intval($order_id);
+		$cache_group = 'bytenft_payment_gateway';
+
+		$payment_row = wp_cache_get($cache_key, $cache_group);
+
+		if (false === $payment_row) {
+			// Escape table name safely
+			$safe_table_name = esc_sql($table_name);
+
+			// Build query safely: only $order_id is dynamic
+			$sql = "SELECT * FROM {$safe_table_name} WHERE order_id = %d LIMIT 1";
+
+			// PHPCS: ignore direct DB query warning here
+			// PHPCS: ignore PreparedSQL.NotPrepared warning for table name interpolation
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery
+			$payment_row = $wpdb->get_row($wpdb->prepare($sql, intval($order_id)), ARRAY_A);
+
+			if ($payment_row) {
+				wp_cache_set($cache_key, $payment_row, $cache_group, 5 * MINUTE_IN_SECONDS);
+			}
+		}
+
+		$uuid           = sanitize_text_field($payment_row['uuid'] ?? '');
+		$payment_link   = esc_url_raw($payment_row['payment_link'] ?? '');
+		$customer_email = sanitize_email($payment_row['customer_email'] ?? '');
+		$amount         = number_format(floatval($payment_row['amount'] ?? 0), 8, '.', '');
+
+		if (empty($uuid)) {
+			wc_get_logger()->error('Missing or invalid UUID in payment link table.', [
+				'source'  => 'bytenft-payment-gateway',
+				'context' => ['order_id' => $order_id, 'uuid' => $uuid],
 			]);
 			return;
 		}
 
-		$order->update_status('cancelled', 'Order automatically cancelled due to unpaid timeout.');
-		wc_reduce_stock_levels($order_id);
-		wp_cache_delete('bytenft_payment_link_uuid_' . $order_id, 'bytenft_payment_gateway');
-		wp_cache_delete('bytenft_payment_row_' . $order_id, 'bytenft_payment_gateway'); // Clear row cache
+		$apiPath  = '/api/cancel-order-link';
+		$url      = BYTENFT_BASE_URL . $apiPath;
+		$cleanUrl = esc_url(preg_replace('#(?<!:)//+#', '/', $url));
 
-		wc_get_logger()->info('Order auto-cancelled due to unpaid timeout.', [
-			'source'  => 'bytenft-payment-gateway',
-			'context' => ['order_id' => $order_id],
+		$request_payload = [
+			'order_id'   => $order_id,
+			'order_uuid' => $uuid,
+			'status'     => 'canceled',
+		];
+
+		$response = wp_remote_post($cleanUrl, [
+			'method'    => 'POST',
+			'timeout'   => 30,
+			'body'      => json_encode($request_payload),
+			'headers'   => ['Content-Type' => 'application/json'],
+			'sslverify' => true,
 		]);
-	}
 
-	$table_name  = $wpdb->prefix . 'order_payment_link';
-	$cache_key   = 'bytenft_payment_row_' . intval($order_id);
-	$cache_group = 'bytenft_payment_gateway';
+		if (is_wp_error($response)) {
+			wc_get_logger()->error("Cancel API call failed. Order ID: {$order_id}", [
+				'source'  => 'bytenft-payment-gateway',
+				'context' => [
+					'order_id' => $order_id,
+					'uuid'     => $uuid,
+					'error'    => $response->get_error_message(),
+				],
+			]);
+		} else {
+			$response_body    = wp_remote_retrieve_body($response);
+			$decoded_response = json_decode($response_body, true);
 
-	$payment_row = wp_cache_get($cache_key, $cache_group);
-
-	if (false === $payment_row) {
-		// Escape table name safely
-		$safe_table_name = esc_sql($table_name);
-
-		// Build query safely: only $order_id is dynamic
-		$sql = "SELECT * FROM {$safe_table_name} WHERE order_id = %d LIMIT 1";
-
-		// PHPCS: ignore direct DB query warning here
-		// PHPCS: ignore PreparedSQL.NotPrepared warning for table name interpolation
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery
-		$payment_row = $wpdb->get_row($wpdb->prepare($sql, intval($order_id)), ARRAY_A);
-
-		if ($payment_row) {
-			wp_cache_set($cache_key, $payment_row, $cache_group, 5 * MINUTE_IN_SECONDS);
+			wc_get_logger()->info("Cancel API response received for Order ID: {$order_id}.", [
+				'source'  => 'bytenft-payment-gateway',
+				'context' => [
+					'order_id'       => $order_id,
+					'uuid'           => $uuid,
+					'payment_link'   => $payment_link,
+					'customer_email' => $customer_email,
+					'amount'         => number_format((float) $amount, 2, '.', ''),
+					'response'       => $decoded_response,
+				],
+			]);
 		}
 	}
-
-	$uuid           = sanitize_text_field($payment_row['uuid'] ?? '');
-	$payment_link   = esc_url_raw($payment_row['payment_link'] ?? '');
-	$customer_email = sanitize_email($payment_row['customer_email'] ?? '');
-	$amount         = number_format(floatval($payment_row['amount'] ?? 0), 8, '.', '');
-
-	if (empty($uuid)) {
-		wc_get_logger()->error('Missing or invalid UUID in payment link table.', [
-			'source'  => 'bytenft-payment-gateway',
-			'context' => ['order_id' => $order_id, 'uuid' => $uuid],
-		]);
-		return;
-	}
-
-	$apiPath  = '/api/cancel-order-link';
-	$url      = BYTENFT_BASE_URL . $apiPath;
-	$cleanUrl = esc_url(preg_replace('#(?<!:)//+#', '/', $url));
-
-	$request_payload = [
-		'order_id'   => $order_id,
-		'order_uuid' => $uuid,
-		'status'     => 'canceled',
-	];
-
-	$response = wp_remote_post($cleanUrl, [
-		'method'    => 'POST',
-		'timeout'   => 30,
-		'body'      => json_encode($request_payload),
-		'headers'   => ['Content-Type' => 'application/json'],
-		'sslverify' => true,
-	]);
-
-	if (is_wp_error($response)) {
-		wc_get_logger()->error("Cancel API call failed. Order ID: {$order_id}", [
-			'source'  => 'bytenft-payment-gateway',
-			'context' => [
-				'order_id' => $order_id,
-				'uuid'     => $uuid,
-				'error'    => $response->get_error_message(),
-			],
-		]);
-	} else {
-		$response_body    = wp_remote_retrieve_body($response);
-		$decoded_response = json_decode($response_body, true);
-
-		wc_get_logger()->info("Cancel API response received for Order ID: {$order_id}.", [
-			'source'  => 'bytenft-payment-gateway',
-			'context' => [
-				'order_id'       => $order_id,
-				'uuid'           => $uuid,
-				'payment_link'   => $payment_link,
-				'customer_email' => $customer_email,
-				'amount'         => number_format((float) $amount, 2, '.', ''),
-				'response'       => $decoded_response,
-			],
-		]);
-	}
+	
 }
 
