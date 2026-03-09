@@ -71,6 +71,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		    }
 
 		});
+
+		add_action('init', function() {
+			if (function_exists('WC') && WC()->session == null) {
+				WC()->initialize_session();
+			}
+		});
 	}
 	
 	function handle_bytenft_gateway_ajax(){
