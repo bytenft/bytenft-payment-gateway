@@ -22,6 +22,7 @@ define('BYTENFT_PAYMENT_GATEWAY_MIN_PHP_VER', '8.0');
 define('BYTENFT_PAYMENT_GATEWAY_MIN_WC_VER', '6.5.4');
 define('BYTENFT_PAYMENT_GATEWAY_FILE', __FILE__);
 define('BYTENFT_PAYMENT_GATEWAY_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('BYTENFT_PLUGIN_VERSION', '1.0.10');
 
 // Include utility functions
 require_once BYTENFT_PAYMENT_GATEWAY_PLUGIN_DIR . 'includes/bytenft-payment-gateway-utils.php';

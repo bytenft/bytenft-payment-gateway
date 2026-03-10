@@ -274,9 +274,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$api_url = esc_url($this->base_url . '/api/plugin/check/plugin');
 
+			$plugin_version = BYTENFT_PLUGIN_VERSION;
+
 			$body = [
 				'valid_accounts' => $valid_accounts,
 				'plugin_status' => $enabled === 'yes' ? 1 : 0,
+				'plugin_version' => $plugin_version,
 			];
 
 			wp_remote_post($api_url, [
@@ -1410,11 +1413,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			
 			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
 
+			$plugin_version = BYTENFT_PLUGIN_VERSION;
+
 			$api_url = esc_url($this->base_url . '/api/plugin/check/checkout');
 
 			$body = [
 				'valid_accounts' => $valid_accounts,
-				'gateway_loaded' => 1
+				'gateway_loaded' => 1,
+				'plugin_version' => $plugin_version,
 			];
 
 			wp_remote_post($api_url, [
