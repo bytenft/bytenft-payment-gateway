@@ -108,6 +108,40 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 		
 	public function bytenft_process_admin_options() {
+
+		// Check if plugin enabled checkbox is checked
+		$enabled = isset($_POST['woocommerce_' . $this->id . '_enabled']) ? 'yes' : 'no';
+
+		// Get accounts data
+		$accounts = isset($_POST['accounts']) ? $_POST['accounts'] : [];
+
+		// Check if keys entered
+		$keys_entered = false;
+
+		if (!empty($accounts)) {
+			foreach ($accounts as $account) {
+				if (
+					!empty($account['live_public_key']) ||
+					!empty($account['live_secret_key']) ||
+					!empty($account['sandbox_public_key']) ||
+					!empty($account['sandbox_secret_key'])
+				) {
+					$keys_entered = true;
+					break;
+				}
+			}
+		}
+
+		// Validation: Plugin disabled but keys entered
+		if ($enabled === 'no' && $keys_entered) {
+
+			WC_Admin_Settings::add_error(
+				__('Please enable the ByteNFT Payment Gateway before entering API keys.', 'bytenft-payment-gateway')
+			);
+
+			return false;
+		}
+
 	    parent::process_admin_options();
 
 	    if (!isset($_POST['bytenft_accounts_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['bytenft_accounts_nonce'])), 'bytenft_accounts_nonce_action')) {
@@ -235,7 +269,27 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	    if (empty($errors)) {
 	        update_option('woocommerce_bytenft_payment_gateway_accounts', $valid_accounts);
-			
+
+			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
+
+			$api_url = esc_url($this->base_url . '/api/plugin/check/plugin');
+
+			$body = [
+				'valid_accounts' => $valid_accounts,
+				'plugin_status' => $enabled === 'yes' ? 1 : 0,
+			];
+
+			wp_remote_post($api_url, [
+				'method'=>'POST',
+				'timeout'=>30,
+				'body'=>$body,
+				'headers'=>[
+					'Content-Type'=>'application/x-www-form-urlencoded',
+					'Authorization'=>'Bearer '.sanitize_text_field($public_key)
+				],
+				'sslverify'=>true
+			]);
+
 	        $this->admin_notices->bytenft_add_notice('settings_success', 'notice notice-success', __('Settings saved successfully.', 'bytenft-payment-gateway'));
 	        $this->log_info('Account settings updated successfully.', ['count' => count($valid_accounts)]);
 
@@ -345,7 +399,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	            'title'       => __('Enable/Disable', 'bytenft-payment-gateway'),
 	            'label'       => __('Enable ByteNFT Payment Gateway', 'bytenft-payment-gateway'),
 	            'type'        => 'checkbox',
-	            'default'     => 'yes',
+	            'default'     => 'no',
 	        ],
 
 	        'title' => [
@@ -884,7 +938,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'result'   => 'success',
 					'order_id'     => $order->get_id(),
 					'payment_status'     => $response_data['data']['payment_status'],
-					'redirect' => esc_url($resp_data['data']['payment_link']),
+					'redirect'  => esc_url(str_replace('https://', 'http://', $resp_data['data']['payment_link'])),
 				];
 
 			}
@@ -1327,6 +1381,54 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			]
 		);
 
+		$normalized_index = 0;
+
+		foreach ((array) $accounts as $account) {
+			$account = array_map('sanitize_text_field', $account);
+
+	        $account_title       = $account['title'] ?? '';
+	        $priority            = intval($account['priority'] ?? 1);
+	        $live_public_key     = $account['live_public_key'] ?? '';
+	        $live_secret_key     = $account['live_secret_key'] ?? '';
+	        $sandbox_public_key  = $account['sandbox_public_key'] ?? '';
+	        $sandbox_secret_key  = $account['sandbox_secret_key'] ?? '';
+	        $has_sandbox         = isset($account['has_sandbox']);
+	        $live_status         = $account['live_status'] ?? 'Active';
+	        $sandbox_status      = $has_sandbox ? ($account['sandbox_status'] ?? 'Active') : '';
+
+			$valid_accounts[$normalized_index++] = [
+	            'title'              => $account_title,
+	            'priority'           => $priority,
+	            'live_public_key'    => $live_public_key,
+	            'live_secret_key'    => $live_secret_key,
+	            'sandbox_public_key' => $sandbox_public_key,
+	            'sandbox_secret_key' => $sandbox_secret_key,
+	            'has_sandbox'        => $has_sandbox ? 'on' : 'off',
+	            'sandbox_status'     => $sandbox_status,
+	            'live_status'        => $live_status,
+	        ];
+			
+			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
+
+			$api_url = esc_url($this->base_url . '/api/plugin/check/checkout');
+
+			$body = [
+				'valid_accounts' => $valid_accounts,
+				'gateway_loaded' => 1
+			];
+
+			wp_remote_post($api_url, [
+				'method'=>'POST',
+				'timeout'=>30,
+				'body'=>$body,
+				'headers'=>[
+					'Content-Type'=>'application/x-www-form-urlencoded',
+					'Authorization'=>'Bearer '.sanitize_text_field($public_key)
+				],
+				'sslverify'=>true
+			]);
+		}
+
 		if (empty($accounts)) {
 			$this->log_info_once_per_session(
 				'no_accounts_' . $cart_hash,
@@ -1344,7 +1446,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$accStatusApiUrl        = $this->get_api_url('/api/check-merchant-status');
 
 		$user_account_active = false;
-
+		
 		$force_refresh = (
 			isset($_GET['refresh_accounts'], $_GET['_wpnonce']) &&
 			$_GET['refresh_accounts'] === '1' &&

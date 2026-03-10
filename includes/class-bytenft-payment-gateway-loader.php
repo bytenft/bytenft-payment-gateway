@@ -75,6 +75,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('woocommerce_checkout_create_order', function($order){
 			$order->delete_meta_data('_wc_order_attribution_session_entry');
 		}, 10);
+		add_action('init', function() {
+			if (function_exists('WC') && WC()->session == null) {
+				WC()->initialize_session();
+			}
+		});
 	}
 	
 	function handle_bytenft_gateway_ajax(){
