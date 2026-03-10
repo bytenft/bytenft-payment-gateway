@@ -72,6 +72,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		});
 
+		add_action('woocommerce_checkout_create_order', function($order){
+			$order->delete_meta_data('_wc_order_attribution_session_entry');
+		}, 10);
 		add_action('init', function() {
 			if (function_exists('WC') && WC()->session == null) {
 				WC()->initialize_session();
@@ -410,12 +413,19 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'source'  => 'bytenft-payment-gateway',
 				'context' => [
 					'order_id'           => $order_id,
-					'transaction_status' => $response_data['transaction_status'] ?? 'unknown'
+					'transaction_status' => $response_data['transaction_status'] ?? 'unknown',
+					'payment_status' => $response_data['payment_status'] ?? 'unknown'
 				],
 			]);
 
 			// Ensure the response contains the expected data
-			if (!isset($response_data['transaction_status'])) {
+			// if (!isset($response_data['transaction_status'])) {
+			// 	wp_send_json_error(['message' => 'Invalid response from ByteNFT API.']);
+			// 	wp_die();
+			// }
+
+			// Ensure the response contains the expected data
+			if (!isset($response_data['payment_status'])) {
 				wp_send_json_error(['message' => 'Invalid response from ByteNFT API.']);
 				wp_die();
 			}
@@ -440,9 +450,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			$payment_return_url = $order->get_checkout_order_received_url();
 			wc_clear_notices();
-			if (isset($response_data['transaction_status'])) {
+			if (isset($response_data['payment_status'])) {
 				// Handle transaction status from API
-				switch ($response_data['transaction_status']) {
+				switch ($response_data['payment_status']) {
 					case 'success':
 					case 'paid':
 					case 'processing':
@@ -480,7 +490,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 						}
 						break;
 					default:
-						wp_send_json_error(['message' => 'Unknown transaction status received.']);
+						wp_send_json_error(['message' => 'Unknown Payment Status received.']);
 				}
 			}
 		} else {

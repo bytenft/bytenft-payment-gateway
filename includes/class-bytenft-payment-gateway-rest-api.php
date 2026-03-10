@@ -69,11 +69,11 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	    $accounts_data = get_option('woocommerce_bytenft_payment_gateway_accounts');
 	    $general_settings = get_option('woocommerce_bytenft_settings');
 
-	    $this->logger->info('Raw settings loaded', [
-	        'source' => 'bytenft-payment-gateway',
-	        'accounts_data' => $accounts_data,
-	        'general_settings' => $general_settings,
-	    ]);
+	    // $this->logger->info('Raw settings loaded', [
+	    //     'source' => 'bytenft-payment-gateway',
+	    //     'accounts_data' => $accounts_data,
+	    //     'general_settings' => $general_settings,
+	    // ]);
 
 	    if (empty($accounts_data)) {
 	        $this->logger->warning('No account data found', ['source' => 'bytenft-payment-gateway']);
