@@ -796,6 +796,44 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			// --------------------------
+			// Transaction Limit Check
+			// --------------------------
+			$limit_url = $this->get_api_url('/api/dailylimit');
+			$limit_resp = wp_remote_post($limit_url, [
+				'method'=>'POST',
+				'timeout'=>30,
+				'body'=>$data,
+				'headers'=>[
+					'Content-Type'=>'application/x-www-form-urlencoded',
+					'Authorization'=>'Bearer '.sanitize_text_field($data['api_public_key'])
+				],
+				'sslverify'=>true
+			]);
+
+			$limit_data = json_decode(wp_remote_retrieve_body($limit_resp), true);
+
+			if (($limit_data['status'] ?? '') === 'error') {
+				$error_msg = sanitize_text_field($limit_data['message'] ?? 'Unknown limit error');
+				wc_get_logger()->warning("['{$account['title']}'] exceeded daily transaction limit: $error_msg", $logger_context);
+
+				if ($lock_key) $this->release_lock($lock_key);
+				$last_failed_account = $account;
+				$used_accounts[] = $account['title'];
+
+				$next_account = $this->get_next_available_account($used_accounts);
+				if ($next_account) {
+					$previous_account = $account;
+					continue;
+				} else {
+					if ($last_failed_account) $this->send_account_switch_email($last_failed_account, $account);
+					if ( is_checkout() ) {
+						wc_add_notice(__('All accounts have reached their transaction limit.', 'bytenft-payment-gateway'), 'error');
+					}
+					return ['result'=>'fail', 'error' => 'All accounts have reached their transaction limit.'];
+				}
+			}
+
+			// --------------------------
 			// Send Payment Request
 			// --------------------------
 			$api_url = esc_url($this->base_url . '/api/request-payment');
@@ -1444,9 +1482,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		usort($accounts, fn($a, $b) => $a['priority'] <=> $b['priority']);
 
 		$accStatusApiUrl        = $this->get_api_url('/api/check-merchant-status');
+		$transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
 
 		$user_account_active = false;
-		
+		$all_accounts_limited = true;
+
 		$force_refresh = (
 			isset($_GET['refresh_accounts'], $_GET['_wpnonce']) &&
 			$_GET['refresh_accounts'] === '1' &&
@@ -1471,7 +1511,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$user_account_active = true;
 			}
 
-			if ($user_account_active) {
+			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit');
+			if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {
+				$all_accounts_limited = false;
+			}
+
+			if ($user_account_active && !$all_accounts_limited) {
 				break;
 			}
 		}
@@ -1480,6 +1525,18 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$this->log_info_once_per_session(
 				'no_active_accounts_' . $cart_hash,
 				'ByteNFT payment option hidden: no active accounts'
+			);
+			$this->log_info_once_per_session(
+				'gateway_check_end_' . $cart_hash,
+				'ByteNFT payment option check finished'
+			);
+			return $this->hide_gateway($available_gateways, $gateway_id);
+		}
+
+		if ($all_accounts_limited) {
+			$this->log_info_once_per_session(
+				'accounts_limited_' . $cart_hash,
+				'ByteNFT payment option hidden: all accounts have reached their transaction limits'
 			);
 			$this->log_info_once_per_session(
 				'gateway_check_end_' . $cart_hash,
