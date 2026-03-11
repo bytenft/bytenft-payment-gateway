@@ -723,6 +723,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$last_failed_account = null;
 		$previous_account = null;
+		$order->update_meta_data('_bytenft_processing_note_added', '');
 
 		// --------------------------
 		// Start Payment Loop
@@ -772,7 +773,16 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// --------------------------
 			// Add Order Note
 			// --------------------------
-			$order->add_order_note(__('Processing Payment Via: ', 'bytenft-payment-gateway') . $account['title']);
+			//$order->add_order_note(__('Processing Payment Via: ', 'bytenft-payment-gateway') . $account['title']);
+
+			$note_text = __('Processing Payment Via: ', 'bytenft-payment-gateway') . $account['title'];
+
+			if (!$order->get_meta('_bytenft_processing_note_added') && empty($order->get_meta('_bytenft_processing_note_added'))) {
+				$order->add_order_note($note_text);
+				$order->update_meta_data('_bytenft_processing_note_added', 'yes');
+				$order->save();
+			}
+
 
 			// --------------------------
 			// Prepare Payment Data
