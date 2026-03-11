@@ -132,16 +132,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 		}
 
-		// Validation: Plugin disabled but keys entered
-		if ($enabled === 'no' && $keys_entered) {
-
-			WC_Admin_Settings::add_error(
-				__('Please enable the ByteNFT Payment Gateway before entering API keys.', 'bytenft-payment-gateway')
-			);
-
-			return false;
-		}
-
 	    parent::process_admin_options();
 
 	    if (!isset($_POST['bytenft_accounts_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['bytenft_accounts_nonce'])), 'bytenft_accounts_nonce_action')) {
@@ -280,6 +270,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'valid_accounts' => $valid_accounts,
 				'plugin_status' => $enabled === 'yes' ? 1 : 0,
 				'plugin_version' => $plugin_version,
+				'gateway_loaded'  => $enabled === 'yes' ? 1 : 0,
 			];
 
 			wp_remote_post($api_url, [
@@ -1420,6 +1411,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$body = [
 				'valid_accounts' => $valid_accounts,
 				'gateway_loaded' => 1,
+				'plugin_status' => 1,
 				'plugin_version' => $plugin_version,
 			];
 
