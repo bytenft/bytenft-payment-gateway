@@ -13,3 +13,7 @@ if (!defined('BYTENFT_HOST')) {
 if (!defined('BYTENFT_BASE_URL')) {
 	define('BYTENFT_BASE_URL', BYTENFT_PROTOCOL . BYTENFT_HOST);
 }
+
+if (!defined('BYTENFT_PLUGIN_VERSION')) {
+    define('BYTENFT_PLUGIN_VERSION', '1.0.10');
+}
