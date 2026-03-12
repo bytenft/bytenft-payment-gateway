@@ -664,13 +664,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// --------------------------
-		// Prevent retry loop if limit exceeded
-		// --------------------------
-		if ($order->get_meta('_bytenft_limit_exceeded')) {
-			return ['result' => 'fail', 'error' => 'Your transaction exceeds the allowed limit. Please try a smaller amount or use another payment method.'];
-		}
-
-		// --------------------------
 		// Rate Limiting
 		// --------------------------
 		$ip_address = filter_var(sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'] ?? '')), FILTER_VALIDATE_IP) ?: 'invalid';
@@ -762,6 +755,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		$limit_data = json_decode(wp_remote_retrieve_body($limit_resp), true);
+
+		// Only set _bytenft_limit_exceeded if API explicitly says error
 		if (($limit_data['status'] ?? '') === 'error') {
 			$order->update_meta_data('_bytenft_limit_exceeded', true);
 			$order->save();
