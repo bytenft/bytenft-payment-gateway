@@ -212,12 +212,15 @@ jQuery(function ($) {
     function displayError(err, $form) {
         if (popupWindow) popupWindow.close();
         $('.wc_er, .wc-block-components-notice-banner').remove();
-        if ($(err).filter('div').length) {
-            $form.prepend('<div class="wc_er">' + err + '</div>');
-        }else{
-            $form.prepend('<div class="wc_er wc-block-components-notice-banner is-error">' + err + '</div>');
-        }
-        $('html, body').animate({ scrollTop: $('.wc_er').offset().top - 300 }, 500);
+
+        // Always wrap text safely
+        var $errorDiv = $('<div>', {
+            class: 'wc_er wc-block-components-notice-banner is-error',
+            text: typeof err === 'string' ? err : (err.message || 'Payment failed')
+        });
+
+        $form.prepend($errorDiv);
+        $('html, body').animate({ scrollTop: $errorDiv.offset().top - 300 }, 500);
         resetButton();
     }
 
