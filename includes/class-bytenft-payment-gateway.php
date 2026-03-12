@@ -270,7 +270,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'valid_accounts' => $valid_accounts,
 				'plugin_status' => $enabled === 'yes' ? 1 : 0,
 				'plugin_version' => $plugin_version,
-				'gateway_loaded'  => $enabled === 'yes' ? 1 : 0,
+				'gateway_loaded'  => 0,
 			];
 
 			wp_remote_post($api_url, [
