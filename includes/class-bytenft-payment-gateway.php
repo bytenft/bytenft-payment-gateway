@@ -1474,9 +1474,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private function hide_gateway($available_gateways, $gateway_id)
 	{
-	    unset($available_gateways[$gateway_id]);
-	    $GLOBALS['bytenft_gateway_visibility_' . $this->id] = $available_gateways;
-	    return $available_gateways;
+	    // unset($available_gateways[$gateway_id]);
+	    // $GLOBALS['bytenft_gateway_visibility_' . $this->id] = $available_gateways;
+	    // return $available_gateways;
 	}
 
 	private function log_info_once_per_session($key, $message, $context = [])
