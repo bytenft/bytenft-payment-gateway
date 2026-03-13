@@ -758,10 +758,17 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		// Only set _bytenft_limit_exceeded if API explicitly says error
 		if (($limit_data['status'] ?? '') === 'error') {
+
 			$order->update_meta_data('_bytenft_limit_exceeded', true);
 			$order->save();
-			if (is_checkout()) wc_add_notice($limit_data['message'], 'error');
-			return ['result' => 'fail', 'error' => $limit_data['message']];
+
+			if (is_checkout()) {
+				wc_add_notice($limit_data['message'], 'error');
+			}
+
+			return [
+				'result' => 'failure'
+			];
 		}
 
 		// --------------------------
