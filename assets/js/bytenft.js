@@ -105,9 +105,13 @@ jQuery(function ($) {
             return true;
         }
 
-        // Prevent multiple submissions
-        if (isSubmitting) return false;
+        // Prevent multiple submissions (strong lock)
+        if (isSubmitting || $form.data('bytenft-processing')) {
+            return false;
+        }
+
         isSubmitting = true;
+        $form.data('bytenft-processing', true);
 
         // Pre-open popup with loader
         var logoUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
@@ -226,6 +230,12 @@ jQuery(function ($) {
 
     function resetButton() {
         isSubmitting = false;
-        if ($button) $button.prop('disabled', false).text(originalButtonText);
+
+        var $form = $('form.checkout, form.wc-block-checkout__form');
+        $form.removeData('bytenft-processing');
+
+        if ($button) {
+            $button.prop('disabled', false).text(originalButtonText);
+        }
     }
 });
