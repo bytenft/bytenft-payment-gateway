@@ -3,7 +3,7 @@ Contributors: ByteNFT
 Tags: woocommerce, payment gateway, fiat, ByteNFT
 Requires at least: 5.0
 Tested up to: 6.9
-Stable tag: 1.0.9
+Stable tag: 1.0.10
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -27,7 +27,8 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 == Changelog ==
 
-== Changelog ==
+= 1.0.10 =
+* Update: Removed transaction limit check logic so the plugin remains available regardless of transaction limits.
 
 = 1.0.9 =
 * Blank Page Fix: Resolved a white screen issue caused by improper initialization and unexpected output.
@@ -67,6 +68,9 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.10 =
+* Removed the transaction limit check logic from the plugin so it remains available regardless of transaction limits.
 
 = 1.0.9 =
 * Fixed a blank page (white screen) issue that could occur due to unexpected output or initialization conflicts. Update recommended for improved stability.

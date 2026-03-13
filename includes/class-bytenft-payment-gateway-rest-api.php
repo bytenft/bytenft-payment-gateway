@@ -69,11 +69,11 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	    $accounts_data = get_option('woocommerce_bytenft_payment_gateway_accounts');
 	    $general_settings = get_option('woocommerce_bytenft_settings');
 
-	    $this->logger->info('Raw settings loaded', [
-	        'source' => 'bytenft-payment-gateway',
-	        'accounts_data' => $accounts_data,
-	        'general_settings' => $general_settings,
-	    ]);
+	    // $this->logger->info('Raw settings loaded', [
+	    //     'source' => 'bytenft-payment-gateway',
+	    //     'accounts_data' => $accounts_data,
+	    //     'general_settings' => $general_settings,
+	    // ]);
 
 	    if (empty($accounts_data)) {
 	        $this->logger->warning('No account data found', ['source' => 'bytenft-payment-gateway']);
@@ -266,8 +266,23 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			WC()->cart->empty_cart();
 		}
 
+		// Map API status to internal log status
+		$status_map = [
+			'completed' => 'success',
+			'failed'    => 'failed',
+			'cancelled' => 'cancelled',
+			'expired'   => 'expired', // if your app can return expired
+		];
+
+		// Default to 'unknown' if status not recognized
+		$log_status = $status_map[$api_order_status] ?? 'unknown';
+
 		// Return a successful response to ByteNFT API.
 		$payment_return_url = $order->get_checkout_order_received_url();
-		return new WP_REST_Response(['success' => true, 'message' => 'Order status processed successfully', 'payment_return_url' => $payment_return_url], 200);
+		return new WP_REST_Response([
+			'status' => $log_status,
+			'message' => "Order status processed: {$api_order_status}",
+			'payment_return_url' => $payment_return_url
+		], 200);
 	}
 }

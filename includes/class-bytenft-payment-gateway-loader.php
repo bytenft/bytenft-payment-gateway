@@ -71,6 +71,15 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		    }
 
 		});
+
+		add_action('woocommerce_checkout_create_order', function($order){
+			$order->delete_meta_data('_wc_order_attribution_session_entry');
+		}, 10);
+		add_action('init', function() {
+			if (function_exists('WC') && WC()->session == null) {
+				WC()->initialize_session();
+			}
+		});
 	}
 	
 	function handle_bytenft_gateway_ajax(){
@@ -375,7 +384,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$payment_token = $order->get_meta('_bytenft_pay_id');
 		
 		// Proceed only if the order status is 'pending'
-		if ($order->get_status() === 'pending' || $order->get_status() === 'processing' || $order->get_status() === 'failed' || $order->get_status() === 'cancelled') {
+		if ($order->get_status() === 'pending' || $order->get_status() === 'processing' || $order->get_status() === 'failed' || $order->get_status() === 'cancelled' || $order->get_status() === 'completed') {
 			// Call the ByteNFT API to update status
 			$transactionStatusApiUrl = $this->get_api_url('/api/update-txn-status');
 			$response = wp_remote_post($transactionStatusApiUrl, [
@@ -404,12 +413,19 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'source'  => 'bytenft-payment-gateway',
 				'context' => [
 					'order_id'           => $order_id,
-					'transaction_status' => $response_data['transaction_status'] ?? 'unknown'
+					'transaction_status' => $response_data['transaction_status'] ?? 'unknown',
+					'payment_status' => $response_data['payment_status'] ?? 'unknown'
 				],
 			]);
 
 			// Ensure the response contains the expected data
-			if (!isset($response_data['transaction_status'])) {
+			// if (!isset($response_data['transaction_status'])) {
+			// 	wp_send_json_error(['message' => 'Invalid response from ByteNFT API.']);
+			// 	wp_die();
+			// }
+
+			// Ensure the response contains the expected data
+			if (!isset($response_data['payment_status'])) {
 				wp_send_json_error(['message' => 'Invalid response from ByteNFT API.']);
 				wp_die();
 			}
@@ -434,9 +450,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			$payment_return_url = $order->get_checkout_order_received_url();
 			wc_clear_notices();
-			if (isset($response_data['transaction_status'])) {
+			if (isset($response_data['payment_status'])) {
 				// Handle transaction status from API
-				switch ($response_data['transaction_status']) {
+				switch ($response_data['payment_status']) {
 					case 'success':
 					case 'paid':
 					case 'processing':
@@ -453,7 +469,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 						try {
 							wc_add_notice( 'Payment Failed: Transaction declined, please try another card.', 'error' );
 							$order->update_status('failed', 'Order marked as failed by ByteNFT.');
-							wp_send_json_success(['message' => 'Order status updated to failed.', 'order_id' => $order_id, 'notices' => 'Payment Failed: The Payment method rejected your transaction. Please use another card.']);
+							wp_send_json_success(['message' => 'Order status updated to failed.', 'order_id' => $order_id, 'notices' => 'Payment Failed: We couldn’t process your payment. Please try again or use another payment method.']);
 						} catch (Exception $e) {
 							wp_send_json_error(['message' => 'Failed to update order status: ' . $e->getMessage()]);
 						}
@@ -468,13 +484,13 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 							}
 							wc_add_notice( 'Payment Canceled: The Payment method canceled your transaction.', 'error' );
 							$order->update_status('cancelled', 'Order marked as canceled by ByteNFT.');
-							wp_send_json_success(['message' => 'Order status updated to canceled.', 'order_id' => $order_id, 'redirect_url' => $order->get_cancel_order_url(),'notices' => 'Payment Canceled: The Payment method cancelled your transaction.']);
+							wp_send_json_success(['message' => 'Order status updated to canceled.', 'order_id' => $order_id, 'redirect_url' => $order->get_cancel_order_url(),'notices' => 'Payment Canceled: The payment was canceled. Please try again if you wish to complete your purchase.']);
 						} catch (Exception $e) {
 							wp_send_json_error(['message' => 'Failed to update order status: ' . $e->getMessage()]);
 						}
 						break;
 					default:
-						wp_send_json_error(['message' => 'Unknown transaction status received.']);
+						wp_send_json_error(['message' => 'Unknown Payment Status received.']);
 				}
 			}
 		} else {
