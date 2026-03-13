@@ -177,7 +177,7 @@ jQuery(function ($) {
                     security: bytenft_params.bytenft_nonce
                 }, function(response) {
                     //$(document.body).trigger('update_checkout');
-                    $('form.checkout').trigger('update');
+                     $('form.checkout').trigger('update');
                     if (response.success && response.data?.redirect_url) {
                         window.location.replace(response.data.redirect_url);
                     } else if (response.data?.notices) {
@@ -216,15 +216,12 @@ jQuery(function ($) {
     function displayError(err, $form) {
         if (popupWindow) popupWindow.close();
         $('.wc_er, .wc-block-components-notice-banner').remove();
-
-        // Always wrap text safely
-        var $errorDiv = $('<div>', {
-            class: 'wc_er wc-block-components-notice-banner is-error',
-            text: typeof err === 'string' ? err : (err.message || 'Payment failed')
-        });
-
-        $form.prepend($errorDiv);
-        $('html, body').animate({ scrollTop: $errorDiv.offset().top - 300 }, 500);
+        if ($(err).filter('div').length) {
+            $form.prepend('<div class="wc_er">' + err + '</div>');
+        }else{
+            $form.prepend('<div class="wc_er wc-block-components-notice-banner is-error">' + err + '</div>');
+        }
+        $('html, body').animate({ scrollTop: $('.wc_er').offset().top - 300 }, 500);
         resetButton();
     }
 
