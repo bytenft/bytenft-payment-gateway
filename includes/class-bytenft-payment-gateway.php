@@ -843,15 +843,19 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			set_transient($cache_key, 1, DAY_IN_SECONDS);
 		}
 
+		$pay_id = $resp_data['data']['pay_id'] ?? '';
 		if (!empty($resp_data['data']['payment_link'])) {
-			$wpdb->replace(
+			$wpdb->insert(
 				$table_name,
 				[
-					'order_id' => $order->get_id(),
-					'payment_link' => esc_url_raw($resp_data['data']['payment_link']),
-					'created_at' => current_time('mysql')
+					'order_id'       => $order_id,
+					'uuid'           => sanitize_text_field($pay_id),
+					'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
+					'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
+					'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
+					'created_at'     => current_time('mysql', 1),
 				],
-				['order_id', 'payment_link', 'created_at']
+				['%d','%s','%s','%s','%s','%s']
 			);
 		}
 
@@ -859,7 +863,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// SUCCESS
 		// --------------------------
 		if (!empty($resp_data['data']['payment_link'])) {
-			$pay_id = $resp_data['data']['pay_id'] ?? '';
 			if ($pay_id) $order->update_meta_data('_bytenft_pay_id', $pay_id);
 
 			$order->update_status('pending', __('Payment pending.', 'bytenft-payment-gateway'));
