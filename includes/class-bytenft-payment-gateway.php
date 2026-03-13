@@ -845,18 +845,43 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$pay_id = $resp_data['data']['pay_id'] ?? '';
 		if (!empty($resp_data['data']['payment_link'])) {
-			$wpdb->insert(
-				$table_name,
-				[
-					'order_id'       => $order_id,
-					'uuid'           => sanitize_text_field($pay_id),
-					'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
-					'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
-					'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
-					'created_at'     => current_time('mysql', 1),
-				],
-				['%d','%s','%s','%s','%s','%s']
+			$existing = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT id FROM $table_name WHERE order_id = %d",
+					$order_id
+				)
 			);
+
+			$formats = ['%s','%s','%s','%s','%s'];
+
+			if ($existing) {
+				$wpdb->update(
+					$table_name,
+					[
+						'uuid'           => sanitize_text_field($pay_id),
+						'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
+						'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
+						'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
+						'created_at'     => current_time('mysql', 1),
+					],
+					['order_id' => $order_id],
+					$formats,
+					['%d']
+				);
+			} else {
+				$wpdb->insert(
+					$table_name,
+					[
+						'order_id'       => $order_id,
+						'uuid'           => sanitize_text_field($pay_id),
+						'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
+						'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
+						'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
+						'created_at'     => current_time('mysql', 1),
+					],
+					['%d','%s','%s','%s','%s','%s']
+				);
+			}
 		}
 
 		// --------------------------
