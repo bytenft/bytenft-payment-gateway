@@ -198,7 +198,7 @@ jQuery(function ($) {
                 openPaymentLink(response.redirect);
             } else {
                 if (popupWindow) popupWindow.close();
-                displayError(response?.error || response?.messages || 'Payment initialization failed.', $form);
+                displayError(response?.error || response?.notices || response?.messages || 'We couldn’t start your payment. If the problem persists, please contact support.', $form);
             }
         } catch (err) {
             if (popupWindow) popupWindow.close();
