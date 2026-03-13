@@ -216,10 +216,10 @@ jQuery(function ($) {
     function displayError(err, $form) {
         if (popupWindow) popupWindow.close();
         $('.wc_er, .wc-block-components-notice-banner').remove();
-        if ($(err).filter('div').length) {
+        if ($(err).filter('ul').length) {
             $form.prepend('<div class="wc_er">' + err + '</div>');
         }else{
-            $form.prepend('<div class="wc_er is-error">' + err + '</div>');
+            $form.prepend('<div class="wc_er wc-block-components-notice-banner is-error">' + err + '</div>');
         }
         $('html, body').animate({ scrollTop: $('.wc_er').offset().top - 300 }, 500);
         resetButton();
