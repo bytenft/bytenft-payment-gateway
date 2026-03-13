@@ -767,7 +767,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			return [
-				'result' => 'failure'
+				'result' => 'failure',
+				'notices' => $limit_data['message']
 			];
 		}
 
