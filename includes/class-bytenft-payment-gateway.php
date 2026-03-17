@@ -1332,6 +1332,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$normalized_index = 0;
 
+		usort($accounts, function ($a, $b) {
+			return $a['priority'] <=> $b['priority'];
+		});
+
+		$first_account = true;
+	
 		foreach ((array) $accounts as $account) {
 			$account = array_map('sanitize_text_field', $account);
 
@@ -1345,7 +1351,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	        $live_status         = $account['live_status'] ?? 'Active';
 	        $sandbox_status      = $has_sandbox ? ($account['sandbox_status'] ?? 'Active') : '';
 
-			$valid_accounts[$normalized_index++] = [
+			$valid_accounts[$normalized_index] = [
 	            'title'              => $account_title,
 	            'priority'           => $priority,
 	            'live_public_key'    => $live_public_key,
@@ -1364,9 +1370,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$api_url = esc_url($this->base_url . '/api/plugin/check/checkout');
 
 			$body = [
-				'valid_accounts' => $valid_accounts,
-				'gateway_loaded' => 1,
-				'plugin_status' => 1,
+				'valid_accounts' => [$valid_accounts[$normalized_index]],
+				'gateway_loaded' => $first_account ? 1 : 0,
+				'plugin_status'  => 1,
 				'plugin_version' => $plugin_version,
 			];
 
@@ -1380,6 +1386,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				],
 				'sslverify'=>true
 			]);
+				
+			$first_account = false;
+			$normalized_index++;
 		}
 
 		if (empty($accounts)) {
