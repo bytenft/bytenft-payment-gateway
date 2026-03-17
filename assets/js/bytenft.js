@@ -176,13 +176,15 @@ jQuery(function ($) {
                     order_id: orderId,
                     security: bytenft_params.bytenft_nonce
                 }, function(response) {
-                    //$(document.body).trigger('update_checkout');
-                     $('form.checkout').trigger('update');
+                    var isBlockSelected = $('input[name="radio-control-wc-payment-method-options"]:checked').val() === bytenft_params.payment_method;
+                    if (!isBlockSelected) {
+                        $(document.body).trigger('update_checkout');
+                    }
                     if (response.success && response.data?.redirect_url) {
                         window.location.replace(response.data.redirect_url);
                     } else if (response.data?.notices) {
-                        $(".wc-block-checkout__form").prepend('<div class="wc-block-components-notice-banner is-error">' + response.data.notices + '</div>');
-                        window.scrollTo(0, 0);
+                        var $targetForm = isBlockSelected ? $('form.wc-block-checkout__form') : $('form.checkout');
+                        displayError(response.data.notices, $targetForm);
                     }
                     resetButton();
                 }, 'json');
@@ -216,14 +218,22 @@ jQuery(function ($) {
     function displayError(err, $form) {
         if (popupWindow) popupWindow.close();
         $('.wc_er, .wc-block-components-notice-banner').remove();
-        // Always wrap text safely
-        var $errorDiv = $('<div>', {
-            class: 'wc_er wc-block-components-notice-banner is-error',
-            text: typeof err === 'string' ? err : (err.message || 'Payment failed')
-        });
+        var errorMessage = (typeof err === 'string' ? err : err?.message || 'Payment failed').toString().trim();
+        var canRenderHtml = /<[^>]+>/.test(errorMessage) && !/<\s*(script|style|iframe|object|embed)\b|on[a-z]+\s*=|javascript:/i.test(errorMessage);
 
-        $form.prepend($errorDiv);
-        $('html, body').animate({ scrollTop: $errorDiv.offset().top - 300 }, 500);
+        var $error = canRenderHtml
+            ? $(errorMessage)
+            : $('<div>', { class: 'wc_er wc-block-components-notice-banner is-error', text: errorMessage || 'Payment failed' });
+
+        if (!$error.length) {
+            $error = $('<div>', { class: 'wc_er wc-block-components-notice-banner is-error', text: errorMessage || 'Payment failed' });
+        }
+
+        $form.prepend($error.first());
+
+        if ($error.first().length) {
+            $('html, body').animate({ scrollTop: $error.first().offset().top - 300 }, 500);
+        }
         resetButton();
     }
 
