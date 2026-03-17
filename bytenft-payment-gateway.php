@@ -44,6 +44,15 @@ BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
 add_action('woocommerce_cancel_unpaid_order', 'bytenft_cancel_unpaid_order_action');
 add_action('woocommerce_order_status_cancelled', 'bytenft_cancel_unpaid_order_action');
 add_action('woocommerce_order_status_changed', 'bytenft_cancel_unpaid_order_action', 10, 4);
+add_action(
+	'woocommerce_blocks_payment_method_type_registration',
+	function ($payment_method_registry) {
+
+		$payment_method_registry->register(
+			new BYTENFT_PAYMENT_GATEWAY_BLOCKS_SUPPORT()
+		);
+	}
+);
 
 /**
  * Cancels an unpaid order after a specified timeout.

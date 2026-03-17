@@ -8,9 +8,7 @@
 	}
 
 	const settings =
-		window.wc?.wcSettings?.getPaymentMethodData?.('bytenft') ||
-		window.bytenft_params?.settings ||
-		{};
+	window.wc?.wcSettings?.getPaymentMethodData?.('bytenft') || {};
 
 	console.log('[ByteNFT] settings:', settings);
 
@@ -38,7 +36,7 @@
 		// ✅ FIXED canMakePayment
 		canMakePayment: async () => {
 			console.log('[ByteNFT] canMakePayment evaluated', settings);
-			return true;
+			return settings.can_pay === true;
 		},
 
 		supports: {

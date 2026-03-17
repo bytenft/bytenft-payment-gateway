@@ -149,14 +149,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 	private function bytenft_init_blocks() {
 		
-			if ( class_exists( '\Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType' ) ) {
+			// if ( class_exists( '\Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType' ) ) {
 
-				require_once BYTENFT_PAYMENT_GATEWAY_PLUGIN_DIR . 'includes/class-bytenft-blocks-gateway.php';
+				// require_once BYTENFT_PAYMENT_GATEWAY_PLUGIN_DIR . 'includes/class-bytenft-blocks-gateway.php';
 
-				add_action( 'woocommerce_blocks_payment_method_type_registration', function( $registry ) {
-					$registry->register( new BYTENFT_Blocks_Gateway() );
-				});
-			}
+				// add_action( 'woocommerce_blocks_payment_method_type_registration', function( $registry ) {
+				// 	$registry->register( new BYTENFT_Blocks_Gateway() );
+				// });
+			// }
 	
 	}
 	
