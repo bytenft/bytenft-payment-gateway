@@ -1187,6 +1187,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$accStatusApiUrl        = $this->get_api_url('/api/check-merchant-status');
 		$transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
+		$pluginLogApiUrl = $this->get_api_url('/api/plugin/check/checkout');
 
 		$user_account_active  = false;
 		$all_accounts_limited = true;
@@ -1247,10 +1248,32 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$force_refresh
 				);
 
+
 				$is_limit_ok = $limit_data['success'] ?? false;
 
 				if ($is_limit_ok === true) {
 					$all_accounts_limited = false;
+
+					$plugin_version = BYTENFT_PLUGIN_VERSION;
+					$pluginlogs_data = [
+						'valid_accounts' => $accounts,
+						'gateway_loaded' => 1,
+						'plugin_status'  => 1,
+						'plugin_version' => $plugin_version,
+						'api_public_key' => $public_key,
+						'api_secret_key' => $secret_key,
+						'is_sandbox'     => $this->sandbox,
+					];
+
+					// 🔹 STEP 3: Check Plugins logs
+					$limit_data = $this->get_cached_api_response(
+						$pluginLogApiUrl,
+						$pluginlogs_data,
+						$cache_base . '_pluginlogs',
+						5,
+						$force_refresh
+					);
+
 					break; // ✅ One valid account is enough
 				}
 			}
