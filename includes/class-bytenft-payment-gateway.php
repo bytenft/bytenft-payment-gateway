@@ -1259,29 +1259,29 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				$is_limit_ok = $limit_data['success'] ?? false;
 
+				$plugin_version = BYTENFT_PLUGIN_VERSION;
+
+				$pluginlogs_data = [
+					'valid_accounts' => $accounts,
+					'gateway_loaded' => $is_limit_ok ? 1 : 0,
+					'plugin_status'  => $is_limit_ok ? 1 : 0,
+					'plugin_version' => $plugin_version,
+					'api_public_key' => $public_key,
+					'api_secret_key' => $secret_key,
+					'is_sandbox'     => $this->sandbox,
+				];
+
+				// 🔹 STEP 3: Check Plugins logs
+				$limit_data = $this->get_cached_api_response(
+					$pluginLogApiUrl,
+					$pluginlogs_data,
+					$cache_base . '_pluginlogs',
+					5,
+					$force_refresh
+				);
+
 				if ($is_limit_ok === true) {
 					$all_accounts_limited = false;
-
-					$plugin_version = BYTENFT_PLUGIN_VERSION;
-					$pluginlogs_data = [
-						'valid_accounts' => $accounts,
-						'gateway_loaded' => 1,
-						'plugin_status'  => 1,
-						'plugin_version' => $plugin_version,
-						'api_public_key' => $public_key,
-						'api_secret_key' => $secret_key,
-						'is_sandbox'     => $this->sandbox,
-					];
-
-					// 🔹 STEP 3: Check Plugins logs
-					$limit_data = $this->get_cached_api_response(
-						$pluginLogApiUrl,
-						$pluginlogs_data,
-						$cache_base . '_pluginlogs',
-						5,
-						$force_refresh
-					);
-
 					break; // ✅ One valid account is enough
 				}
 			}
