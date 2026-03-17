@@ -733,6 +733,19 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return ['result'=>'fail', 'error' => $data['error']];
 		}
 
+		$existing_pay_id = $order->get_meta('_bytenft_pay_id');
+		$existing_link   = $this->get_existing_payment_link($order_id);
+
+		if ($existing_pay_id && $existing_link) {
+			wc_get_logger()->info("Skipping re-processing for order {$order_id}, using existing link");
+
+			return [
+				'result'   => 'success',
+				'order_id' => $order_id,
+				'redirect' => $existing_link
+			];
+		}
+
 		// --------------------------
 		// DAILY LIMIT CHECK
 		// --------------------------
@@ -1153,39 +1166,170 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return true;
 	}
 
+	private function bytenft_can_make_payment()
+	{
+		if (!WC()->cart) return false;
+
+		$amount = (float) WC()->cart->get_total('raw');
+
+		if ($amount < 0.01) {
+			$totals = WC()->cart->get_totals();
+			$amount = (float) ($totals['total'] ?? 0);
+		}
+
+		if ($amount < 0.01) return false;
+
+		$accounts = $this->get_all_accounts();
+		if (empty($accounts)) return false;
+
+		// Sort by priority
+		usort($accounts, fn($a, $b) => ($a['priority'] ?? 1) <=> ($b['priority'] ?? 1));
+
+		$accStatusApiUrl        = $this->get_api_url('/api/check-merchant-status');
+		$transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
+
+		$user_account_active  = false;
+		$all_accounts_limited = true;
+
+		// Force refresh support
+		$force_refresh = (
+			isset($_GET['refresh_accounts'], $_GET['_wpnonce']) &&
+			$_GET['refresh_accounts'] === '1' &&
+			wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'refresh_accounts_nonce')
+		);
+
+		foreach ($accounts as $account) {
+
+			$public_key = $this->sandbox
+				? ($account['sandbox_public_key'] ?? '')
+				: ($account['live_public_key'] ?? '');
+
+			$secret_key = $this->sandbox
+				? ($account['sandbox_secret_key'] ?? '')
+				: ($account['live_secret_key'] ?? '');
+
+			if (empty($public_key) || empty($secret_key)) {
+				continue;
+			}
+
+			$data = [
+				'is_sandbox'     => $this->sandbox,
+				'amount'         => $amount,
+				'api_public_key' => $public_key,
+				'api_secret_key' => $secret_key,
+			];
+
+			// ✅ FIX: include amount in cache key (VERY IMPORTANT)
+			$amount_bucket = floor($amount);
+			$cache_base = 'bytenft_daily_limit_' . md5($public_key . '_' . $amount_bucket);
+
+			// 🔹 STEP 1: Check account status
+			$status_data = $this->get_cached_api_response(
+				$accStatusApiUrl,
+				$data,
+				$cache_base . '_status',
+				10,
+				$force_refresh
+			);
+
+			$is_status_ok = $status_data['success'] ?? false;
+
+			if ($is_status_ok === true) {
+
+				$user_account_active = true;
+
+				// 🔹 STEP 2: Check daily limit
+				$limit_data = $this->get_cached_api_response(
+					$transactionLimitApiUrl,
+					$data,
+					$cache_base . '_limit',
+					5,
+					$force_refresh
+				);
+
+				$is_limit_ok = $limit_data['success'] ?? false;
+
+				if ($is_limit_ok === true) {
+					$all_accounts_limited = false;
+					break; // ✅ One valid account is enough
+				}
+			}
+
+			// 🔍 DEBUG (optional)
+			$this->log_info('ACCOUNT CHECK', [
+				'public_key' => $public_key,
+				'status' => $status_data,
+				'limit' => $limit_data ?? null
+			]);
+		}
+
+		$result = ($user_account_active && !$all_accounts_limited);
+
+		// 🔍 FINAL DEBUG
+		$this->log_info('FINAL RESULT', [
+			'user_account_active' => $user_account_active,
+			'all_accounts_limited' => $all_accounts_limited,
+			'result' => $result
+		]);
+
+		return $result;
+	}
+
 	/**
 	 * Enqueue stylesheets for the plugin.
 	 */
 	public function bytenft_enqueue_styles_and_scripts()
 	{
 		if (is_checkout()) {
-			$image_url = plugin_dir_url( dirname( __FILE__ ) ) . 'assets/images/loader.gif';
-			// Enqueue stylesheets
+
+			$image_url = plugin_dir_url(dirname(__FILE__)) . 'assets/images/loader.gif';
+
+			// ✅ Compute can_pay ONCE
+			$can_pay = $this->bytenft_can_make_payment();
+			$this->log_info('status for can pay : ',[
+				"can_pay" => $can_pay ?? 'N/A' 
+			]);
+
 			wp_enqueue_style(
 				'bytenft-payment-loader-styles',
 				plugins_url('../assets/css/frontend.css', __FILE__),
-				[], // Dependencies (if any)
-				'1.0', // Version number
-				'all' // Media
+				[],
+				'1.0',
+				'all'
 			);
 
-			// Enqueue bytenft.js script
 			wp_enqueue_script(
 				'bytenft-js',
 				plugins_url('../assets/js/bytenft.js', __FILE__),
-				['jquery'], // Dependencies
-				'1.0', // Version number
-				true // Load in footer
+				['jquery'],
+				'1.0',
+				true
 			);
 
-			// Localize script with parameters that need to be passed to bytenft.js
-			wp_localize_script('bytenft-js', 'bytenft_params', [
-				'ajax_url' => admin_url('admin-ajax.php'),
-				'checkout_url' => wc_get_checkout_url(),
-				'bytenft_loader' => $image_url,
-				'bytenft_nonce' => wp_create_nonce('bytenft_payment'), // Create a nonce for verification
-				'payment_method' => $this->id,
-			]);
+			wp_add_inline_script(
+				'bytenft-blocks',
+				'window.wc = window.wc || {};
+				window.wc.wcSettings = window.wc.wcSettings || {};
+				
+				if (window.wc.wcSettings.setSetting) {
+					window.wc.wcSettings.setSetting("bytenft_data", ' . wp_json_encode([
+						'id'          => $this->id,
+						'title'       => $this->title,
+						'description' => $this->description,
+						'supports'    => $this->supports,
+						'can_pay'     => $can_pay,
+					]) . ');
+				} else {
+					window.bytenft_fallback = ' . wp_json_encode([
+						'id'          => $this->id,
+						'title'       => $this->title,
+						'description' => $this->description,
+						'supports'    => $this->supports,
+						'can_pay'     => $can_pay,
+					]) . ';
+				}',
+				'before'
+			);
 		}
 	}
 
@@ -1219,29 +1363,19 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	{
 		$gateway_id = $this->id;
 
+		// Gateway not present
 		if (!isset($available_gateways[$gateway_id])) {
 			return $available_gateways;
 		}
 
-		$cart_hash = WC()->cart ? WC()->cart->get_cart_hash() : 'no_cart';
-		if (empty($cart_hash) || $cart_hash === 'no_cart') {
+		// Skip admin (except AJAX)
+		if (is_admin() && !defined('DOING_AJAX')) {
 			return $available_gateways;
 		}
 
-		$cache_key = 'bytenft_gateway_visibility_' . $gateway_id . '_' . $cart_hash;
-
-		// Avoid multiple runs per cart_hash in the same request
-		static $processed_hashes = [];
-		if (in_array($cart_hash, $processed_hashes, true)) {
+		if (!WC()->cart) {
 			return $available_gateways;
 		}
-		$processed_hashes[] = $cart_hash;
-
-		$this->log_info_once_per_session(
-			'gateway_check_start_' . $cart_hash,
-			'Checking ByteNFT payment option availability',
-			['cart_hash' => $cart_hash]
-		);
 
 		$is_ajax_order_review = (
 			defined('DOING_AJAX') &&
@@ -1250,242 +1384,36 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$_REQUEST['wc-ajax'] === 'update_order_review'
 		);
 
-		$this->log_info_once_per_session(
-			'request_context_' . $cart_hash,
-			'Checkout request detected',
-			[
-				'cart_hash'       => $cart_hash,
-				'Request Type'    => $is_ajax_order_review ? 'Cart update (AJAX)' : 'Checkout page load',
-				'On Checkout Page'=> is_checkout() ? 'Yes' : 'No'
-			]
-		);
-
 		if (!is_checkout() && !$is_ajax_order_review) {
 			return $available_gateways;
 		}
 
-		if (!WC()->cart) {
-			return $available_gateways;
-		}
+		// ✅ SINGLE SOURCE OF TRUTH
+		$can_pay = $this->bytenft_can_make_payment();
 
-		// Get cart total
-		$amount = $is_ajax_order_review
-			? (float) (WC()->cart->get_totals()['total'] ?? 0)
-			: (float) WC()->cart->get_total('raw');
+		// Debug (keep temporary)
+		$this->log_info('FINAL CAN PAY', ['result' => $can_pay]);
 
-		if ($amount < 0.01) {
-			$totals = WC()->cart->get_totals();
-			if (!empty($totals['total'])) {
-				$amount = (float) $totals['total'];
-			}
-		}
-
-		$this->log_info_once_per_session(
-			'cart_amount_' . $cart_hash,
-			'Cart total detected',
-			['Amount' => $amount]
-		);
-
-		if ($amount < 0.01) {
-			$this->log_info_once_per_session(
-				'hide_reason_low_amount_' . $cart_hash,
-				'ByteNFT payment option hidden: order total is too low',
-				['Amount' => $amount]
-			);
-			$this->log_info_once_per_session(
-				'gateway_check_end_' . $cart_hash,
-				'ByteNFT payment option check finished'
-			);
+		if (!$can_pay) {
 			return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 
-		if (!method_exists($this, 'get_all_accounts')) {
-			$this->log_info_once_per_session(
-				'missing_get_all_accounts_' . $cart_hash,
-				'ByteNFT plugin misconfigured: account retrieval method missing'
-			);
-			$this->log_info_once_per_session(
-				'gateway_check_end_' . $cart_hash,
-				'ByteNFT payment option check finished'
-			);
-			return $this->hide_gateway($available_gateways, $gateway_id);
-		}
-
-		$accounts = $this->get_all_accounts();
-
-		$accounts_summary = array_map(function($acc) {
-			return [
-				'Account Name'           => $acc['title'] ?? '(no title)',
-				'Live Account Active'    => (!empty($acc['live_status']) && $acc['live_status'] === 'Active') ? 'Yes' : 'No',
-				'Sandbox Account Active' => (!empty($acc['has_sandbox']) && $acc['has_sandbox'] === 'on' && !empty($acc['sandbox_status']) && $acc['sandbox_status'] === 'Active') ? 'Yes' : 'No',
-			];
-		}, $accounts);
-
-		$this->log_info_once_per_session(
-			'account_check_summary_' . $cart_hash,
-			'ByteNFT account status summary',
-			[
-				'accounts_summary' => $accounts_summary,
-				'Total Accounts'   => count($accounts_summary)
-			]
-		);
-
-		$normalized_index = 0;
-
-		usort($accounts, function ($a, $b) {
-			return $a['priority'] <=> $b['priority'];
-		});
-
-		$first_account = true;
-	
-		foreach ((array) $accounts as $account) {
-			$account = array_map('sanitize_text_field', $account);
-
-	        $account_title       = $account['title'] ?? '';
-	        $priority            = intval($account['priority'] ?? 1);
-	        $live_public_key     = $account['live_public_key'] ?? '';
-	        $live_secret_key     = $account['live_secret_key'] ?? '';
-	        $sandbox_public_key  = $account['sandbox_public_key'] ?? '';
-	        $sandbox_secret_key  = $account['sandbox_secret_key'] ?? '';
-	        $has_sandbox         = isset($account['has_sandbox']);
-	        $live_status         = $account['live_status'] ?? 'Active';
-	        $sandbox_status      = $has_sandbox ? ($account['sandbox_status'] ?? 'Active') : '';
-
-			$valid_accounts[$normalized_index] = [
-	            'title'              => $account_title,
-	            'priority'           => $priority,
-	            'live_public_key'    => $live_public_key,
-	            'live_secret_key'    => $live_secret_key,
-	            'sandbox_public_key' => $sandbox_public_key,
-	            'sandbox_secret_key' => $sandbox_secret_key,
-	            'has_sandbox'        => $has_sandbox ? 'on' : 'off',
-	            'sandbox_status'     => $sandbox_status,
-	            'live_status'        => $live_status,
-	        ];
-			
-			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
-
-			$plugin_version = BYTENFT_PLUGIN_VERSION;
-
-			$api_url = esc_url($this->base_url . '/api/plugin/check/checkout');
-
-			$body = [
-				'valid_accounts' => [$valid_accounts[$normalized_index]],
-				'gateway_loaded' => $first_account ? 1 : 0,
-				'plugin_status'  => 1,
-				'plugin_version' => $plugin_version,
-			];
-
-			wp_remote_post($api_url, [
-				'method'=>'POST',
-				'timeout'=>30,
-				'body'=>$body,
-				'headers'=>[
-					'Content-Type'=>'application/x-www-form-urlencoded',
-					'Authorization'=>'Bearer '.sanitize_text_field($public_key)
-				],
-				'sslverify'=>true
-			]);
-				
-			$first_account = false;
-			$normalized_index++;
-		}
-
-		if (empty($accounts)) {
-			$this->log_info_once_per_session(
-				'no_accounts_' . $cart_hash,
-				'ByteNFT payment option hidden: no accounts configured'
-			);
-			$this->log_info_once_per_session(
-				'gateway_check_end_' . $cart_hash,
-				'ByteNFT payment option check finished'
-			);
-			return $this->hide_gateway($available_gateways, $gateway_id);
-		}
-
-		usort($accounts, fn($a, $b) => $a['priority'] <=> $b['priority']);
-
-		$accStatusApiUrl        = $this->get_api_url('/api/check-merchant-status');
-		$transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
-
-		$user_account_active = false;
-		$all_accounts_limited = true;
-
-		$force_refresh = (
-			isset($_GET['refresh_accounts'], $_GET['_wpnonce']) &&
-			$_GET['refresh_accounts'] === '1' &&
-			wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'refresh_accounts_nonce')
-		);
-
-		foreach ($accounts as $account) {
-			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
-			$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
-
-			$data = [
-				'is_sandbox'     => $this->sandbox,
-				'amount'         => $amount,
-				'api_public_key' => $public_key,
-				'api_secret_key' => $secret_key,
-			];
-
-			$cache_base = 'bytenft_daily_limit_' . md5($public_key . $amount);
-
-			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 30, $force_refresh);
-			if (!empty($status_data['status']) && $status_data['status'] === 'success') {
-				$user_account_active = true;
-			}
-
-			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit');
-			if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {
-				$all_accounts_limited = false;
-			}
-
-			if ($user_account_active && !$all_accounts_limited) {
-				break;
-			}
-		}
-
-		if (!$user_account_active) {
-			$this->log_info_once_per_session(
-				'no_active_accounts_' . $cart_hash,
-				'ByteNFT payment option hidden: no active accounts'
-			);
-			$this->log_info_once_per_session(
-				'gateway_check_end_' . $cart_hash,
-				'ByteNFT payment option check finished'
-			);
-			return $this->hide_gateway($available_gateways, $gateway_id);
-		}
-
-		if ($all_accounts_limited) {
-			$this->log_info_once_per_session(
-				'accounts_limited_' . $cart_hash,
-				'ByteNFT payment option hidden: all accounts have reached their transaction limits'
-			);
-			$this->log_info_once_per_session(
-				'gateway_check_end_' . $cart_hash,
-				'ByteNFT payment option check finished'
-			);
-			return $this->hide_gateway($available_gateways, $gateway_id);
-		}
-
-		$this->log_info_once_per_session(
-			'gateway_active_' . $cart_hash,
-			'ByteNFT payment option is visible: account is active'
-		);
-		$this->log_info_once_per_session(
-			'gateway_check_end_' . $cart_hash,
-			'ByteNFT payment option check finished'
-		);
+		$this->log_info('GATEWAYS BEFORE', array_keys($available_gateways));
 
 		return $available_gateways;
 	}
 
+	public function is_available()
+	{
+		return true;
+	}
+
 	private function hide_gateway($available_gateways, $gateway_id)
 	{
-	    // unset($available_gateways[$gateway_id]);
-	    // $GLOBALS['bytenft_gateway_visibility_' . $this->id] = $available_gateways;
-	    // return $available_gateways;
+	    unset($available_gateways[$gateway_id]);
+	    $GLOBALS['bytenft_gateway_visibility_' . $this->id] = $available_gateways;
+		$this->log_info('hiding gateway', ['context' => 'hide_gateway','reason' => 'gateway_hidden', 'gateway_id' => $gateway_id]);
+	    return $available_gateways;
 	}
 
 	private function log_info_once_per_session($key, $message, $context = [])
@@ -1577,53 +1505,72 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private function get_cached_api_response($url, $data, $cache_key, $ttl = 120, $force_refresh = false)
 	{
-	    // Allow ?refresh_accounts=1&_wpnonce=... in URL to force-refresh cache (useful for testing)
+		// Allow manual cache refresh via URL
 		if (
-		    !$force_refresh &&
-		    isset($_GET['refresh_accounts']) &&
-		    $_GET['refresh_accounts'] === '1' &&
-		    isset($_GET['_wpnonce']) &&
-		    wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'refresh_accounts_nonce')
+			!$force_refresh &&
+			isset($_GET['refresh_accounts']) &&
+			$_GET['refresh_accounts'] === '1' &&
+			isset($_GET['_wpnonce']) &&
+			wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'refresh_accounts_nonce')
 		) {
-		    $force_refresh = true;
+			$force_refresh = true;
 		}
 
-	    // If not forcing refresh, return cached version if it exists
-	    if (!$force_refresh) {
-	        $cached_response = get_transient($cache_key);
-	        if ($cached_response !== false) {
-	            return $cached_response;
-	        }
-	    } else {
-	        delete_transient($cache_key); // Clear previous cached version
-	    }
+		// Return cached response
+		if (!$force_refresh) {
+			$cached_response = get_transient($cache_key);
+			if ($cached_response !== false) {
+				return $cached_response;
+			}
+		} else {
+			delete_transient($cache_key);
+		}
 
-	    // Make the API call
-	    $response = wp_remote_post($url, [
-	        'method'  => 'POST',
-	        'timeout' => 30,
-	        'body'    => $data,
-	        'headers' => [
-	            'Content-Type'  => 'application/x-www-form-urlencoded',
-	            'Authorization' => 'Bearer ' . $data['api_public_key'],
-	        ],
-	        'sslverify' => true,
-	    ]);
+		// API Call
+		$response = wp_remote_post($url, [
+			'method'  => 'POST',
+			'timeout' => 30,
+			'body'    => $data,
+			'headers' => [
+				'Content-Type'  => 'application/x-www-form-urlencoded',
+				'Authorization' => 'Bearer ' . $data['api_public_key'],
+			],
+			'sslverify' => true,
+		]);
 
-	    if (is_wp_error($response)) {
-	        return ['status' => 'error', 'message' => $response->get_error_message()];
-	    }
+		// ❌ Request failed
+		if (is_wp_error($response)) {
+			return [
+				'success' => false,
+				'message' => $response->get_error_message()
+			];
+		}
 
-	    $response_body = wp_remote_retrieve_body($response);
-	    $response_data = json_decode($response_body, true);
+		$response_body = wp_remote_retrieve_body($response);
+		$response_data = json_decode($response_body, true);
 
-	    // Cache the response
-	    set_transient($cache_key, $response_data, $ttl);
+		// ❌ Invalid response
+		if (empty($response_data) || !is_array($response_data)) {
+			return [
+				'success' => false,
+				'message' => 'Invalid API response'
+			];
+		}
 
-	    return $response_data;
+		// ✅ Normalize API response (KEY FIX)
+		if (!isset($response_data['success'])) {
+			if (isset($response_data['status']) && $response_data['status'] === 'success') {
+				$response_data['success'] = true;
+			} else {
+				$response_data['success'] = false;
+			}
+		}
+
+		// Cache response
+		set_transient($cache_key, $response_data, $ttl);
+
+		return $response_data;
 	}
-
-
 
 	private function get_all_accounts()
 	{
@@ -1834,6 +1781,22 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		// Log the release of the lock
 		wc_get_logger()->info("Released lock for '{$lock_key}'", ['source' => 'bytenft-payment-gateway']);
+	}
+
+	private function get_existing_payment_link($order_id)
+	{
+		global $wpdb;
+
+		$table_name = $wpdb->prefix . 'order_payment_link';
+
+		$payment_link = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT payment_link FROM $table_name WHERE order_id = %d LIMIT 1",
+				$order_id
+			)
+		);
+
+		return !empty($payment_link) ? esc_url($payment_link) : false;
 	}
 
 
