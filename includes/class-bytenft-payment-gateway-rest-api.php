@@ -129,6 +129,11 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	{
 		$parameters = $request->get_json_params();
 
+		$this->logger->info('current api request params ', [
+			'source' => 'bytenft-payment-gateway',
+			'context' => $parameters
+		]);
+
 		// Sanitize incoming data to prevent security vulnerabilities.
 		$api_key = isset($parameters['nonce']) ? sanitize_text_field($parameters['nonce']) : '';
 		$order_id = isset($parameters['order_id']) ? intval($parameters['order_id']) : 0;

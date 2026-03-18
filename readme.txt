@@ -27,6 +27,9 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 == Changelog ==
 
+= 1.0.11 =
+* Hide plugin Fix: Hide Plugin Fix
+
 = 1.0.10 =
 * Update: Removed transaction limit check logic so the plugin remains available regardless of transaction limits.
 
@@ -68,6 +71,9 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.11 =
+* Hide plugin Fix: Hide Plugin Fix
 
 = 1.0.10 =
 * Removed the transaction limit check logic from the plugin so it remains available regardless of transaction limits.

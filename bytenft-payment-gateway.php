@@ -7,7 +7,7 @@
  * Author URI: https://pay.bytenft.xyz/
  * Text Domain: bytenft-payment-gateway
  * Plugin URI: https://github.com/bytenft/bytenft-payment-gateway
- * Version: 1.0.10
+ * Version: 1.0.11
  * License: GPLv3 or later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  *
@@ -22,7 +22,6 @@ define('BYTENFT_PAYMENT_GATEWAY_MIN_PHP_VER', '8.0');
 define('BYTENFT_PAYMENT_GATEWAY_MIN_WC_VER', '6.5.4');
 define('BYTENFT_PAYMENT_GATEWAY_FILE', __FILE__);
 define('BYTENFT_PAYMENT_GATEWAY_PLUGIN_DIR', plugin_dir_path(__FILE__));
-define('BYTENFT_PLUGIN_VERSION', '1.0.10');
 
 // Include utility functions
 require_once BYTENFT_PAYMENT_GATEWAY_PLUGIN_DIR . 'includes/bytenft-payment-gateway-utils.php';
@@ -45,6 +44,7 @@ BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
 add_action('woocommerce_cancel_unpaid_order', 'bytenft_cancel_unpaid_order_action');
 add_action('woocommerce_order_status_cancelled', 'bytenft_cancel_unpaid_order_action');
 add_action('woocommerce_order_status_changed', 'bytenft_cancel_unpaid_order_action', 10, 4);
+
 
 /**
  * Cancels an unpaid order after a specified timeout.
