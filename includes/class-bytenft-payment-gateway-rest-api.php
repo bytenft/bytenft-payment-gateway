@@ -51,14 +51,11 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 
 	public function bytenft_register_routes()
 	{
-		// Log incoming request with sanitized parameters
-		add_action('rest_api_init', function () {
-			register_rest_route('bytenft/v1', '/data', array(
-				'methods' => 'POST',
-				'callback' => array($this, 'bytenft_handle_api_request'),
-				'permission_callback' => '__return_true',
-			));
-		});
+		register_rest_route('bytenft/v1', '/data', array(
+			'methods' => ['GET','POST'],
+			'callback' => array($this, 'bytenft_handle_api_request'),
+			'permission_callback' => '__return_true',
+		));
 	}
 
 	private function bytenft_verify_api_key($api_key)

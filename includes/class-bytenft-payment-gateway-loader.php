@@ -119,9 +119,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		
 		add_action( 'enqueue_block_assets', [ $this, 'register_blocks_assets' ] );
 
-		// Initialize REST API
-		$rest_api = BYTENFT_PAYMENT_GATEWAY_REST_API::get_instance();
-		$rest_api->bytenft_register_routes();
+		add_action('rest_api_init', function () {
+			$rest_api = BYTENFT_PAYMENT_GATEWAY_REST_API::get_instance();
+			$rest_api->bytenft_register_routes();
+		});
 
 		// Add plugin action links
 		add_filter('plugin_action_links_' . plugin_basename(BYTENFT_PAYMENT_GATEWAY_FILE), [$this, 'bytenft_plugin_action_links']);
