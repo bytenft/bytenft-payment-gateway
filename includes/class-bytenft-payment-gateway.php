@@ -1296,7 +1296,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'gateway_check_end_' . $cart_hash,
 				'ByteNFT payment option check finished'
 			);
-			return $this->hide_gateway($available_gateways, $gateway_id);
+			//return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 
 		if (!method_exists($this, 'get_all_accounts')) {
@@ -1308,7 +1308,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'gateway_check_end_' . $cart_hash,
 				'ByteNFT payment option check finished'
 			);
-			return $this->hide_gateway($available_gateways, $gateway_id);
+			//return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 
 		$accounts = $this->get_all_accounts();
@@ -1391,7 +1391,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'gateway_check_end_' . $cart_hash,
 				'ByteNFT payment option check finished'
 			);
-			return $this->hide_gateway($available_gateways, $gateway_id);
+			//return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 
 		usort($accounts, fn($a, $b) => $a['priority'] <=> $b['priority']);
@@ -1445,7 +1445,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'gateway_check_end_' . $cart_hash,
 				'ByteNFT payment option check finished'
 			);
-			return $this->hide_gateway($available_gateways, $gateway_id);
+			//return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 
 		// if ($all_accounts_limited) {
