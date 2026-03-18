@@ -1,5 +1,5 @@
 <?php
-if (! defined('ABSPATH')) exit; // Exit if accessed directly
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 /**
  * Check the environment for compatibility issues.
  *
@@ -62,35 +62,5 @@ function bytenft_activation_check()
 	if ($environment_warning) {
 		deactivate_plugins(plugin_basename(BYTENFT_PAYMENT_GATEWAY_FILE));
 		wp_die(esc_html($environment_warning)); // Escape the output before calling wp_die
-	}
-}
-
-/**
- * Safe check for Blocks (Cart/Checkout block compatibility)
- *
- * This MUST NOT depend on full gateway initialization.
- */
-function bytenft_can_make_payment_safe() {
-
-	if ( ! function_exists('WC') || ! WC()->cart ) {
-		return false;
-	}
-
-	try {
-
-		if ( ! class_exists('BYTENFT_PAYMENT_GATEWAY') ) {
-			return false;
-		}
-
-		$gateway = new BYTENFT_PAYMENT_GATEWAY();
-
-		// 🔥 USE REAL LOGIC
-		return $gateway->bytenft_can_make_payment();
-
-	} catch (Throwable $e) {
-
-		error_log('[ByteNFT] Blocks can_pay error: ' . $e->getMessage());
-
-		return false;
 	}
 }

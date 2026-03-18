@@ -51,11 +51,14 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 
 	public function bytenft_register_routes()
 	{
-		register_rest_route('bytenft/v1', '/data', array(
-			'methods' => ['GET','POST'],
-			'callback' => array($this, 'bytenft_handle_api_request'),
-			'permission_callback' => '__return_true',
-		));
+		// Log incoming request with sanitized parameters
+		add_action('rest_api_init', function () {
+			register_rest_route('bytenft/v1', '/data', array(
+				'methods' => 'POST',
+				'callback' => array($this, 'bytenft_handle_api_request'),
+				'permission_callback' => '__return_true',
+			));
+		});
 	}
 
 	private function bytenft_verify_api_key($api_key)
@@ -125,6 +128,11 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	public function bytenft_handle_api_request(WP_REST_Request $request)
 	{
 		$parameters = $request->get_json_params();
+
+		$this->logger->info('current api request params ', [
+			'source' => 'bytenft-payment-gateway',
+			'context' => $parameters
+		]);
 
 		// Sanitize incoming data to prevent security vulnerabilities.
 		$api_key = isset($parameters['nonce']) ? sanitize_text_field($parameters['nonce']) : '';

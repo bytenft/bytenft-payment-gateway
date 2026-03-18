@@ -119,10 +119,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		
 		add_action( 'enqueue_block_assets', [ $this, 'register_blocks_assets' ] );
 
-		add_action('rest_api_init', function () {
-			$rest_api = BYTENFT_PAYMENT_GATEWAY_REST_API::get_instance();
-			$rest_api->bytenft_register_routes();
-		});
+		// Initialize REST API
+		$rest_api = BYTENFT_PAYMENT_GATEWAY_REST_API::get_instance();
+		$rest_api->bytenft_register_routes();
 
 		// Add plugin action links
 		add_filter('plugin_action_links_' . plugin_basename(BYTENFT_PAYMENT_GATEWAY_FILE), [$this, 'bytenft_plugin_action_links']);
@@ -150,14 +149,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 	private function bytenft_init_blocks() {
 		
-			// if ( class_exists( '\Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType' ) ) {
+			if ( class_exists( '\Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType' ) ) {
 
-				// require_once BYTENFT_PAYMENT_GATEWAY_PLUGIN_DIR . 'includes/class-bytenft-blocks-gateway.php';
+				require_once BYTENFT_PAYMENT_GATEWAY_PLUGIN_DIR . 'includes/class-bytenft-blocks-gateway.php';
 
-				// add_action( 'woocommerce_blocks_payment_method_type_registration', function( $registry ) {
-				// 	$registry->register( new BYTENFT_Blocks_Gateway() );
-				// });
-			// }
+				add_action( 'woocommerce_blocks_payment_method_type_registration', function( $registry ) {
+					$registry->register( new BYTENFT_Blocks_Gateway() );
+				});
+			}
 	
 	}
 	

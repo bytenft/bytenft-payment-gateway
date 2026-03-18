@@ -9,10 +9,6 @@
 	const settings =
 	window.wc?.wcSettings?.getPaymentMethodData?.('bytenft') || {};
 
-	// ✅ GLOBAL CACHE (VERY IMPORTANT)
-	let canPayCache = null;
-	let lastCheckTime = 0;
-
 	const methodConfig = {
 		name: settings.id || 'bytenft',
 		label: settings.title || 'ByteNFT',
