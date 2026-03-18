@@ -35,6 +35,8 @@ jQuery(function ($) {
         var formId = '#' + bytenft_params.payment_method + '-checkout-form';
         $(formId).off("submit.bytenft").on("submit.bytenft", function (e) {
             if ($(this).find('input[name="payment_method"]:checked').val() === bytenft_params.payment_method) {
+                // Remove all known error messages for classic checkout (update errorSelectors if you use a custom template)
+                $(this).closest('.woocommerce').find(errorSelectors.join(',')).remove();
                 handleFormSubmit.call(this, e);
                 return false;
             }
@@ -229,6 +231,9 @@ jQuery(function ($) {
             $error = $('<div>', { class: 'wc_er wc-block-components-notice-banner is-error', text: errorMessage || 'Payment failed' });
         }
 
+        // Remove all WooCommerce and custom error messages in the closest .woocommerce container, including any <ul> with role="alert"
+        $(this).closest('.woocommerce').find(errorSelectors.join(',')).remove();
+
         $form.prepend($error.first());
 
         if ($error.first().length) {
@@ -247,4 +252,13 @@ jQuery(function ($) {
             $button.prop('disabled', false).text(originalButtonText);
         }
     }
+
+    // List of selectors for error messages. Update this array if you use a custom checkout template with different error markup.
+    var errorSelectors = [
+        '.woocommerce-error',
+        '.wc_er',
+        '.wc-block-components-notice-banner',
+        'ul[role="alert"]'
+        // Add custom error selectors here if needed
+    ];
 });
