@@ -3,14 +3,11 @@
 	const { createElement, RawHTML } = window.wp?.element || {};
 
 	if (typeof registerPaymentMethod !== 'function') {
-		console.error('[ByteNFT] wcBlocksRegistry not available yet');
 		return;
 	}
 
 	const settings =
 	window.wc?.wcSettings?.getPaymentMethodData?.('bytenft') || {};
-
-	console.log('[ByteNFT] settings:', settings);
 
 	// ✅ GLOBAL CACHE (VERY IMPORTANT)
 	let canPayCache = null;
@@ -35,16 +32,13 @@
 
 		// ✅ FIXED canMakePayment
 		canMakePayment: async () => {
-			console.log('[ByteNFT] canMakePayment evaluated', settings);
-			return settings.can_pay === true;
+			return true;  // return settings.can_pay === true;
 		},
 
 		supports: {
 			features: settings.supports || ['products'],
 		},
 	};
-
-	console.log('[ByteNFT] Registering payment method:', methodConfig);
 
 	registerPaymentMethod(methodConfig);
 })();
