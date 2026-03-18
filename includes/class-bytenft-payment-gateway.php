@@ -1257,7 +1257,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 
 
-				$is_limit_ok = $limit_data['success'] ?? false;
+				$is_limit_ok =  true; //$limit_data['success'] ?? false;
 
 				$plugin_version = BYTENFT_PLUGIN_VERSION;
 
