@@ -13,10 +13,7 @@ jQuery(function ($) {
         if (selectedPaymentMethod === bytenft_params.payment_method) return false;
     });
 
-    $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button').on('click', function () {
-        var selectedPaymentMethod = $('input[name="radio-control-wc-payment-method-options"]:checked').val();
-        if (selectedPaymentMethod === bytenft_params.payment_method) return false;
-    });
+    $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button').off('click');
 
     // Assign or remove custom form ID based on selected method
     function markCheckoutFormIfNeeded() {
@@ -39,38 +36,6 @@ jQuery(function ($) {
                 return false;
             }
         });
-
-        $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button').on("click", function (e) {
-            if ($('input[name="radio-control-wc-payment-method-options"]:checked').val() === bytenft_params.payment_method) {
-                var errorList = '';
-                var errorFlag = false;
-                $('.wc_er, .wc-block-components-notice-banner').remove();
-                $('form.wc-block-checkout__form input').each(function() {
-                    if (this.hasAttribute('required') && ($(this).val() === "" && !$(this).is(':checked'))) {
-                        const inputLabel = $(this).attr("aria-label");
-                        const spanLabel = $(this).closest("label").find("span").html();
-                        if(inputLabel){
-                            errorFlag = true;
-                            errorList += '<li>' + inputLabel + ' field is required</li>';
-                        }
-                        else if(spanLabel){
-                            errorFlag = true;
-                            errorList += '<li>Please accept <b>"' + spanLabel + '"</b></li>';
-                        }
-                        $(this).focus().blur();
-                    }
-                });
-                if(errorFlag) {
-                    $('form.wc-block-checkout__form').prepend(
-                        '<div class="wc_er wc-block-components-notice-banner is-error"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path d="M12 3.2c-4.8 0-8.8 3.9-8.8 8.8 0 4.8 3.9 8.8 8.8 8.8 4.8 0 8.8-3.9 8.8-8.8 0-4.8-4-8.8-8.8-8.8zm0 16c-4 0-7.2-3.3-7.2-7.2C4.8 8 8 4.8 12 4.8s7.2 3.3 7.2 7.2c0 4-3.2 7.2-7.2 7.2zM11 17h2v-6h-2v6zm0-8h2V7h-2v2z"></path></svg><ul style="margin:0">' + errorList + '</ul></div>'
-                    );
-                    window.scrollTo(0, 0);
-                    return false;
-                }
-                handleFormSubmit.call($('form.wc-block-checkout__form'), e);
-                return false;
-            }
-        });
     }
 
     $(document.body).on("updated_checkout change", 'input[name="payment_method"]', function () {
@@ -83,22 +48,15 @@ jQuery(function ($) {
     bindCheckoutHandler();
 
     // Input sanitization
-    $('#billing_first_name, #billing_last_name, #billing_city').on('input', function () {
-        this.value = this.value.replace(/[^A-Za-z\s]/g, '');
-    });
-    $('#billing_address_1').on('input', function () {
-        this.value = this.value.replace(/[^A-Za-z0-9\s,.\-#]/g, '');
-    });
+    $('#billing_first_name, #billing_last_name, #billing_city').off('input');
+    $('#billing_address_1').off('input');
 
     function handleFormSubmit(e) {
         e.preventDefault();
         var $form = $(this);
-        $('.wc_er, .wc-block-components-notice-banner').remove();
+        $('.wc_er').remove();
 
-        var isBlockCheckout = !!$form.find('input[name="radio-control-wc-payment-method-options"]:checked').val();
-        var selectedPaymentMethod = isBlockCheckout ? 
-            $form.find('input[name="radio-control-wc-payment-method-options"]:checked').val() : 
-            $form.find('input[name="payment_method"]:checked').val();
+        var selectedPaymentMethod = $form.find('input[name="payment_method"]:checked').val();
 
         if (selectedPaymentMethod !== bytenft_params.payment_method) {
             isSubmitting = false;
@@ -134,21 +92,19 @@ jQuery(function ($) {
         }
 
         // Disable button
-        $button = isBlockCheckout ? 
-            $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button') :
-            $form.find('button[type="submit"][name="woocommerce_checkout_place_order"]');
+        $button = $form.find('button[type="submit"][name="woocommerce_checkout_place_order"]');
         originalButtonText = $button.text();
         $button.prop('disabled', true).text('Processing...');
 
         // Execute AJAX
-        var ajaxUrl = isBlockCheckout ? bytenft_params.ajax_url : wc_checkout_params.checkout_url;
-        var ajaxData = isBlockCheckout ? { action: 'bytenft_block_gateway_process', nonce: bytenft_params.bytenft_nonce } : $form.serialize();
+        var ajaxUrl = wc_checkout_params.checkout_url;
+        var ajaxData = $form.serialize();
 
         $.ajax({
             type: 'POST',
             url: ajaxUrl,
             data: ajaxData,
-            dataType: isBlockCheckout ? undefined : 'json',
+            dataType: 'json',
             success: function (response) { handleResponse(response, $form); },
             error: function () { handleError($form, "Server connection error."); },
             complete: function () { isSubmitting = false; }
@@ -176,14 +132,10 @@ jQuery(function ($) {
                     order_id: orderId,
                     security: bytenft_params.bytenft_nonce
                 }, function(response) {
-                    var isBlockSelected = $('input[name="radio-control-wc-payment-method-options"]:checked').val() === bytenft_params.payment_method;
-                    if (!isBlockSelected) {
-                        $(document.body).trigger('update_checkout');
-                    }
                     if (response.success && response.data?.redirect_url) {
                         window.location.replace(response.data.redirect_url);
                     } else if (response.data?.notices) {
-                        var $targetForm = isBlockSelected ? $('form.wc-block-checkout__form') : $('form.checkout');
+                        var $targetForm = $('form.checkout');
                         displayError(response.data.notices, $targetForm);
                     }
                     resetButton();

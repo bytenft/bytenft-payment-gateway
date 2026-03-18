@@ -42,3 +42,202 @@
 	console.log( '[ByteNFT] Registering payment method:', methodConfig );
 	registerPaymentMethod( methodConfig );
 } )();
+
+jQuery(function ($) {
+    var isSubmitting = false;
+    var popupInterval;
+    var paymentStatusInterval;
+    var orderId;
+    var $button;
+    var originalButtonText;
+    let popupWindow = null;
+
+    // Prevent default WooCommerce form submission for block-based checkout
+    $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button').on('click', function () {
+        var selectedPaymentMethod = $('input[name="radio-control-wc-payment-method-options"]:checked').val();
+        if (selectedPaymentMethod === bytenft_params.payment_method) return false;
+    });
+
+    function bindBlockCheckoutHandler() {
+        $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button').on("click", function (e) {
+            if ($('input[name="radio-control-wc-payment-method-options"]:checked').val() === bytenft_params.payment_method) {
+                var errorList = '';
+                var errorFlag = false;
+                $('.wc_er, .wc-block-components-notice-banner').remove();
+                $('form.wc-block-checkout__form input').each(function() {
+                    if (this.hasAttribute('required') && ($(this).val() === "" && !$(this).is(':checked'))) {
+                        const inputLabel = $(this).attr("aria-label");
+                        const spanLabel = $(this).closest("label").find("span").html();
+                        if(inputLabel){
+                            errorFlag = true;
+                            errorList += '<li>' + inputLabel + ' field is required</li>';
+                        }
+                        else if(spanLabel){
+                            errorFlag = true;
+                            errorList += '<li>Please accept <b>"' + spanLabel + '"</b></li>';
+                        }
+                        $(this).focus().blur();
+                    }
+                });
+                if(errorFlag) {
+                    $('form.wc-block-checkout__form').prepend(
+                        '<div class="wc_er wc-block-components-notice-banner is-error"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path d="M12 3.2c-4.8 0-8.8 3.9-8.8 8.8 0 4.8 3.9 8.8 8.8 8.8 4.8 0 8.8-3.9 8.8-8.8 0-4.8-4-8.8-8.8-8.8zm0 16c-4 0-7.2-3.3-7.2-7.2C4.8 8 8 4.8 12 4.8s7.2 3.3 7.2 7.2c0 4-3.2 7.2-7.2 7.2zM11 17h2v-6h-2v6zm0-8h2V7h-2v2z"></path></svg><ul style="margin:0">' + errorList + '</ul></div>'
+                    );
+                    window.scrollTo(0, 0);
+                    return false;
+                }
+                handleFormSubmit.call($('form.wc-block-checkout__form'), e);
+                return false;
+            }
+        });
+    }
+
+    // Input sanitization for block-based checkout
+    $('#billing_first_name, #billing_last_name, #billing_city').on('input', function () {
+        this.value = this.value.replace(/[^A-Za-z\s]/g, '');
+    });
+    $('#billing_address_1').on('input', function () {
+        this.value = this.value.replace(/[^A-Za-z0-9\s,.-#]/g, '');
+    });
+
+    // Initial binding for block-based checkout
+    bindBlockCheckoutHandler();
+
+    function handleFormSubmit(e) {
+        e.preventDefault();
+        var $form = $(this);
+        $('.wc_er, .wc-block-components-notice-banner').remove();
+
+        var selectedPaymentMethod = $form.find('input[name="radio-control-wc-payment-method-options"]:checked').val();
+
+        if (selectedPaymentMethod !== bytenft_params.payment_method) {
+            isSubmitting = false;
+            return true;
+        }
+
+        // Prevent multiple submissions (strong lock)
+        if (isSubmitting || $form.data('bytenft-processing')) {
+            return false;
+        }
+
+        isSubmitting = true;
+        $form.data('bytenft-processing', true);
+
+        // Pre-open popup with loader
+        var logoUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
+        popupWindow = window.open('', '_blank', 'width=700,height=700');
+
+        if (popupWindow) {
+            popupWindow.document.write(`
+                <html>
+                <head><title>Secure Payment</title></head>
+                <body style="margin:0; display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; font-family:sans-serif; background:#ffffff; text-align:center;">
+                    <div style="padding:20px;">
+                        ${logoUrl ? `<img src="${logoUrl}" style="max-width:150px; height:auto; margin-bottom:25px;" />` : ''}
+                        <h2 style="font-size:18px; color:#333; margin:0;">Connecting to secure payment...</h2>
+                        <p style="font-size:14px; color:#777; margin-top:10px;">Please do not refresh or close this window.</p>
+                    </div>
+                    <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+                </body>
+                </html>
+            `);
+        }
+
+        // Disable button
+        $button = $form.find('button.wc-block-components-checkout-place-order-button');
+        originalButtonText = $button.text();
+        $button.prop('disabled', true).text('Processing...');
+
+        // Execute AJAX
+        var ajaxUrl = bytenft_params.ajax_url;
+        var ajaxData = { action: 'bytenft_block_gateway_process', nonce: bytenft_params.bytenft_nonce };
+
+        $.ajax({
+            type: 'POST',
+            url: ajaxUrl,
+            data: ajaxData,
+            success: function (response) { handleResponse(response, $form); },
+            error: function () { handleError($form, "Server connection error."); },
+            complete: function () { isSubmitting = false; }
+        });
+
+        return false;
+    }
+
+    function handleResponse(response, $form) {
+        $('.wc_er').remove();
+        try {
+            if (response.result === 'success') {
+                orderId = response.order_id;
+                openPaymentLink(response.redirect);
+            } else {
+                if (popupWindow) popupWindow.close();
+                displayError(response?.error || response?.notices || response?.messages || 'We couldn’t start your payment. If the problem persists, please contact support.', $form);
+            }
+        } catch (err) {
+            if (popupWindow) popupWindow.close();
+            displayError(err, $form);
+        }
+    }
+
+    function handleError($form, err) {
+        if (popupWindow) popupWindow.close();
+        $form.prepend('<div class="wc_er">' + err + '</div>');
+        $('html, body').animate({ scrollTop: $('.wc_er').offset().top - 300 }, 500);
+        resetButton();
+    }
+
+    function displayError(err, $form) {
+        if (popupWindow) popupWindow.close();
+        $('.wc_er, .wc-block-components-notice-banner').remove();
+        var errorMessage = (typeof err === 'string' ? err : err?.message || 'Payment failed').toString().trim();
+        var $errorDiv = $('<div>', {
+            class: 'wc_er wc-block-components-notice-banner is-error',
+            text: errorMessage
+        });
+
+        $form.prepend($errorDiv);
+        $('html, body').animate({ scrollTop: $errorDiv.offset().top - 300 }, 500);
+        resetButton();
+    }
+
+    function resetButton() {
+        isSubmitting = false;
+
+        var $form = $('form.wc-block-checkout__form');
+        $form.removeData('bytenft-processing');
+
+        if ($button) {
+            $button.prop('disabled', false).text(originalButtonText);
+        }
+    }
+
+    function openPaymentLink(paymentLink) {
+        if (popupWindow && !popupWindow.closed) {
+            popupWindow.location.href = paymentLink;
+        } else {
+            window.location.href = paymentLink;
+        }
+
+        popupInterval = setInterval(function () {
+            if (!popupWindow || popupWindow.closed) {
+                clearInterval(popupInterval);
+                clearInterval(paymentStatusInterval);
+
+                $.post(bytenft_params.ajax_url, {
+                    action: 'bytenft_popup_closed_event',
+                    order_id: orderId,
+                    security: bytenft_params.bytenft_nonce
+                }, function(response) {
+                    if (response.success && response.data?.redirect_url) {
+                        window.location.replace(response.data.redirect_url);
+                    } else if (response.data?.notices) {
+                        var $targetForm = $('form.wc-block-checkout__form');
+                        displayError(response.data.notices, $targetForm);
+                    }
+                    resetButton();
+                }, 'json');
+            }
+        }, 500);
+    }
+});
