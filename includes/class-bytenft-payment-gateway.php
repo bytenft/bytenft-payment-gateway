@@ -736,41 +736,41 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// --------------------------
 		// DAILY LIMIT CHECK
 		// --------------------------
-		$limit_url = $this->get_api_url('/api/dailylimit');
-		$limit_resp = wp_remote_post($limit_url, [
-			'method' => 'POST',
-			'timeout' => 30,
-			'body' => $data,
-			'headers' => [
-				'Content-Type' => 'application/x-www-form-urlencoded',
-				'Authorization' => 'Bearer ' . sanitize_text_field($public_key)
-			],
-			'sslverify' => true
-		]);
+		// $limit_url = $this->get_api_url('/api/dailylimit');
+		// $limit_resp = wp_remote_post($limit_url, [
+		// 	'method' => 'POST',
+		// 	'timeout' => 30,
+		// 	'body' => $data,
+		// 	'headers' => [
+		// 		'Content-Type' => 'application/x-www-form-urlencoded',
+		// 		'Authorization' => 'Bearer ' . sanitize_text_field($public_key)
+		// 	],
+		// 	'sslverify' => true
+		// ]);
 
-		if (is_wp_error($limit_resp)) {
-			wc_get_logger()->error("Daily limit API error: " . $limit_resp->get_error_message(), $logger_context);
-			if (is_checkout()) wc_add_notice(__('Payment validation error.', 'bytenft-payment-gateway'), 'error');
-			return ['result' => 'fail'];
-		}
+		// if (is_wp_error($limit_resp)) {
+		// 	wc_get_logger()->error("Daily limit API error: " . $limit_resp->get_error_message(), $logger_context);
+		// 	if (is_checkout()) wc_add_notice(__('Payment validation error.', 'bytenft-payment-gateway'), 'error');
+		// 	return ['result' => 'fail'];
+		// }
 
-		$limit_data = json_decode(wp_remote_retrieve_body($limit_resp), true);
+		// $limit_data = json_decode(wp_remote_retrieve_body($limit_resp), true);
 
-		// Only set _bytenft_limit_exceeded if API explicitly says error
-		if (($limit_data['status'] ?? '') === 'error') {
+		// // Only set _bytenft_limit_exceeded if API explicitly says error
+		// if (($limit_data['status'] ?? '') === 'error') {
 
-			$order->update_meta_data('_bytenft_limit_exceeded', true);
-			$order->save();
+		// 	$order->update_meta_data('_bytenft_limit_exceeded', true);
+		// 	$order->save();
 
-			if (is_checkout()) {
-				wc_add_notice($limit_data['message'], 'error');
-			}
+		// 	if (is_checkout()) {
+		// 		wc_add_notice($limit_data['message'], 'error');
+		// 	}
 
-			return [
-				'result' => 'failure',
-				'notices' => $limit_data['message']
-			];
-		}
+		// 	return [
+		// 		'result' => 'failure',
+		// 		'notices' => $limit_data['message']
+		// 	];
+		// }
 
 		// --------------------------
 		// SEND PAYMENT REQUEST
@@ -1397,10 +1397,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		usort($accounts, fn($a, $b) => $a['priority'] <=> $b['priority']);
 
 		$accStatusApiUrl        = $this->get_api_url('/api/check-merchant-status');
-		$transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
+		// $transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
 
 		$user_account_active = false;
-		$all_accounts_limited = true;
+		// $all_accounts_limited = true;
 
 		$force_refresh = (
 			isset($_GET['refresh_accounts'], $_GET['_wpnonce']) &&
@@ -1426,12 +1426,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$user_account_active = true;
 			}
 
-			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit');
-			if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {
-				$all_accounts_limited = false;
-			}
+			// $limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit');
+			// if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {
+			// 	$all_accounts_limited = false;
+			// }
 
-			if ($user_account_active && !$all_accounts_limited) {
+			if ($user_account_active) {
 				break;
 			}
 		}
