@@ -1086,6 +1086,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		// Step 3: Trim leading zeros
 		$normalizedPhone = ltrim($normalizedPhone, '0');
+		
+		if (!empty($phoneNumber)) {
+			return [
+				'phone' => $normalizedPhone,
+				'country_code' => '+' . $countryCode,
+				'is_valid' => true,
+				'error' => null
+			];
+		}
 
 		// Step 4: Determine local number length
 		$localLength = strlen($normalizedPhone);
@@ -1094,7 +1103,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// Step 5: Validation logic
 		$requires10Digits = in_array($countryCode, ['1']); // US
 		$europeCodes = ['33','34','39','31','44','46','47','48','49','41','45','358'];
-
+		
 		if ($requires10Digits) {
 			// US: exactly 10 digits required
 			if ($localLength !== 10) {
