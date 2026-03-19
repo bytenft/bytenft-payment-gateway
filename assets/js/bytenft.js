@@ -104,7 +104,7 @@ jQuery(function ($) {
             $form.find('.woocommerce-error, .wc_er, .wc-block-components-notice-banner, ul[role="alert"]').remove();
             // Add error in WooCommerce style
             var $errorUl = $('<ul class="woocommerce-error" role="alert" style="list-style:none;margin:0 0 32px 0;"></ul>');
-            $errorUl.append('<li>Please enter a valid phone number (US, Europe, or international format) or leave it blank.</li>');
+            $errorUl.append('<li>Please enter a valid phone number  or leave it blank.</li>');
             $form.prepend($errorUl);
             $('html, body').animate({ scrollTop: $form.find('.woocommerce-error').offset().top - 300 }, 500);
             return false;
