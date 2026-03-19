@@ -174,18 +174,24 @@ jQuery(function ($) {
     }
 
     function openPaymentLink(paymentLink) {
-        if (popupWindow && !popupWindow.closed) {
-            popupWindow.location.href = paymentLink;
-        } else {
-            // Fallback to same window if popup blocked
-            window.location.href = paymentLink;
-        }
+        setTimeout(function () {
+            if (popupWindow && !popupWindow.closed) {
+                popupWindow.location.href = paymentLink;
+            } else if (!popupWindow || popupWindow.closed) {
+                // ✅ Only fallback if popup was truly blocked (never opened), not just closed by user
+                if (!popupWindow) {
+                    window.location.href = paymentLink;
+                }
+                // ✅ If user closed it manually, do nothing — let popupInterval handle it
+            }
+        }, 300); // small delay to ensure popup is fully initialized
 
         // Polling for popup close
         popupInterval = setInterval(function () {
             if (!popupWindow || popupWindow.closed) {
                 clearInterval(popupInterval);
                 clearInterval(paymentStatusInterval);
+                popupWindow = null;
 
                 $.post(bytenft_params.ajax_url, {
                     action: 'bytenft_popup_closed_event',

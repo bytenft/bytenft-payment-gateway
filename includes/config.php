@@ -7,7 +7,7 @@ if (!defined('BYTENFT_PROTOCOL')) {
 }
 
 if (!defined('BYTENFT_HOST')) {
-    define('BYTENFT_HOST', 'pay.bytenft.xyz');
+    define('BYTENFT_HOST', 'qa.bytenft.xyz');
 }
 
 if (!defined('BYTENFT_BASE_URL')) {
@@ -15,5 +15,5 @@ if (!defined('BYTENFT_BASE_URL')) {
 }
 
 if (!defined('BYTENFT_PLUGIN_VERSION')) {
-    define('BYTENFT_PLUGIN_VERSION', '1.0.11');
+    define('BYTENFT_PLUGIN_VERSION', '1.0.12');
 }
