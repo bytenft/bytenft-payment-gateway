@@ -94,10 +94,17 @@ jQuery(document).ready(function ($) {
 				updateAccountIndices();
 			});
 
+			function generateUniqueId() {
+				const randomNumber = Math.floor(100000 + Math.random() * 900000); // 6 digit
+				return 'acc_' + randomNumber;
+			}
+
 			/**
 			 * Add new account block
 			 */
 			$(document).on("click", addAccountBtnClass, function () {
+				const unique_id = generateUniqueId();
+
 				const newAccountHtml = `
 					<div class="${gateway_id}-account">
 						<div class="title-blog">
@@ -115,6 +122,13 @@ jQuery(document).ready(function ($) {
 								<div class="account-input account-name">
 									<label>Account Name</label>
 									<input type="text" class="${gateway_id}-title account-title" name="accounts[][title]" placeholder="Account Title">
+								</div>
+								<div>
+									<input type="hidden"
+										class="${gateway_id}-title unique-id"
+										name="accounts[][unique_id]"
+										value="${unique_id}" 
+										readonly>
 								</div>
 								<div class="account-input priority-name">
 									<label>Priority</label>
