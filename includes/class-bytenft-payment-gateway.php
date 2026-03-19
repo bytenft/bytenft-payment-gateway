@@ -973,8 +973,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$normalized = $this->bytenft_normalize_phone($phone_for_normalization, $country_code);
 
 		// Handle validation failure
-		if (empty($normalized['is_valid']) || empty($normalized['phone'])) {
-			$error_message = $normalized['error'] ?? __('Phone number is required and cannot be empty.', 'dfinsell-payment-gateway');
+		if (empty($normalized['is_valid'])) {
+			$error_message = $normalized['error'];
 			wc_get_logger()->error('Phone number validation failed', [
 				'source' => 'dfinsell-payment-gateway',
 				'order_id' => $order->get_id(),
