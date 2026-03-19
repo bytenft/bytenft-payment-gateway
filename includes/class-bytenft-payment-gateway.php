@@ -1074,15 +1074,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$countryCode = preg_replace('/[^0-9]/', '', $country_code ?? '');
 		$phoneNumber = preg_replace('/[^\d]/', '', $cleanedPhone);
 
-		if (empty($phoneNumber)) {
-			return [
-				'phone' => '',
-				'country_code' => $country_code ?: '',
-				'is_valid' => false,
-				'error' => 'Empty phone number'
-			];
-		}
-
 		// Step 2: Remove country code prefix if already included
 		if (!empty($countryCode) &&
 			strlen($phoneNumber) > strlen($countryCode) &&
