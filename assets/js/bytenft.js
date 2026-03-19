@@ -97,66 +97,80 @@ jQuery(function ($) {
         var $form = $(this);
         $('.wc_er, .wc-block-components-notice-banner').remove();
 
-        var isBlockCheckout = !!$form.find('input[name="radio-control-wc-payment-method-options"]:checked').val();
-        var selectedPaymentMethod = isBlockCheckout ? 
-            $form.find('input[name="radio-control-wc-payment-method-options"]:checked').val() : 
-            $form.find('input[name="payment_method"]:checked').val();
-
-        if (selectedPaymentMethod !== bytenft_params.payment_method) {
-            isSubmitting = false;
-            return true;
-        }
-
-        // Prevent multiple submissions (strong lock)
-        if (isSubmitting || $form.data('bytenft-processing')) {
+        // Phone validation: allow empty, but if not empty, must be valid (US/EU/international)
+        var phone = $form.find('input[name="billing_phone"]').val();
+        if (!isValidPhoneNumber(phone)) {
+            // Remove any previous WooCommerce error banners
+            $form.find('.woocommerce-error, .wc_er, .wc-block-components-notice-banner, ul[role="alert"]').remove();
+            // Add error in WooCommerce style
+            var $errorUl = $('<ul class="woocommerce-error" role="alert" style="list-style:none;margin:0 0 32px 0;"></ul>');
+            $errorUl.append('<li>Please enter a valid phone number (US, Europe, or international format) or leave it blank.</li>');
+            $form.prepend($errorUl);
+            $('html, body').animate({ scrollTop: $form.find('.woocommerce-error').offset().top - 300 }, 500);
             return false;
         }
 
-        isSubmitting = true;
-        $form.data('bytenft-processing', true);
+        setTimeout(function() {
+            var isBlockCheckout = !!$form.find('input[name="radio-control-wc-payment-method-options"]:checked').val();
+            var selectedPaymentMethod = isBlockCheckout ? 
+                $form.find('input[name="radio-control-wc-payment-method-options"]:checked').val() : 
+                $form.find('input[name="payment_method"]:checked').val();
 
-        // Pre-open popup with loader
-        var logoUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
-        popupWindow = window.open('', '_blank', 'width=700,height=700');
+            if (selectedPaymentMethod !== bytenft_params.payment_method) {
+                isSubmitting = false;
+                return true;
+            }
 
-        if (popupWindow) {
-            popupWindow.document.write(`
-                <html>
-                <head><title>Secure Payment</title></head>
-                <body style="margin:0; display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; font-family:sans-serif; background:#ffffff; text-align:center;">
-                    <div style="padding:20px;">
-                        ${logoUrl ? `<img src="${logoUrl}" style="max-width:150px; height:auto; margin-bottom:25px;" />` : ''}
-                        <h2 style="font-size:18px; color:#333; margin:0;">Connecting to secure payment...</h2>
-                        <p style="font-size:14px; color:#777; margin-top:10px;">Please do not refresh or close this window.</p>
-                    </div>
-                    <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
-                </body>
-                </html>
-            `);
-        }
+            if (isSubmitting || $form.data('bytenft-processing')) {
+                return false;
+            }
 
-        // Disable button
-        $button = isBlockCheckout ? 
-            $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button') :
-            $form.find('button[type="submit"][name="woocommerce_checkout_place_order"]');
-        originalButtonText = $button.text();
-        $button.prop('disabled', true).text('Processing...');
+            isSubmitting = true;
+            $form.data('bytenft-processing', true);
 
-        // Execute AJAX
-        var ajaxUrl = isBlockCheckout ? bytenft_params.ajax_url : wc_checkout_params.checkout_url;
-        var ajaxData = isBlockCheckout ? { action: 'bytenft_block_gateway_process', nonce: bytenft_params.bytenft_nonce } : $form.serialize();
+            $button = isBlockCheckout ? 
+                $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button') :
+                $form.find('button[type="submit"][name="woocommerce_checkout_place_order"]');
+            originalButtonText = $button.text();
+            $button.prop('disabled', true).text('Processing...');
 
-        $.ajax({
-            type: 'POST',
-            url: ajaxUrl,
-            data: ajaxData,
-            dataType: isBlockCheckout ? undefined : 'json',
-            success: function (response) { handleResponse(response, $form); },
-            error: function () { handleError($form, "Server connection error."); },
-            complete: function () { isSubmitting = false; }
-        });
+            var ajaxUrl = isBlockCheckout ? bytenft_params.ajax_url : wc_checkout_params.checkout_url;
+            var ajaxData = isBlockCheckout ? { action: 'bytenft_block_gateway_process', nonce: bytenft_params.bytenft_nonce } : $form.serialize();
 
-        return false;
+            $.ajax({
+                type: 'POST',
+                url: ajaxUrl,
+                data: ajaxData,
+                dataType: isBlockCheckout ? undefined : 'json',
+                success: function (response) {
+                    // Only open popup if result is success
+                    if (response && response.result === 'success') {
+                        var logoUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
+                        popupWindow = window.open('', '_blank', 'width=700,height=700');
+                        if (popupWindow) {
+                            popupWindow.document.write(`
+                                <html>
+                                <head><title>Secure Payment</title></head>
+                                <body style="margin:0; display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; font-family:sans-serif; background:#ffffff; text-align:center;">
+                                    <div style="padding:20px;">
+                                        ${logoUrl ? `<img src="${logoUrl}" style="max-width:150px; height:auto; margin-bottom:25px;" />` : ''}
+                                        <h2 style="font-size:18px; color:#333; margin:0;">Connecting to secure payment...</h2>
+                                        <p style="font-size:14px; color:#777; margin-top:10px;">Please do not refresh or close this window.</p>
+                                    </div>
+                                    <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+                                </body>
+                                </html>
+                            `);
+                        }
+                    }
+                    handleResponse(response, $form);
+                },
+                error: function () { handleError($form, "Server connection error."); },
+                complete: function () { isSubmitting = false; }
+            });
+
+            return false;
+        }, 10);
     }
 
     function openPaymentLink(paymentLink) {
@@ -251,6 +265,20 @@ jQuery(function ($) {
         if ($button) {
             $button.prop('disabled', false).text(originalButtonText);
         }
+    }
+
+    // Helper: Validate phone number (US/EU/international)
+    function isValidPhoneNumber(phone) {
+        if (!phone || phone.trim() === '') return true; // Allow blank
+        // Remove spaces, dashes, parentheses
+        var cleaned = phone.replace(/[\s\-().]/g, '');
+        // US: +1XXXXXXXXXX or 1XXXXXXXXXX or XXXXXXXXXX
+        var usPattern = /^(\+1|1)?\d{10}$/;
+        // Europe: +[country][number] (7-15 digits, starts with + or 00)
+        var euPattern = /^(\+|00)[1-9]\d{6,14}$/;
+        // General: 7-20 digits
+        var generalPattern = /^\+?\d{7,20}$/;
+        return usPattern.test(cleaned) || euPattern.test(cleaned) || generalPattern.test(cleaned);
     }
 
     // List of selectors for error messages. Update this array if you use a custom checkout template with different error markup.
