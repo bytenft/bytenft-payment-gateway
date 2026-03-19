@@ -1087,7 +1087,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// Step 3: Trim leading zeros
 		$normalizedPhone = ltrim($normalizedPhone, '0');
 		
-		if (!empty($phoneNumber)) {
+		if (empty($phoneNumber)) {
 			return [
 				'phone' => $normalizedPhone,
 				'country_code' => '+' . $countryCode,
