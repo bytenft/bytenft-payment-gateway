@@ -146,6 +146,7 @@ jQuery(function ($) {
 
         var phone = $form.find('input[name="billing_phone"]').val();
         if (!isValidPhoneNumber(phone)) {
+            if (popupWindow) popupWindow.close();
             $form.find('.woocommerce-error, .wc_er, .wc-block-components-notice-banner, ul[role="alert"]').remove();
 
             var $errorUl = $('<ul class="woocommerce-error" role="alert" style="list-style:none;margin:0 0 32px 0;"></ul>');
@@ -255,9 +256,8 @@ jQuery(function ($) {
         var errorMessage = (typeof err === 'string' ? err : err?.message || 'Payment failed').toString().trim();
 
         var $error = $('<div>', {
-            class: 'wc_er wc-block-components-notice-banner is-error',
-            text: errorMessage
-        });
+            class: 'wc_er wc-block-components-notice-banner is-error'
+        }).html(errorMessage);
 
         $form.prepend($error);
 
