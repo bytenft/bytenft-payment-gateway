@@ -110,7 +110,8 @@ jQuery(function ($) {
                     });
 
                     if(errorFlag) {
-                        $('form.wc-block-checkout__form').prepend(
+                            if (popupWindow) popupWindow.close();
+                            $('form.wc-block-checkout__form').prepend(
                             '<div class="wc_er wc-block-components-notice-banner is-error"><ul style="margin:0">' + errorList + '</ul></div>'
                         );
                         window.scrollTo(0, 0);
