@@ -29,10 +29,27 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 	}
 
 	public function get_payment_method_data() {
+         $title       = $this->settings['title'] ?? 'ByteNFT';
+        $description = $this->settings['description'] ?? '';
+
+        if (WC()->cart) {
+            $amount   = (float) WC()->cart->get_total('edit');
+            if ($amount < 0.01) {
+                $totals = WC()->cart->get_totals();
+                $amount = (float) ($totals['total'] ?? 0);
+            }
+            $gateways = WC()->payment_gateways ? WC()->payment_gateways->payment_gateways() : [];
+            $gateway  = $gateways['bytenft'] ?? null;
+            if ($gateway && method_exists($gateway, 'get_checkout_info_for_amount')) {
+                $info = $gateway->get_checkout_info_for_amount($amount);
+                if (!empty($info['title']))    $title       = $info['title'];
+                if (!empty($info['subtitle'])) $description = $info['subtitle'];
+            }
+        }
 		return [
 			'id'          => $this->name,
-			'title'       => $this->settings['title'] ?? 'ByteNFT',
-			'description' => $this->settings['description'] ?? '',
+            'title'       => $title,
+            'description' => $description,
 			'supports'    => ['products'],
 			'isActive'    => $this->is_active(),
 			'sandbox'     => $this->settings['sandbox'] ?? '',
