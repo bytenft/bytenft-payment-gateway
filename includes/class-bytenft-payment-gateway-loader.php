@@ -81,16 +81,58 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			}
 		});
 	}
-	
+
+	/**
+	 * ── FIXED ──────────────────────────────────────────────────────────────────
+	 * Handle the block checkout AJAX payment request.
+	 *
+	 * Root cause of "No available payment accounts":
+	 * `new BYTENFT_PAYMENT_GATEWAY()` creates a cold instance. In an AJAX
+	 * context WooCommerce has not called init_settings() on it, so
+	 * $this->sandbox defaults to false and get_option() returns empty values.
+	 * get_next_available_account() then finds no matching keys → returns false.
+	 *
+	 * Fix: pull the already-booted instance from WC()->payment_gateways().
+	 * That instance was fully initialised during the normal WC boot cycle so
+	 * sandbox mode and account keys are correct.
+	 * ───────────────────────────────────────────────────────────────────────────
+	 */
 	function handle_bytenft_gateway_ajax(){
-		$bytenftPayment = new BYTENFT_PAYMENT_GATEWAY();
-		$orderID = WC()->session->get('store_api_draft_order');	
-		
+
+		// Nonce verification
+		$nonce = isset($_POST['nonce'])
+			? sanitize_text_field(wp_unslash($_POST['nonce']))
+			: '';
+
+		if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
+			wp_send_json(['result' => 'fail', 'error' => 'Security check failed.']);
+			die;
+		}
+
+		// Pull the already-initialised gateway from the WC registry.
+		// Never use `new BYTENFT_PAYMENT_GATEWAY()` here — see note above.
+		$gateways       = WC()->payment_gateways()->payment_gateways();
+		$bytenftPayment = $gateways['bytenft'] ?? null;
+
+		if (!$bytenftPayment) {
+			// Fallback: manually instantiate and force-load settings from DB.
+			// Should never happen in normal operation.
+			$bytenftPayment = new BYTENFT_PAYMENT_GATEWAY();
+			$bytenftPayment->init_settings();
+			$bytenftPayment->load_gateway_settings();
+
+			wc_get_logger()->warning(
+				'ByteNFT: gateway not found in WC registry during AJAX — fell back to manual instantiation.',
+				['source' => 'bytenft-payment-gateway']
+			);
+		}
+
+		$orderID = WC()->session ? WC()->session->get('store_api_draft_order') : null;
+
 		$status = [];
 		if($orderID){
 			$status = $bytenftPayment->process_payment($orderID);
 		}else{
-		
 			wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
 			$status = ['result' => 'fail','error' => 'Invalid order.'];
 		}
@@ -419,19 +461,13 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			]);
 
 			// Ensure the response contains the expected data
-			// if (!isset($response_data['transaction_status'])) {
-			// 	wp_send_json_error(['message' => 'Invalid response from ByteNFT API.']);
-			// 	wp_die();
-			// }
-
-			// Ensure the response contains the expected data
 			if (!isset($response_data['payment_status'])) {
 				wp_send_json_error(['message' => 'Invalid response from ByteNFT API.']);
 				wp_die();
 			}
 
 			// Get the configured order status from the payment gateway settings
-			$gateway_id = 'bytenft'; // Replace with your gateway ID
+			$gateway_id = 'bytenft';
 			$payment_gateways = WC()->payment_gateways->payment_gateways();
 			if (isset($payment_gateways[$gateway_id])) {
 				$gateway = $payment_gateways[$gateway_id];
@@ -456,7 +492,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 					case 'success':
 					case 'paid':
 					case 'processing':
-						// Update the order status based on the selected value
 						try {
 							$order->update_status($configured_order_status, 'Order marked as ' . $configured_order_status . ' by ByteNFT.');
 							wp_send_json_success(['message' => 'Order status updated successfully.', 'order_id' => $order_id, 'redirect_url' => $payment_return_url]);
@@ -469,11 +504,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 						try {
 							wc_add_notice( 'Payment Failed: Transaction declined, please try another card.', 'error' );
 							$order->update_status('failed', 'Order marked as failed by ByteNFT.');
-							wp_send_json_success(['message' => 'Order status updated to failed.', 'order_id' => $order_id, 'notices' => 'Payment Failed: We couldn’t process your payment. Please try again or use another payment method.']);
+							wp_send_json_success(['message' => 'Order status updated to failed.', 'order_id' => $order_id, 'notices' => 'Payment Failed: We couldn\'t process your payment. Please try again or use another payment method.']);
 						} catch (Exception $e) {
 							wp_send_json_error(['message' => 'Failed to update order status: ' . $e->getMessage()]);
 						}
 						break;
+
 					case 'canceled':
 						try {
 							if (WC()->cart) {
@@ -489,6 +525,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 							wp_send_json_error(['message' => 'Failed to update order status: ' . $e->getMessage()]);
 						}
 						break;
+
 					default:
 						wp_send_json_error(['message' => 'Unknown Payment Status received.']);
 				}
@@ -502,10 +539,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	}
 
 	/**
-     * Add custom cron schedules.
-     */
-
-
+     * Add custom cron schedules.
+     */
 	public function bytenft_add_cron_interval($schedules)
 	{
 		$schedules['every_two_hours'] = array(
