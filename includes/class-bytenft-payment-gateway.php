@@ -841,6 +841,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// Only set _bytenft_limit_exceeded if API explicitly says error
 		if (($limit_data['status'] ?? '') === 'error') {
 
+			if (isset($limit_data['max_limit_reached']) && $limit_data['max_limit_reached'] == true) {
+				wc_add_notice(__('The transaction amount exceeds the maximum allowed limit of '.$limit_data['max_amount'].'. Please enter a lower amount.', 'bytenft-payment-gateway'), 'error');
+				return ['result' => 'fail'];
+			}
+
 			$order->update_meta_data('_bytenft_limit_exceeded', true);
 			$order->save();
 
@@ -1627,7 +1632,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'gateway_check_end_' . $cart_hash,
 				'ByteNFT payment option check finished'
 			);
-			return $this->hide_gateway($available_gateways, $gateway_id);
+			if (!isset($limit_data['max_limit_reached']) || $limit_data['max_limit_reached'] == false) {
+				return $this->hide_gateway($available_gateways, $gateway_id);
+			}
 		}
 
 		$this->log_info_once_per_session(
