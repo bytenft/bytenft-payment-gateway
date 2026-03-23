@@ -23,6 +23,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private static $log_once_flags = [];
 
+
+	/**
+	 * Account selected during the availability filter for dynamic title/subtitle.
+	 *
+	 * @var array|null
+	 */
+	private $selected_account_for_display = null;
+
 	/**
 	 * Constructor for the gateway.
 	 */
@@ -153,10 +161,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$live_secret_key    = $account['live_secret_key'] ?? '';
 			$sandbox_public_key = $account['sandbox_public_key'] ?? '';
 			$sandbox_secret_key = $account['sandbox_secret_key'] ?? '';
-			$has_sandbox        = isset($account['has_sandbox']);
+			$has_sandbox         = isset($account['has_sandbox']) && $account['has_sandbox'] === 'on';
 			$live_status        = $account['live_status'] ?? 'Active';
 			$sandbox_status     = $has_sandbox ? ($account['sandbox_status'] ?? 'Active') : '';
 			$unique_id          = $account['unique_id'] ?? '';
+			$checkout_title      = $account['checkout_title'] ?? '';
+	        $checkout_subtitle   = $account['checkout_subtitle'] ?? '';
+	        $max_single_txn      = floatval($account['max_single_txn'] ?? 0);
 
 			if (empty($account_title) && empty($live_public_key) && empty($live_secret_key) && empty($sandbox_public_key) && empty($sandbox_secret_key)) {
 				continue;
@@ -207,6 +218,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'sandbox_status'     => $sandbox_status,
 				'live_status'        => $live_status,
 				'unique_id'          => $unique_id,
+				'checkout_title'     => $checkout_title,
+	            'checkout_subtitle'  => $checkout_subtitle,
+	            'max_single_txn'     => $max_single_txn,
 			];
 
 			$this->log_info("Validated and added account '{$account_title}' to saved list.");
@@ -304,6 +318,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'has_sandbox'        => $account['has_sandbox'],
 				'sandbox_status'     => $isError ? 'Inactive' : 'Active',
 				'live_status'        => $isError ? 'Inactive' : 'Active',
+				'checkout_title'     => $account['checkout_title'] ?? '',
+	            'checkout_subtitle'  => $account['checkout_subtitle'] ?? '',
+	            'max_single_txn'     => $account['max_single_txn'] ?? 0,
 			];
 
 			if ($isError) {
@@ -534,6 +551,34 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 											<label><?php esc_html_e('Priority', 'bytenft-payment-gateway'); ?></label>
 											<input type="number" class="account-priority" name="accounts[<?php echo esc_attr($index); ?>][priority]" placeholder="<?php esc_attr_e('Priority', 'bytenft-payment-gateway'); ?>" value="<?php echo esc_attr($account['priority'] ?? '1'); ?>" min="1">
 										</div>
+
+										<div class="account-input">
+											<label><?php esc_html_e('Max Single Transaction ($)', 'bytenft-payment-gateway'); ?> <small><?php esc_html_e('(0 = no limit)', 'bytenft-payment-gateway'); ?></small></label>
+											<input type="number" step="0.01" min="0"
+												name="accounts[<?php echo esc_attr($index); ?>][max_single_txn]"
+												placeholder="0"
+												value="<?php echo esc_attr($account['max_single_txn'] ?? '0'); ?>">
+										</div>
+									</div>
+
+									<div class="add-blog">
+										<div class="account-input">
+											<label><?php esc_html_e('Checkout Title', 'bytenft-payment-gateway'); ?></label>
+											<input type="text"
+												name="accounts[<?php echo esc_attr($index); ?>][checkout_title]"
+												placeholder="<?php esc_attr_e('Title shown to customers at checkout', 'bytenft-payment-gateway'); ?>"
+												value="<?php echo esc_attr($account['checkout_title'] ?? ''); ?>">
+										</div>
+									</div>
+
+									<div class="add-blog">
+										<div class="account-input">
+											<label><?php esc_html_e('Checkout Subtitle', 'bytenft-payment-gateway'); ?></label>
+											<textarea
+												name="accounts[<?php echo esc_attr($index); ?>][checkout_subtitle]"
+												placeholder="<?php esc_attr_e('Subtitle/description shown below the title at checkout', 'bytenft-payment-gateway'); ?>"
+												rows="2"><?php echo esc_textarea($account['checkout_subtitle'] ?? ''); ?></textarea>
+										</div>
 									</div>
 
 									<div class="add-blog">
@@ -662,7 +707,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// Get next available account
-		$account = $this->get_next_available_account($used_accounts);
+		$account = $this->get_next_available_account($used_accounts, (float) $order->get_total());
 		if (!$account) {
 			// ── DEBUG: log what was actually found in options ──
 			$raw = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
@@ -997,6 +1042,21 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	public function payment_fields() {
 		$description = $this->get_option('description');
+		if (is_array($this->selected_account_for_display) && !empty($this->selected_account_for_display['checkout_subtitle'])) {
+			$description = $this->selected_account_for_display['checkout_subtitle'];
+		} elseif (WC()->cart) {
+			$amount = (float) WC()->cart->get_total('edit');
+			if ($amount < 0.01) {
+				$totals = WC()->cart->get_totals();
+				$amount = (float) ($totals['total'] ?? 0);
+			}
+			$accounts = $this->get_all_accounts();
+			$sorted   = $this->get_routing_sorted_accounts($accounts, $amount);
+			if (!empty($sorted) && !empty($sorted[0]['checkout_subtitle'])) {
+				$description = $sorted[0]['checkout_subtitle'];
+			}
+		}
+
 		if ($description) {
 			echo wp_kses_post(wpautop(wptexturize(trim($description))));
 		}
@@ -1062,6 +1122,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	public function bytenft_hide_custom_payment_gateway_conditionally($available_gateways) {
 		$gateway_id = $this->id;
+		$this->selected_account_for_display = null;
 		if (!isset($available_gateways[$gateway_id])) return $available_gateways;
 
 		$cart_hash = WC()->cart ? WC()->cart->get_cart_hash() : 'no_cart';
@@ -1107,10 +1168,21 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'refresh_accounts_nonce')
 		);
 
-		foreach ($accounts as $account) {
+		$sorted_accounts = $this->get_routing_sorted_accounts($accounts, $amount);
+
+		$this->log_info_once_per_session('routing_eligible', 'Routing-eligible accounts for $' . $amount, [
+			'count' => count($sorted_accounts),
+			'accounts' => array_map(fn($a) => $a['title'] ?? '(no title)', $sorted_accounts),
+		]);
+
+		$selected_account = null;
+		foreach ($sorted_accounts as $account) {
+			$acc_title  = $account['title'] ?? '(unknown)';
 			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
 			$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
-
+			if (empty($public_key) || empty($secret_key)) {
+				continue;
+			}
 			$data = [
 				'is_sandbox'     => $this->sandbox,
 				'amount'         => $amount,
@@ -1121,46 +1193,75 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$cache_base  = 'bytenft_daily_limit_' . md5($public_key . $amount);
 			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 30, $force_refresh);
 
-			if (!empty($status_data['status']) && $status_data['status'] === 'success') {
-				$user_account_active = true;
+			if (($status_data['status'] ?? '') !== 'success') {
+				$this->log_info_once_per_session('skip_status_' . $acc_title, "Skipping '{$acc_title}': merchant status check failed", [
+					'response_status' => $status_data['status'] ?? 'unknown',
+				]);
+				continue;
 			}
 
-			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit');
-			if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {
-				$all_accounts_limited = false;
+			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 120, $force_refresh);
+			if (($limit_data['status'] ?? '') !== 'success') {
+				$this->log_info_once_per_session('skip_limit_' . $acc_title, "Skipping '{$acc_title}': daily limit exceeded", [
+					'response_status' => $limit_data['status'] ?? 'unknown',
+					'message' => $limit_data['message'] ?? '',
+				]);
+				continue;
 			}
 
-			$plugin_version = BYTENFT_PLUGIN_VERSION;
-			$accounts       = $this->update_accounts_uniqueID($accounts);
-			$group_id       = get_option('bytenft_group_id');
-
-			$pluginlogs_data = [
-				'valid_accounts' => $accounts,
-				'gateway_loaded' => $user_account_active ? 1 : 0,
-				'plugin_status'  => $user_account_active ? 1 : 0,
-				'plugin_version' => $plugin_version,
-				'api_public_key' => $public_key,
-				'api_secret_key' => $secret_key,
-				'is_sandbox'     => $this->sandbox,
-				'group_id'       => $group_id ? $group_id : $this->bytenft_get_group_id(),
-				'domain_name'    => parse_url(home_url(), PHP_URL_HOST),
-			];
-
-			$this->get_cached_api_response($pluginLogApiUrl, $pluginlogs_data, $cache_base . '_pluginlogs', 5, $force_refresh);
-
-			if ($user_account_active) break;
+			$selected_account = $account;
+			break;
 		}
 
-		if (!$user_account_active) {
-			$this->log_info_once_per_session('no_active_accounts_' . $cart_hash, 'ByteNFT payment option hidden: no active accounts');
-			return $available_gateways;
+		// Fallback logic if no eligible account found
+		if (!$selected_account) {
+			$this->log_info_once_per_session('fallback_search', 'No routing-eligible account passed all checks, searching for fallback', [
+				'amount' => $amount,
+			]);
+
+			$fallback_pool = $accounts;
+			usort($fallback_pool, function ($a, $b) {
+				$maxA = floatval($a['max_single_txn'] ?? 0) ?: PHP_FLOAT_MAX;
+				$maxB = floatval($b['max_single_txn'] ?? 0) ?: PHP_FLOAT_MAX;
+				if ($maxA !== $maxB) {
+					return $maxA <=> $maxB;
+				}
+				return ($a['priority'] ?? 1) <=> ($b['priority'] ?? 1);
+			});
+			foreach ($fallback_pool as $fallback_candidate) {
+				$fb_pub = $this->sandbox ? $fallback_candidate['sandbox_public_key'] : $fallback_candidate['live_public_key'];
+				$fb_sec = $this->sandbox ? $fallback_candidate['sandbox_secret_key'] : $fallback_candidate['live_secret_key'];
+
+				if (empty($fb_pub) || empty($fb_sec)) {
+					continue;
+				}
+
+				$fb_data = [
+					'is_sandbox'     => $this->sandbox,
+					'amount'         => $amount,
+					'api_public_key' => $fb_pub,
+					'api_secret_key' => $fb_sec,
+				];
+				$fb_cache = 'bytenft_daily_limit_' . md5($fb_pub . $amount);
+
+				$fb_status = $this->get_cached_api_response($accStatusApiUrl, $fb_data, $fb_cache . '_status', 30, $force_refresh);
+				if (($fb_status['status'] ?? '') !== 'success') {
+					continue;
+				}
+
+				$selected_account = $fallback_candidate;
+				break;
+			}
+			if (!$selected_account) {
+				$selected_account = $accounts[0] ?? null;
+			}
+			$this->log_info_once_per_session('fallback_account', 'Fallback display account: ' . ($selected_account['title'] ?? 'none'));
 		}
 
-		if ($all_accounts_limited) {
-			$this->log_info_once_per_session('accounts_limited_' . $cart_hash, 'ByteNFT payment option hidden: all accounts have reached their transaction limits');
-			if (!isset($limit_data['max_limit_reached']) || $limit_data['max_limit_reached'] == false) {
-				return $this->hide_gateway($available_gateways, $gateway_id);
-			}
+		$this->selected_account_for_display = $selected_account;
+
+		if (!empty($selected_account['checkout_title'])) {
+			$this->title = sanitize_text_field($selected_account['checkout_title']);
 		}
 
 		return $available_gateways;
@@ -1297,39 +1398,91 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return true;
 	}
 
+
+	/**
+	 * Sort and filter accounts for a given order amount.
+	 * Accounts whose max_single_txn is set and less than $amount are excluded.
+	 * Remaining accounts are sorted: lowest max_single_txn first (tightest fit),
+	 * then by priority.
+	 *
+	 * @param array $accounts All accounts.
+	 * @param float $amount   Order/cart total.
+	 * @return array          Sorted array of eligible accounts.
+	 */
+	private function get_routing_sorted_accounts(array $accounts, float $amount): array {
+		$eligible = array_filter($accounts, function ($account) use ($amount) {
+			$max = floatval($account['max_single_txn'] ?? 0);
+			return $max <= 0 || $amount <= $max;
+		});
+
+		usort($eligible, function ($a, $b) {
+			$maxA = floatval($a['max_single_txn'] ?? 0) ?: PHP_FLOAT_MAX;
+			$maxB = floatval($b['max_single_txn'] ?? 0) ?: PHP_FLOAT_MAX;
+			if ($maxA !== $maxB) {
+				return $maxA <=> $maxB;
+			}
+			return ($a['priority'] ?? 1) <=> ($b['priority'] ?? 1);
+		});
+
+		return array_values($eligible);
+	}
+
+	/**
+	 * Get checkout display info (title + subtitle) for a given cart amount.
+	 *
+	 * @param float $amount Order/cart total.
+	 * @return array ['title' => string, 'subtitle' => string]
+	 */
+	public function get_checkout_info_for_amount(float $amount): array {
+		$accounts = $this->get_all_accounts();
+		$sorted   = $this->get_routing_sorted_accounts($accounts, $amount);
+		$account  = !empty($sorted) ? $sorted[0] : null;
+
+		return [
+			'title'    => $account['checkout_title'] ?? '',
+			'subtitle' => $account['checkout_subtitle'] ?? '',
+		];
+	}
+
 	/**
 	 * Get the next available payment account.
 	 * Uses the already-loaded $this->sandbox value — no re-instantiation needed.
 	 */
-	private function get_next_available_account($used_accounts = []) {
+	private function get_next_available_account($used_accounts = [], $amount = 0.0){
 		$settings = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
 		if (is_string($settings)) $settings = maybe_unserialize($settings);
 		if (!is_array($settings)) return false;
 
 		$mode       = $this->sandbox ? 'sandbox' : 'live';
 		$status_key = $mode . '_status';
-		$pub_key    = $mode . '_public_key';
-		$sec_key    = $mode . '_secret_key';
+		$public_key = $mode . '_public_key';
+		$secret_key = $mode . '_secret_key';
+		$amount     = floatval($amount);
 
-		$available = array_filter($settings, function ($account) use ($used_accounts, $status_key, $pub_key, $sec_key) {
-			$status = strtolower($account[$status_key] ?? '');
-			return !in_array($account[$pub_key], $used_accounts, true)
-				&& $status === 'active'
-				&& !empty($account[$pub_key])
-				&& !empty($account[$sec_key]);
+		$available_accounts = array_filter($settings, function ($account) use ($used_accounts, $status_key, $public_key, $secret_key) {
+			if (in_array($account[$public_key] ?? '', $used_accounts, true)) {
+				return false;
+			}
+			if (!isset($account[$status_key]) || !in_array(strtolower($account[$status_key]), ['active'], true)) {
+				return false;
+			}
+			if (empty($account[$public_key]) || empty($account[$secret_key])) {
+				return false;
+			}
+			return true;
 		});
 
-		if (empty($available)) return false;
+		if (empty($available_accounts)) return false;
 
-		usort($available, fn($a, $b) => $a['priority'] <=> $b['priority']);
+		$available_accounts = $this->get_routing_sorted_accounts(array_values($available_accounts), $amount);
 
-		foreach ($available as $account) {
-			$sanitized_title   = preg_replace('/\s+/', '_', $account['title']);
-			$account['lock_key'] = "bytenft_lock_{$sanitized_title}";
-			return $account;
+		if (empty($available_accounts)) {
+			return false;
 		}
-
-		return false;
+		$account = $available_accounts[0];
+		$sanitized_title = preg_replace('/\s+/', '_', $account['title'] ?? 'account');
+		$account['lock_key'] = "bytenft_lock_{$sanitized_title}";
+		return $account;
 	}
 
 	private function acquire_lock($lock_key) {
