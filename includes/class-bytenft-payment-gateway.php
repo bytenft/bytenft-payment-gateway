@@ -1219,6 +1219,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$cache_base  = 'bytenft_daily_limit_' . md5($public_key . $amount);
 			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 30, $force_refresh);
 
+			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 30, $force_refresh);
+			if (!empty($status_data['status']) && $status_data['status'] === 'success') {
+				$user_account_active = true;
+			}
+
 			if (($status_data['status'] ?? '') !== 'success') {
 				$this->log_info_once_per_session('skip_status_' . $acc_title, "Skipping '{$acc_title}': merchant status check failed", [
 					'response_status' => $status_data['status'] ?? 'unknown',
@@ -1237,6 +1242,24 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {
 				$all_accounts_limited = false;
 			}
+
+			$plugin_version = BYTENFT_PLUGIN_VERSION;
+			$accounts = $this->update_accounts_uniqueID($accounts);
+			$group_id = get_option('bytenft_group_id');
+
+			$pluginlogs_data = [
+				'valid_accounts' => $accounts,
+				'gateway_loaded' => $user_account_active ? 1 : 0,
+				'plugin_status'  => $user_account_active ? 1 : 0,
+				'plugin_version' => $plugin_version,
+				'api_public_key' => $public_key,
+				'api_secret_key' => $secret_key,
+				'is_sandbox'     => $this->sandbox,
+				'group_id'       => $group_id ? $group_id : $this->bytenft_get_group_id(),
+				'domain_name'    => parse_url(home_url(), PHP_URL_HOST),
+			];
+
+			$this->get_cached_api_response($pluginLogApiUrl, $pluginlogs_data, $cache_base . '_pluginlogs', 5, $force_refresh);
 
 			$selected_account = $account;
 			break;
