@@ -105,40 +105,36 @@ jQuery(document).ready(function ($) {
 			$(document).on("click", addAccountBtnClass, function () {
 				const unique_id = generateUniqueId();
 
-				const newAccountHtml = `
-					<div class="${gateway_id}-account">
-						<div class="title-blog">
-							<h4>
-								<span class="${gateway_id}-name-display account-name-display">Untitled Account</span>
-								&nbsp;<i class="fa fa-caret-down ${gateway_id}-toggle-btn" aria-hidden="true"></i>
-							</h4>
-							<div class="action-button">
-								<button type="button" class="delete-account-btn"><i class="fa fa-trash" aria-hidden="true"></i></button>
-							</div>
-						</div>
+				   const newAccountHtml = `
+					   <div class="${gateway_id}-account">
+						   <div class="title-blog">
+							   <h4>
+								   <span class="${gateway_id}-name-display account-name-display">Untitled Account</span>
+								   &nbsp;<i class="fa fa-caret-down ${gateway_id}-toggle-btn" aria-hidden="true"></i>
+							   </h4>
+							   <div class="action-button">
+								   <button type="button" class="delete-account-btn"><i class="fa fa-trash" aria-hidden="true"></i></button>
+							   </div>
+						   </div>
 
-						<div class="${gateway_id}-info" style="display: none;">
-							<div class="add-blog title-priority">
-								<div class="account-input account-name">
-									<label>Account Name</label>
-									<input type="text" class="${gateway_id}-title account-title" name="accounts[][title]" placeholder="Account Title">
-								</div>
-								<div>
-									<input type="hidden"
-										class="${gateway_id}-title unique-id"
-										name="accounts[][unique_id]"
-										value="${unique_id}" 
-										readonly>
-								</div>
-								<div class="account-input priority-name">
-									<label>Priority</label>
-									<input type="number" class="account-priority" name="accounts[][priority]" placeholder="Priority" min="1" value="${$(accountClass).length + 1}">
-								</div>
-								<div class="account-input">
-									<label>Max Single Transaction ($) <small>(0 = no limit)</small></label>
-									<input type="number" step="0.01" min="0" name="accounts[][max_single_txn]" placeholder="0" value="">
-								</div>
-							</div>
+						   <div class="${gateway_id}-info" style="display: none;">
+							   <div class="add-blog title-priority">
+								   <div class="account-input account-name">
+									   <label>Account Name</label>
+									   <input type="text" class="${gateway_id}-title account-title" name="accounts[][title]" placeholder="Account Title">
+								   </div>
+								   <div>
+									   <input type="hidden"
+										   class="${gateway_id}-title unique-id"
+										   name="accounts[][unique_id]"
+										   value="${unique_id}" 
+										   readonly>
+								   </div>
+								   <div class="account-input priority-name">
+									   <label>Priority</label>
+									   <input type="number" class="account-priority" name="accounts[][priority]" placeholder="Priority" min="1" value="${$(accountClass).length + 1}">
+								   </div>
+							   </div>
 
 							<div class="add-blog">
 								<div class="account-input">

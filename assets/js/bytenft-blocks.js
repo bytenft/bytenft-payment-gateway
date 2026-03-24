@@ -1,40 +1,58 @@
+console.log('bytenft-blocks.js loaded at', new Date().toISOString());
 (function () {
-	const { registerPaymentMethod } = window.wc?.wcBlocksRegistry || {};
-	const { createElement, RawHTML } = window.wp?.element || {};
+    const { registerPaymentMethod } = window.wc?.wcBlocksRegistry || {};
+    const { createElement, RawHTML } = window.wp?.element || {};
 
-	if (typeof registerPaymentMethod !== 'function') {
-		return;
-	}
+    if (typeof registerPaymentMethod !== 'function') {
+        return;
+    }
 
-	const settings =
-	window.wc?.wcSettings?.getPaymentMethodData?.('bytenft') || {};
+    const settings =
+        window.wc?.wcSettings?.getPaymentMethodData?.('bytenft') || {};
 
-	const methodConfig = {
-		name: settings.id || 'bytenft',
-		label: settings.title || 'ByteNFT',
-		ariaLabel: settings.title || 'ByteNFT',
+    const label = settings.title || 'ByteNFT';
+    const description = settings.description || '';
 
-		content: createElement(
-			'div',
-			{ className: 'bytenft-description' },
-			createElement(RawHTML, {}, settings.description || '')
-		),
+    const methodConfig = {
+        name: settings.id || 'bytenft',
+        label,
+        ariaLabel: label,
 
-		edit: createElement(
-			'div',
-			{ className: 'bytenft-edit' },
-			settings.title || 'ByteNFT'
-		),
+        content: createElement(
+            'div',
+            { className: 'bytenft-description' },
+            createElement(RawHTML, {}, description)
+        ),
 
-		// ✅ FIXED canMakePayment
-		canMakePayment: async () => {
-			return true;  // return settings.can_pay === true;
-		},
+        edit: createElement(
+            'div',
+            { className: 'bytenft-edit' },
+            label
+        ),
 
-		supports: {
-			features: settings.supports || ['products'],
-		},
-	};
+        canMakePayment: async () => {
+            return settings.can_pay !== false;
+        },
 
-	registerPaymentMethod(methodConfig);
+        supports: {
+            features: settings.supports || ['products'],
+        },
+    };
+
+    registerPaymentMethod(methodConfig);
 })();
+
+
+// Call this function whenever you want to refresh payment methods in the block checkout
+function refreshBlockPaymentMethods() {
+    if (window.wc && window.wc.blocksCheckout) {
+        // For WC Blocks 8.x+ (newer API)
+        document.body.dispatchEvent(new CustomEvent('wc-blocks_checkout_update_payment_methods'));
+    } else {
+        // Fallback for older versions
+        $(document.body).trigger('update_checkout');
+    }
+}
+
+// Example: Refresh after a custom event, or after a failed payment, or after a cart update
+// Call refreshBlockPaymentMethods() only in response to relevant events, not on every load.

@@ -32,20 +32,25 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
          $title       = $this->settings['title'] ?? 'ByteNFT';
         $description = $this->settings['description'] ?? '';
 
-        if (WC()->cart) {
-            $amount   = (float) WC()->cart->get_total('edit');
-            if ($amount < 0.01) {
-                $totals = WC()->cart->get_totals();
-                $amount = (float) ($totals['total'] ?? 0);
-            }
-            $gateways = WC()->payment_gateways ? WC()->payment_gateways->payment_gateways() : [];
-            $gateway  = $gateways['bytenft'] ?? null;
-            if ($gateway && method_exists($gateway, 'get_checkout_info_for_amount')) {
-                $info = $gateway->get_checkout_info_for_amount($amount);
-                if (!empty($info['title']))    $title       = $info['title'];
-                if (!empty($info['subtitle'])) $description = $info['subtitle'];
-            }
-        }
+		if (WC()->cart) {
+			$amount   = (float) WC()->cart->get_total('edit');
+			if ($amount < 0.01) {
+				$totals = WC()->cart->get_totals();
+				$amount = (float) ($totals['total'] ?? 0);
+			}
+			$gateways = WC()->payment_gateways ? WC()->payment_gateways->payment_gateways() : [];
+			$gateway  = $gateways['bytenft'] ?? null;
+			if ($gateway && method_exists($gateway, 'get_checkout_info_for_amount')) {
+				$info = $gateway->get_checkout_info_for_amount($amount);
+				if (!empty($info['title']))    $title       = $info['title'];
+				if (!empty($info['subtitle'])) $description = $info['subtitle'];
+				// Debug log for block checkout account info
+				if (function_exists('wc_get_logger')) {
+					$logger = wc_get_logger();
+					$logger->info('Block checkout: get_payment_method_data - amount: ' . $amount . ' | title: ' . $title . ' | description: ' . $description, [ 'source' => 'bytenft-blocks-gateway' ]);
+				}
+			}
+		}
 		return [
 			'id'          => $this->name,
             'title'       => $title,
@@ -57,6 +62,8 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 			'instructions'=> $this->settings['instructions'] ?? '',
 			'accounts'    => $this->settings['accounts'] ?? '',
 		];
+
+		error_log('ByteNFT Blocks Data: ' . print_r($data, true));
 	}
 }
 
