@@ -1218,8 +1218,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$cache_base  = 'bytenft_daily_limit_' . md5($public_key . $amount);
 			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 30, $force_refresh);
-
-			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 30, $force_refresh);
 			if (!empty($status_data['status']) && $status_data['status'] === 'success') {
 				$user_account_active = true;
 			}
@@ -1237,32 +1235,47 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'response_status' => $limit_data['status'] ?? 'unknown',
 					'message' => $limit_data['message'] ?? '',
 				]);
+				$sorted_accounts = array();
 				continue;
 			}
 			if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {
 				$all_accounts_limited = false;
 			}
 
-			$plugin_version = BYTENFT_PLUGIN_VERSION;
-			$accounts = $this->update_accounts_uniqueID($accounts);
-			$group_id = get_option('bytenft_group_id');
-
-			$pluginlogs_data = [
-				'valid_accounts' => $accounts,
-				'gateway_loaded' => $user_account_active ? 1 : 0,
-				'plugin_status'  => $user_account_active ? 1 : 0,
-				'plugin_version' => $plugin_version,
-				'api_public_key' => $public_key,
-				'api_secret_key' => $secret_key,
-				'is_sandbox'     => $this->sandbox,
-				'group_id'       => $group_id ? $group_id : $this->bytenft_get_group_id(),
-				'domain_name'    => parse_url(home_url(), PHP_URL_HOST),
-			];
-
-			$this->get_cached_api_response($pluginLogApiUrl, $pluginlogs_data, $cache_base . '_pluginlogs', 5, $force_refresh);
+			$this->send_plugin_logs(
+				$sorted_accounts,
+				$public_key,
+				$secret_key,
+				$amount,
+				$all_accounts_limited ? 0 : 1,
+				$pluginLogApiUrl,
+				$force_refresh
+			);
 
 			$selected_account = $account;
 			break;
+		}
+
+		// ================= FALLBACK CASE =================
+		if (empty($sorted_accounts)) {
+			if (!empty($accounts)) {
+				$accounts = $this->update_accounts_uniqueID($accounts);
+
+				foreach ($accounts as $account) {
+					$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
+					$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
+
+					$this->send_plugin_logs(
+						$accounts,
+						$public_key,
+						$secret_key,
+						$amount,
+						0,
+						$pluginLogApiUrl,
+						$force_refresh
+					);
+				}
+		  	}
 		}
 
 		if ($all_accounts_limited) {
@@ -1324,6 +1337,34 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		return $available_gateways;
+	}
+
+	private function send_plugin_logs($accounts, $public_key, $secret_key, $amount, $gateway_loaded, $pluginLogApiUrl, $force_refresh)
+	{
+		$plugin_version = BYTENFT_PLUGIN_VERSION;
+		$accounts       = $this->update_accounts_uniqueID($accounts);
+		$group_id       = get_option('bytenft_group_id');
+		$cache_base     = 'bytenft_daily_limit_' . md5($public_key . $amount);
+
+		$plugin_logs_data = [
+			'valid_accounts' => $accounts,
+			'gateway_loaded' => $gateway_loaded,
+			'plugin_status'  => $gateway_loaded,
+			'plugin_version' => $plugin_version,
+			'api_public_key' => $public_key,
+			'api_secret_key' => $secret_key,
+			'is_sandbox'     => $this->sandbox,
+			'group_id'       => $group_id ? $group_id : $this->bytenft_get_group_id(),
+			'domain_name'    => parse_url(home_url(), PHP_URL_HOST),
+		];
+
+		$this->get_cached_api_response(
+			$pluginLogApiUrl,
+			$plugin_logs_data,
+			$cache_base . '_pluginlogs',
+			5,
+			$force_refresh
+		);
 	}
 
 	private function hide_gateway($available_gateways, $gateway_id) {
