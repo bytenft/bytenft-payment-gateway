@@ -64,7 +64,7 @@ jQuery(document).ready(function ($) {
 			function updateAccountIndices() {
 				$(accountClass).each(function (index) {
 					$(this).attr("data-index", index);
-					$(this).find("input, select, textarea").each(function () {
+					$(this).find("input, select").each(function () {
 						let name = $(this).attr("name");
 						if (name) {
 							name = name.replace(/\[.*?\]/, "[" + index + "]");

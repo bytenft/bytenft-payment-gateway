@@ -505,26 +505,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						</div>
 					<?php endif; ?>
 
-					<?php
-					// If no accounts, render a default empty account with all fields
-					if (empty($option_value)) {
-						$option_value = [[
-							'title' => '',
-							'priority' => '1',
-							'checkout_title' => '',
-							'checkout_subtitle' => '',
-							'live_public_key' => '',
-							'live_secret_key' => '',
-							'has_sandbox' => 'off',
-							'sandbox_public_key' => '',
-							'sandbox_secret_key' => '',
-							'unique_id' => $this->bytenft_get_unique_id(),
-							'live_status' => '',
-							'sandbox_status' => '',
-						]];
-					}
-					?>
-					<?php foreach (array_values($option_value) as $index => $account): ?>
+					<?php if (empty($option_value)): ?>
+						<div class="empty-account"><?php esc_html_e('No accounts available. Please add one to continue.', 'bytenft-payment-gateway'); ?></div>
+					<?php else: ?>
+						<?php foreach (array_values($option_value) as $index => $account): ?>
 							<?php
 							$live_status    = (!empty($account['live_status'])) ? $account['live_status'] : '';
 							$sandbox_status = (!empty($account['sandbox_status'])) ? $account['sandbox_status'] : 'unknown';
@@ -632,6 +616,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 								</div>
 							</div>
 						<?php endforeach; ?>
+					<?php endif; ?>
 					<?php wp_nonce_field('bytenft_accounts_nonce_action', 'bytenft_accounts_nonce'); ?>
 					<div class="add-account-btn">
 						<button type="button" class="button bytenft-add-account">
@@ -1192,6 +1177,18 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'api_secret_key' => $secret_key,
 			];
 			$cache_base  = 'bytenft_daily_limit_' . md5($public_key . $amount);
+			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 30, $force_refresh);
+			if (!empty($status_data['status']) && $status_data['status'] === 'success') {
+				$user_account_active = true;
+			}
+
+			if (($status_data['status'] ?? '') !== 'success') {
+				$this->log_info_once_per_session('skip_status_' . $acc_title, "Skipping '{$acc_title}': merchant status check failed", [
+					'response_status' => $status_data['status'] ?? 'unknown',
+				]);
+				continue;
+			}
+
 			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 120, $force_refresh);
 			if (($limit_data['status'] ?? '') === 'success') {
 				$eligible_accounts[] = $account;
@@ -1200,13 +1197,57 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'response_status' => $limit_data['status'] ?? 'unknown',
 					'message' => $limit_data['message'] ?? '',
 				]);
+				$sorted_accounts = array();
+				continue;
+			}
+			if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {
+				$all_accounts_limited = false;
+			}
+
+			$this->send_plugin_logs(
+				$sorted_accounts,
+				$public_key,
+				$secret_key,
+				$amount,
+				$all_accounts_limited ? 0 : 1,
+				$pluginLogApiUrl,
+				$force_refresh
+			);
+
+			$selected_account = $account;
+			break;
+		}
+
+		// ================= FALLBACK CASE =================
+		if (empty($sorted_accounts)) {
+			if (!empty($accounts)) {
+				$accounts = $this->update_accounts_uniqueID($accounts);
+
+				foreach ($accounts as $account) {
+					$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
+					$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
+
+					$this->send_plugin_logs(
+						$accounts,
+						$public_key,
+						$secret_key,
+						$amount,
+						0,
+						$pluginLogApiUrl,
+						$force_refresh
+					);
+				}
+		  	}
+		}
+
+		if ($all_accounts_limited) {
+			$this->log_info_once_per_session('accounts_limited_' . $cart_hash, 'ByteNFT payment option hidden: all accounts have reached their transaction limits');
+
+			if (!isset($limit_data['max_limit_reached']) || $limit_data['max_limit_reached'] == false) {
+				return $this->hide_gateway($available_gateways, $gateway_id);
 			}
 		}
-		usort($eligible_accounts, function ($a, $b) {
-			return ($a['priority'] ?? 1) <=> ($b['priority'] ?? 1);
-		});
-		$selected_account = $eligible_accounts[0] ?? null;
-		// Fallback: if no eligible, pick first by priority
+		// Fallback logic if no eligible account found
 		if (!$selected_account) {
 			$this->log_info_once_per_session('fallback_search', 'No routing-eligible account passed all checks, searching for fallback', [
 				'amount' => $amount,
@@ -1225,6 +1266,34 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		return $available_gateways;
+	}
+
+	private function send_plugin_logs($accounts, $public_key, $secret_key, $amount, $gateway_loaded, $pluginLogApiUrl, $force_refresh)
+	{
+		$plugin_version = BYTENFT_PLUGIN_VERSION;
+		$accounts       = $this->update_accounts_uniqueID($accounts);
+		$group_id       = get_option('bytenft_group_id');
+		$cache_base     = 'bytenft_daily_limit_' . md5($public_key . $amount);
+
+		$plugin_logs_data = [
+			'valid_accounts' => $accounts,
+			'gateway_loaded' => $gateway_loaded,
+			'plugin_status'  => $gateway_loaded,
+			'plugin_version' => $plugin_version,
+			'api_public_key' => $public_key,
+			'api_secret_key' => $secret_key,
+			'is_sandbox'     => $this->sandbox,
+			'group_id'       => $group_id ? $group_id : $this->bytenft_get_group_id(),
+			'domain_name'    => parse_url(home_url(), PHP_URL_HOST),
+		];
+
+		$this->get_cached_api_response(
+			$pluginLogApiUrl,
+			$plugin_logs_data,
+			$cache_base . '_pluginlogs',
+			5,
+			$force_refresh
+		);
 	}
 
 	private function hide_gateway($available_gateways, $gateway_id) {
