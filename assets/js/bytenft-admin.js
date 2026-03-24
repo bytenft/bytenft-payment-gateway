@@ -64,7 +64,7 @@ jQuery(document).ready(function ($) {
 			function updateAccountIndices() {
 				$(accountClass).each(function (index) {
 					$(this).attr("data-index", index);
-					$(this).find("input, select, textarea").each(function () {
+					$(this).find("input, select").each(function () {
 						let name = $(this).attr("name");
 						if (name) {
 							name = name.replace(/\[.*?\]/, "[" + index + "]");
@@ -133,24 +133,6 @@ jQuery(document).ready(function ($) {
 								<div class="account-input priority-name">
 									<label>Priority</label>
 									<input type="number" class="account-priority" name="accounts[][priority]" placeholder="Priority" min="1" value="${$(accountClass).length + 1}">
-								</div>
-								<div class="account-input">
-									<label>Max Single Transaction ($) <small>(0 = no limit)</small></label>
-									<input type="number" step="0.01" min="0" name="accounts[][max_single_txn]" placeholder="0" value="">
-								</div>
-							</div>
-
-							<div class="add-blog">
-								<div class="account-input">
-									<label>Checkout Title</label>
-									<input type="text" name="accounts[][checkout_title]" placeholder="Title shown to customers at checkout" value="">
-								</div>
-							</div>
-
-							<div class="add-blog">
-								<div class="account-input">
-									<label>Checkout Subtitle</label>
-									<textarea class="checkout-subtitle" name="accounts[][checkout_subtitle]" placeholder="Subtitle/description shown below the title at checkout" rows="2"></textarea>
 								</div>
 							</div>
 

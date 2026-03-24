@@ -477,16 +477,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$account['unique_id'] = $this->bytenft_get_unique_id();
 					$updated = true;
 				}
-				// Ensure all fields are present for new/empty accounts
-				if (!isset($account['max_single_txn'])) {
-					$account['max_single_txn'] = '';
-				}
-				if (!isset($account['checkout_title'])) {
-					$account['checkout_title'] = '';
-				}
-				if (!isset($account['checkout_subtitle'])) {
-					$account['checkout_subtitle'] = '';
-				}
 			}
 		}
 		unset($account);
@@ -511,27 +501,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						</div>
 					<?php endif; ?>
 
-					<?php
-					// If no accounts, render a default empty account with all fields
-					if (empty($option_value)) {
-						$option_value = [[
-							'title' => '',
-							'priority' => '1',
-							'max_single_txn' => '',
-							'checkout_title' => '',
-							'checkout_subtitle' => '',
-							'live_public_key' => '',
-							'live_secret_key' => '',
-							'has_sandbox' => 'off',
-							'sandbox_public_key' => '',
-							'sandbox_secret_key' => '',
-							'unique_id' => $this->bytenft_get_unique_id(),
-							'live_status' => '',
-							'sandbox_status' => '',
-						]];
-					}
-					?>
-					<?php foreach (array_values($option_value) as $index => $account): ?>
+					<?php if (empty($option_value)): ?>
+						<div class="empty-account"><?php esc_html_e('No accounts available. Please add one to continue.', 'bytenft-payment-gateway'); ?></div>
+					<?php else: ?>
+						<?php foreach (array_values($option_value) as $index => $account): ?>
 							<?php
 							$live_status    = (!empty($account['live_status'])) ? $account['live_status'] : '';
 							$sandbox_status = (!empty($account['sandbox_status'])) ? $account['sandbox_status'] : 'unknown';
@@ -646,6 +619,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 								</div>
 							</div>
 						<?php endforeach; ?>
+					<?php endif; ?>
 					<?php wp_nonce_field('bytenft_accounts_nonce_action', 'bytenft_accounts_nonce'); ?>
 					<div class="add-account-btn">
 						<button type="button" class="button bytenft-add-account">
