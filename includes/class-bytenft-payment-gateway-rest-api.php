@@ -128,6 +128,10 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	public function bytenft_handle_api_request(WP_REST_Request $request)
 	{
 		$parameters = $request->get_json_params();
+		$this->logger->info('Parameter API Request : ', [
+			'source' => 'bytenft-payment-gateway',
+			'api_data' => $parameters
+		]);
 
 		// Sanitize incoming data
 		$api_key_raw       = $parameters['nonce'] ?? '';
@@ -142,6 +146,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			'order_id' => $order_id,
 			'api_status' => $api_order_status,
 			'pay_id' => $pay_id,
+			'api_key' => $api_key
 		];
 
 		$this->logger->info('API Request Received', $log_context);
