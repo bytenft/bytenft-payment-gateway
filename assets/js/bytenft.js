@@ -7,6 +7,35 @@ jQuery(function ($) {
     var originalButtonText;
     let popupWindow = null;
 
+
+    /**
+     * Reads phone number from either classic or block checkout form.
+     * Tries all known selectors in priority order for billing/shipping/auto fields.
+     */
+    function getPhoneNumber($form) {
+        var selectors = [
+            'input[name="billing_phone"]',      // classic checkout
+            'input[name="shipping_phone"]',     // shipping phone
+            'input[autocomplete="tel"]',        // block checkout WC 8+
+            'input[type="tel"]',                // universal — any tel input
+        ];
+        for (var i = 0; i < selectors.length; i++) {
+            var val = $form.find(selectors[i]).first().val();
+            if (val && val.trim() !== '') return val.trim();
+        }
+        return '';
+    }
+
+    // Helper: Validate phone number (US/EU/general)
+    function isValidPhoneNumber(phone) {
+        if (!phone || phone.trim() === '') return true;
+        var cleaned        = phone.replace(/[\s\-().]/g, '');
+        var usPattern      = /^(\+1|1)?\d{10}$/;
+        var euPattern      = /^(\+|00)[1-9]\d{6,14}$/;
+        var generalPattern = /^\+?\d{7,20}$/;
+        return usPattern.test(cleaned) || euPattern.test(cleaned) || generalPattern.test(cleaned);
+    }
+
     // PO Box detection regex — covers all common formats:
     // PO Box, P.O. Box, P O Box, Post Office Box, POBox, P.O.B, etc.
     var PO_BOX_PATTERN = /\b(p\.?\s*o\.?\s*b(ox|\.)?|post\s+office\s+(box|b\.?))\b[\s#\d]*/i;
@@ -124,8 +153,9 @@ jQuery(function ($) {
                 var email = getBillingEmail($('form.checkout'));
                 if (!isValidEmail(email)) return;
 
-                var phone = $('form.checkout input[name="billing_phone"]').val();
-                if (!isValidPhoneNumber(phone)) return;
+                // Classic: Validate phone using getPhoneNumber
+                var phone = getPhoneNumber($('form.checkout'));
+                if (phone !== '' && !isValidPhoneNumber(phone)) return;
 
                 if (validateNoPOBox($('form.checkout'))) return;
 
@@ -186,9 +216,9 @@ jQuery(function ($) {
                     return false;
                 }
 
-                // Step 3: Phone
-                var phone = $('form.wc-block-checkout__form input[name="billing_phone"], form.wc-block-checkout__form input[autocomplete="tel"]').first().val();
-                if (!isValidPhoneNumber(phone)) {
+                // Step 3: Phone (use getPhoneNumber helper)
+                var phone = getPhoneNumber($('form.wc-block-checkout__form'));
+                if (phone !== '' && !isValidPhoneNumber(phone)) {
                     $('form.wc-block-checkout__form').prepend(
                         '<div class="wc_er wc-block-components-notice-banner is-error"><ul style="margin:0"><li>Please enter a valid phone number or leave it blank.</li></ul></div>'
                     );
@@ -234,8 +264,9 @@ jQuery(function ($) {
         var $form = $(this);
         $('.wc_er, .wc-block-components-notice-banner').remove();
 
-        var phone = $form.find('input[name="billing_phone"]').val();
-        if (!isValidPhoneNumber(phone)) {
+        // Classic: Validate phone using getPhoneNumber
+        var phone = getPhoneNumber($form);
+        if (phone !== '' && !isValidPhoneNumber(phone)) {
             $form.find('.woocommerce-error, .wc_er, .wc-block-components-notice-banner, ul[role="alert"]').remove();
             var $errorUl = $('<ul class="woocommerce-error" role="alert" style="list-style:none;margin:0 0 32px 0;"></ul>');
             $errorUl.append('<li>Please enter a valid phone number or leave it blank.</li>');
