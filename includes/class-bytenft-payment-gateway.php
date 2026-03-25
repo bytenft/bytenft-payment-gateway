@@ -892,6 +892,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'created_at'     => current_time('mysql', 1),
 			];
 
+			wc_get_logger()->info('Payment data log --- ', [
+					'source'  => 'bytenft',
+					'context' => ['data' => $data],
+				]);
+
 			if ($existing) {
 
 				$wpdb->update(
