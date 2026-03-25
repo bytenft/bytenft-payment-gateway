@@ -705,6 +705,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		// Get next available account
 		$account = $this->get_next_available_account($used_accounts);
+		wc_get_logger()->info('selected account', [
+			'source'       => 'bytenft-payment-gateway',
+			'account' => $account
+		]);
 		
 		if (!$account) {
 			// ── DEBUG: log what was actually found in options ──
@@ -746,6 +750,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		$limit_data = json_decode(wp_remote_retrieve_body($limit_resp), true);
+
+		wc_get_logger()->info('Limit Data', [
+			'source'       => 'bytenft-payment-gateway',
+			'limit_data' => $limit_data
+		]);
 		
 		if (($limit_data['status'] ?? '') === 'error') {
 			
@@ -754,6 +763,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				wc_add_notice(__('The transaction amount exceeds the maximum allowed limit of '.$limit_data['max_amount'].'. Please enter a lower amount.', 'bytenft-payment-gateway'), 'error');
 				return ['result' => 'fail'];
 			}
+			wc_get_logger()->info('Limit Data Error', [
+				'source'       => 'bytenft-payment-gateway',
+				'limit_data' => $limit_data
+			]);
 			
 			$order->update_meta_data('_bytenft_limit_exceeded', true);
 			$order->save();
