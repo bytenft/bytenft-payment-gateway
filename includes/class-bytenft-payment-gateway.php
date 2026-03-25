@@ -810,32 +810,46 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$resp_data = json_decode(wp_remote_retrieve_body($response), true);
 
 		if (($resp_data['status'] ?? '') === 'error') {
+
 			$error_msg = sanitize_text_field(
 				$resp_data['message'] ?? $resp_data['context']['message'] ?? 'Payment failed.'
 			);
+
 			if ($this->is_block_checkout_request()) {
-				return ['result' => 'fail', 'order_id' => $order->get_id(), 'error' => $error_msg];
+				return [
+					'result'   => 'fail',
+					'order_id' => $order->get_id(),
+					'error'    => $error_msg
+				];
 			}
-			if (is_checkout()) wc_add_notice($error_msg, 'error');
+
+			if (is_checkout()) {
+				wc_add_notice($error_msg, 'error');
+			}
+
 			return ['result' => 'failure'];
 		}
 
-		// Store Payment Link in DB
-		$table_name  = $wpdb->prefix . 'order_payment_link';
-		$cache_key   = 'bytenft_table_exists_' . md5($table_name);
+		// Prepare DB table
+		$table_name = $wpdb->prefix . 'order_payment_link';
+		$cache_key  = 'bytenft_table_exists_' . md5($table_name);
 
+		// Ensure table exists
 		if (!get_transient($cache_key)) {
 			$charset_collate = $wpdb->get_charset_collate();
+
 			$sql = "CREATE TABLE IF NOT EXISTS $table_name (
 				id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 				order_id BIGINT(20) UNSIGNED NOT NULL,
 				payment_link TEXT NOT NULL,
 				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-				PRIMARY KEY  (id),
+				PRIMARY KEY (id),
 				UNIQUE KEY order_id (order_id)
 			) $charset_collate;";
+
 			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 			dbDelta($sql);
+
 			set_transient($cache_key, 1, DAY_IN_SECONDS);
 		}
 
@@ -845,33 +859,23 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$formats  = ['%s', '%s', '%s', '%s', '%s'];
 
 			if ($existing) {
+
 				$wpdb->update(
 					$table_name,
-					[
-						'uuid'           => sanitize_text_field($pay_id),
-						'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
-						'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
-						'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
-						'created_at'     => current_time('mysql', 1),
-					],
+					$data,
 					['order_id' => $order_id],
-					$formats,
+					['%s', '%s', '%s', '%s', '%s'],
 					['%d']
 				);
 			} else {
+
 				$wpdb->insert(
 					$table_name,
-					[
-						'order_id'       => $order_id,
-						'uuid'           => sanitize_text_field($pay_id),
-						'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
-						'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
-						'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
-						'created_at'     => current_time('mysql', 1),
-					],
+					array_merge(['order_id' => $order_id], $data),
 					['%d', '%s', '%s', '%s', '%s', '%s']
 				);
 			}
+
 		}
 
 		// Success
