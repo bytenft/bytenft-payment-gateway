@@ -876,6 +876,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					array_merge(['order_id' => $order_id], $data),
 					['%d', '%s', '%s', '%s', '%s', '%s']
 				);
+
+				$result = $wpdb->get_var(
+					$wpdb->prepare("SELECT id FROM $table_name WHERE order_id = %d", $order_id)
+				);
+
+				echo '<pre>'; print_r($wpdb->last_error);echo '-----'; print_r($wpdb->last_query);echo '-----'; print_r($result); die;
 			}
 
 		}
