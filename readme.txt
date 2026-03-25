@@ -29,6 +29,7 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 = 1.0.12 =
 * Enhanced phone number normalization and validation with improved error messages.
+* Ensured failed, cancelled, or expired orders now update their status correctly in WordPress/WooCommerce.
 
 = 1.0.11 =
 * Hide plugin Fix: Hide Plugin Fix
@@ -77,6 +78,7 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 = 1.0.12 =
 * Update to this version for improved phone number validation and better error messages during checkout.
+* Ensured failed, cancelled, or expired orders now update their status correctly in WordPress/WooCommerce.
 
 = 1.0.11 =
 * Hide plugin Fix: Hide Plugin Fix
