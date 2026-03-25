@@ -127,13 +127,6 @@ function bytenft_cancel_unpaid_order_action($order_id)
 		$cache_group = 'bytenft_payment_gateway';
 
 		$payment_row = wp_cache_get($cache_key, $cache_group);
-		wc_get_logger()->info('Order save payment_row new', [
-			'source'  => 'bytenft',
-			'context' => [
-				'order_id'  => $order_id,
-				'payment_row'  => $payment_row,
-			],
-		]);
 
 		if (false === $payment_row) {
 			// Escape table name safely
