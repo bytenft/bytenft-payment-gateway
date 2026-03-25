@@ -869,21 +869,17 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 			} else {
 
-				$insert_data = array_merge(['order_id' => $order_id], $data);
-
-				$formats = array_merge(['%d'], array_fill(0, count($data), '%s'));
-
 				$wpdb->insert(
 					$table_name,
-					$insert_data,
-					$formats
+					array_merge(['order_id' => $order_id], $data),
+					['%d', '%s', '%s', '%s', '%s', '%s']
 				);
 			}
 
 			$new_order = $wpdb->get_var(
 				$wpdb->prepare("SELECT id FROM $table_name WHERE order_id = %d", $order_id)
 			);
-			echo '<pre>'; print_r($new_order); die;
+			echo '<pre>'; echo $order_id; echo '---';print_r($new_order); die;
 
 		}
 
