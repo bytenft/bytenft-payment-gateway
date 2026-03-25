@@ -1469,7 +1469,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 		$account  = !empty($sorted) ? $sorted[0] : null;
 		
 		$accounts = $this->get_all_accounts();
-		if (empty($accounts)) return $available_gateways;
+		if (empty($accounts)) return [];
 
 		usort($accounts, fn($a, $b) => $a['priority'] <=> $b['priority']);
 
@@ -1599,7 +1599,11 @@ private function get_routing_sorted_accounts(array $accounts): array {
 			];
 		}
 
-		
+		return [
+				'title'    => sanitize_text_field($this->get_option('title')) ?? '',
+				'subtitle' => !empty($this->get_option('description')) ? sanitize_textarea_field($this->get_option('description')) : "",
+				'accounts' => $accounts ?? [],
+			];	
 	}
 
 	/**
