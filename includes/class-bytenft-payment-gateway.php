@@ -1737,6 +1737,12 @@ private function get_routing_sorted_accounts(array $accounts): array {
 			return false;
 		}
 
+		wc_get_logger()->info('available_accounts', [
+				'source'       => 'bytenft-payment-gateway',
+				'available_accounts_count' => count($available_accounts),
+				'available_accounts'    => $available_accounts,
+			]);
+
 		// 🚀 Fast path (no order validation needed)
 		if ($order === null) {
 			return $this->prepareAccount($available_accounts[0]);
