@@ -782,6 +782,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$resp_data = json_decode(wp_remote_retrieve_body($response), true);
 		if (($resp_data['status'] ?? '') === 'error') {
+			
 			$error_msg = sanitize_text_field(
 				$resp_data['message'] ?? $resp_data['context']['message'] ?? 'Payment failed.'
 			);
@@ -795,6 +796,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// Store Payment Link in DB
 		$table_name  = $wpdb->prefix . 'order_payment_link';
 		$cache_key   = 'bytenft_table_exists_' . md5($table_name);
+
+
+		wc_get_logger()->info('Come to resposon ata.', [
+				'context' => ['resp_data' => $resp_data],
+			]);
 
 		if (!get_transient($cache_key)) {
 			$charset_collate = $wpdb->get_charset_collate();
@@ -810,11 +816,27 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			dbDelta($sql);
 			set_transient($cache_key, 1, DAY_IN_SECONDS);
 		}
+
+		wc_get_logger()->info('Come to resposon ata.', [
+				'context' => ['resp_data_data' => $resp_data['data']],
+			]);
 		
 		$pay_id = $resp_data['data']['pay_id'] ?? '';
+
+		wc_get_logger()->info('Come to pay_id Data .', [
+				'context' => ['pay_id' => $pay_id],
+			]);
 		if (!empty($resp_data['data']['payment_link'])) {
+
+			wc_get_logger()->info('Come Not payment_link Data .', [
+				'context' => ['pay_id' => $pay_id],
+			]);
 			$existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $table_name WHERE order_id = %d", $order_id));
 			$formats  = ['%s', '%s', '%s', '%s', '%s'];
+
+			wc_get_logger()->info('Fine the existing payment_link .', [
+				'context' => ['existing' => $existing],
+			]);
 
 			if ($existing) {
 				$wpdb->update(
@@ -831,6 +853,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					['%d']
 				);
 			} else {
+				wc_get_logger()->info('Creaste new payment_link .', [
+					'context' => ['order_id' => $order_id],
+				]);
 				$wpdb->insert(
 					$table_name,
 					[
@@ -845,6 +870,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 			}
 		}
+				wc_get_logger()->info('payment_link log  .', [
+					'context' => ['order_id' => $resp_data['data']['payment_link']],
+				]);
 
 		// Success
 		if (!empty($resp_data['data']['payment_link'])) {
