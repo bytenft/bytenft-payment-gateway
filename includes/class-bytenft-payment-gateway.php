@@ -794,24 +794,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		$resp_data = json_decode(wp_remote_retrieve_body($response), true);
-
-		// Log full API response
-		wc_get_logger()->info('API Response received', [
-			'source'  => 'bytenft',
-			'context' => ['response' => $resp_data],
-		]);
-
-		// Handle error response
 		if (($resp_data['status'] ?? '') === 'error') {
 
 			$error_msg = sanitize_text_field(
 				$resp_data['message'] ?? $resp_data['context']['message'] ?? 'Payment failed.'
 			);
-
-			wc_get_logger()->error('Payment API returned error', [
-				'source'  => 'bytenft',
-				'context' => ['error_message' => $error_msg],
-			]);
 
 			if ($this->is_block_checkout_request()) {
 				return [
@@ -834,11 +821,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		// Ensure table exists
 		if (!get_transient($cache_key)) {
-
-			wc_get_logger()->info('Checking/Creating payment link table', [
-				'source' => 'bytenft',
-			]);
-
 			$charset_collate = $wpdb->get_charset_collate();
 
 			$sql = "CREATE TABLE IF NOT EXISTS $table_name (
@@ -860,29 +842,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$pay_id       = $resp_data['data']['pay_id'] ?? '';
 		$payment_link = $resp_data['data']['payment_link'] ?? '';
 
-		wc_get_logger()->info('Parsed payment data', [
-			'source'  => 'bytenft',
-			'context' => [
-				'order_id'     => $order_id,
-				'pay_id'       => $pay_id,
-				'payment_link' => $payment_link,
-			],
-		]);
-
 		// Insert / Update payment link
 		if (!empty($payment_link)) {
 
 			$existing = $wpdb->get_var(
 				$wpdb->prepare("SELECT id FROM $table_name WHERE order_id = %d", $order_id)
 			);
-
-			wc_get_logger()->info('Checking existing payment record', [
-				'source'  => 'bytenft',
-				'context' => [
-					'order_id' => $order_id,
-					'exists'   => $existing ? true : false,
-				],
-			]);
 
 			$data = [
 				'uuid'           => sanitize_text_field($pay_id),
@@ -891,11 +856,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
 				'created_at'     => current_time('mysql', 1),
 			];
-
-			wc_get_logger()->info('Payment data log --- ', [
-					'source'  => 'bytenft',
-					'context' => ['data' => $data],
-				]);
 
 			if ($existing) {
 
@@ -906,12 +866,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					['%s', '%s', '%s', '%s', '%s'],
 					['%d']
 				);
-
-				wc_get_logger()->info('Payment link updated', [
-					'source'  => 'bytenft',
-					'context' => ['data' => $data],
-				]);
-
 			} else {
 
 				$wpdb->insert(
@@ -919,18 +873,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					array_merge(['order_id' => $order_id], $data),
 					['%d', '%s', '%s', '%s', '%s', '%s']
 				);
-
-				wc_get_logger()->info('Payment link created', [
-					'source'  => 'bytenft',
-					'context' => ['data' => $data],
-				]);
 			}
 
-		} else {
-			wc_get_logger()->warning('Payment link missing in API response', [
-				'source'  => 'bytenft',
-				'context' => ['order_id' => $order_id],
-			]);
 		}
 
 		// Success
@@ -939,6 +883,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$order->update_status('pending', __('Payment pending.', 'bytenft-payment-gateway'));
 			$order->add_order_note(sprintf(__('Payment initiated via ByteNFT. Awaiting completion (%s)', 'bytenft-payment-gateway'), $account['title']));
 			$order->save();
+
+
+			wc_get_logger()->info('Order save successfullly..', [
+				'source'  => 'bytenft',
+				'context' => ['order' => $order],
+			]);
 
 			return [
 				'result'         => 'success',
