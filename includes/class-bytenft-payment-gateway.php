@@ -1639,6 +1639,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 		if (!empty($data['result']) && $data['result'] === 'fail') {
 			wc_get_logger()->error('Payment data preparation failed', [
+				'source'       => 'bytenft-payment-gateway',
 				'order_id' => $orderId,
 				'error'    => $data['error'] ?? null,
 			]);
@@ -1658,7 +1659,10 @@ private function get_routing_sorted_accounts(array $accounts): array {
 		if (is_wp_error($response)) {
 			wc_get_logger()->error(
 				'Daily limit API error: ' . $response->get_error_message(),
-				['order_id' => $orderId]
+				[
+					'source'       => 'bytenft-payment-gateway',
+					'order_id' => $orderId
+				]
 			);
 
 			if (is_checkout()) {
