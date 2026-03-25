@@ -857,6 +857,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'created_at'     => current_time('mysql', 1),
 			];
 
+			echo '<pre>'; print_r($existing); die;
+
 			if ($existing) {
 
 				$wpdb->update(
