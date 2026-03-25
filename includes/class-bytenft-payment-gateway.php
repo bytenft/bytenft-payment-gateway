@@ -819,28 +819,28 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$table_name = $wpdb->prefix . 'order_payment_link';
 		$cache_key  = 'bytenft_table_exists_' . md5($table_name);
 
+		// 🔴 Drop table first
+			$charset_collate = $wpdb->get_charset_collate();
+
+$wpdb->query("DROP TABLE IF EXISTS $table_name");
+
+// 🔵 Create fresh table
+$sql = "CREATE TABLE $table_name (
+	id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+	order_id BIGINT(20) UNSIGNED NOT NULL,
+	uuid VARCHAR(155) NOT NULL,
+	payment_link TEXT NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (id),
+	UNIQUE KEY order_id (order_id)
+) $charset_collate;";
+
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta($sql);
+
+		set_transient($cache_key, 1, DAY_IN_SECONDS);
 		// Ensure table exists
 		if (!get_transient($cache_key)) {
-			// 🔴 Drop table first
-			    $charset_collate = $wpdb->get_charset_collate();
-
-    $wpdb->query("DROP TABLE IF EXISTS $table_name");
-
-    // 🔵 Create fresh table
-    $sql = "CREATE TABLE $table_name (
-        id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        order_id BIGINT(20) UNSIGNED NOT NULL,
-        uuid VARCHAR(155) NOT NULL,
-        payment_link TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        UNIQUE KEY order_id (order_id)
-    ) $charset_collate;";
-
-			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-			dbDelta($sql);
-
-			set_transient($cache_key, 1, DAY_IN_SECONDS);
 		}
 
 		// Extract data
