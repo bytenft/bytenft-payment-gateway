@@ -875,7 +875,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					['%d', '%s', '%s', '%s', '%s', '%s']
 				);
 			}
-			echo '<pre>'; print_r($order); die;
+
+			$new_order = $wpdb->get_var(
+				$wpdb->prepare("SELECT id FROM $table_name WHERE order_id = %d", $order_id)
+			);
+			echo '<pre>'; print_r($new_order); die;
 
 		}
 
