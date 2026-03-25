@@ -782,10 +782,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$resp_data = json_decode(wp_remote_retrieve_body($response), true);
 
-		wc_get_logger()->error(
-			'Cancel issue log: ' . wp_json_encode($resp_data),
-			['source' => 'bytenft-payment']
-		);
+		wc_get_logger()->error('resp_data 897987987 ', [
+			'source'  => 'bytenft-payment-gateway',
+			'context' => ['resp_data' => $resp_data],
+		]);
 
 		if (($resp_data['status'] ?? '') === 'error') {
 			$error_msg = sanitize_text_field(
