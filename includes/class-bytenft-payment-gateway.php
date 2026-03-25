@@ -781,98 +781,139 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		$resp_data = json_decode(wp_remote_retrieve_body($response), true);
+
+		// Log full API response
+		wc_get_logger()->info('API Response received', [
+			'source'  => 'bytenft',
+			'context' => ['response' => $resp_data],
+		]);
+
+		// Handle error response
 		if (($resp_data['status'] ?? '') === 'error') {
-			
+
 			$error_msg = sanitize_text_field(
 				$resp_data['message'] ?? $resp_data['context']['message'] ?? 'Payment failed.'
 			);
+
+			wc_get_logger()->error('Payment API returned error', [
+				'source'  => 'bytenft',
+				'context' => ['error_message' => $error_msg],
+			]);
+
 			if ($this->is_block_checkout_request()) {
-				return ['result' => 'fail', 'order_id' => $order->get_id(), 'error' => $error_msg];
+				return [
+					'result'   => 'fail',
+					'order_id' => $order->get_id(),
+					'error'    => $error_msg
+				];
 			}
-			if (is_checkout()) wc_add_notice($error_msg, 'error');
+
+			if (is_checkout()) {
+				wc_add_notice($error_msg, 'error');
+			}
+
 			return ['result' => 'failure'];
 		}
 
-		// Store Payment Link in DB
-		$table_name  = $wpdb->prefix . 'order_payment_link';
-		$cache_key   = 'bytenft_table_exists_' . md5($table_name);
+		// Prepare DB table
+		$table_name = $wpdb->prefix . 'order_payment_link';
+		$cache_key  = 'bytenft_table_exists_' . md5($table_name);
 
+		// Ensure table exists
+		if (!get_transient($cache_key)) {
 
-		wc_get_logger()->info('Come to resposon ata.', [
-				'context' => ['resp_data' => $resp_data],
+			wc_get_logger()->info('Checking/Creating payment link table', [
+				'source' => 'bytenft',
 			]);
 
-		if (!get_transient($cache_key)) {
 			$charset_collate = $wpdb->get_charset_collate();
+
 			$sql = "CREATE TABLE IF NOT EXISTS $table_name (
 				id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 				order_id BIGINT(20) UNSIGNED NOT NULL,
 				payment_link TEXT NOT NULL,
 				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-				PRIMARY KEY  (id),
+				PRIMARY KEY (id),
 				UNIQUE KEY order_id (order_id)
 			) $charset_collate;";
+
 			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 			dbDelta($sql);
+
 			set_transient($cache_key, 1, DAY_IN_SECONDS);
 		}
 
-		wc_get_logger()->info('Come to resposon ata.', [
-				'context' => ['resp_data_data' => $resp_data['data']],
-			]);
-		
-		$pay_id = $resp_data['data']['pay_id'] ?? '';
+		// Extract data
+		$pay_id       = $resp_data['data']['pay_id'] ?? '';
+		$payment_link = $resp_data['data']['payment_link'] ?? '';
 
-		wc_get_logger()->info('Come to pay_id Data .', [
-				'context' => ['pay_id' => $pay_id],
-			]);
-		if (!empty($resp_data['data']['payment_link'])) {
+		wc_get_logger()->info('Parsed payment data', [
+			'source'  => 'bytenft',
+			'context' => [
+				'order_id'     => $order_id,
+				'pay_id'       => $pay_id,
+				'payment_link' => $payment_link,
+			],
+		]);
 
-			wc_get_logger()->info('Come Not payment_link Data .', [
-				'context' => ['pay_id' => $pay_id],
-			]);
-			$existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $table_name WHERE order_id = %d", $order_id));
-			$formats  = ['%s', '%s', '%s', '%s', '%s'];
+		// Insert / Update payment link
+		if (!empty($payment_link)) {
 
-			wc_get_logger()->info('Fine the existing payment_link .', [
-				'context' => ['existing' => $existing],
+			$existing = $wpdb->get_var(
+				$wpdb->prepare("SELECT id FROM $table_name WHERE order_id = %d", $order_id)
+			);
+
+			wc_get_logger()->info('Checking existing payment record', [
+				'source'  => 'bytenft',
+				'context' => [
+					'order_id' => $order_id,
+					'exists'   => $existing ? true : false,
+				],
 			]);
+
+			$data = [
+				'uuid'           => sanitize_text_field($pay_id),
+				'payment_link'   => esc_url_raw($payment_link),
+				'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
+				'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
+				'created_at'     => current_time('mysql', 1),
+			];
 
 			if ($existing) {
+
 				$wpdb->update(
 					$table_name,
-					[
-						'uuid'           => sanitize_text_field($pay_id),
-						'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
-						'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
-						'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
-						'created_at'     => current_time('mysql', 1),
-					],
+					$data,
 					['order_id' => $order_id],
-					$formats,
+					['%s', '%s', '%s', '%s', '%s'],
 					['%d']
 				);
-			} else {
-				wc_get_logger()->info('Creaste new payment_link .', [
+
+				wc_get_logger()->info('Payment link updated', [
+					'source'  => 'bytenft',
 					'context' => ['order_id' => $order_id],
 				]);
+
+			} else {
+
 				$wpdb->insert(
 					$table_name,
-					[
-						'order_id'       => $order_id,
-						'uuid'           => sanitize_text_field($pay_id),
-						'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
-						'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
-						'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
-						'created_at'     => current_time('mysql', 1),
-					],
+					array_merge(['order_id' => $order_id], $data),
 					['%d', '%s', '%s', '%s', '%s', '%s']
 				);
-			}
-		}
-				wc_get_logger()->info('payment_link log  .', [
-					'context' => ['order_id' => $resp_data['data']['payment_link']],
+
+				wc_get_logger()->info('Payment link created', [
+					'source'  => 'bytenft',
+					'context' => ['order_id' => $order_id],
 				]);
+			}
+
+		} else {
+			wc_get_logger()->warning('Payment link missing in API response', [
+				'source'  => 'bytenft',
+				'context' => ['order_id' => $order_id],
+			]);
+		}
 
 		// Success
 		if (!empty($resp_data['data']['payment_link'])) {
