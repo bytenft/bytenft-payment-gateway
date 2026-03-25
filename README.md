@@ -144,6 +144,7 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 
 ### Version 1.0.12
 - **Phone Number Validation:** Enhanced phone number normalization and validation with improved error messages.
+- **Order Status Handling:** Ensured failed, cancelled, or expired orders now update their status correctly in WordPress/WooCommerce.
 
 ### Version 1.0.11
 - **Hide plugin Fix:** Hide Plugin Fix
