@@ -1610,43 +1610,128 @@ private function get_routing_sorted_accounts(array $accounts): array {
 	 * Get the next available payment account.
 	 * Uses the already-loaded $this->sandbox value — no re-instantiation needed.
 	 */
-	private function get_next_available_account($used_accounts = []){
-		
+	private function allowAccountPay($order, $account)
+	{
+		$orderId = $order->get_id();
+
+		$public_key = $this->sandbox
+			? ($account['sandbox_public_key'] ?? '')
+			: ($account['live_public_key'] ?? '');
+
+		$secret_key = $this->sandbox
+			? ($account['sandbox_secret_key'] ?? '')
+			: ($account['live_secret_key'] ?? '');
+
+		$data = $this->bytenft_prepare_payment_data($order, $public_key, $secret_key);
+
+		if (!empty($data['result']) && $data['result'] === 'fail') {
+			wc_get_logger()->error('Payment data preparation failed', [
+				'order_id' => $orderId,
+				'error'    => $data['error'] ?? null,
+			]);
+			return false;
+		}
+
+		$response = wp_remote_post($this->get_api_url('/api/dailylimit'), [
+			'timeout'   => 30,
+			'body'      => $data,
+			'headers'   => [
+				'Content-Type'  => 'application/x-www-form-urlencoded',
+				'Authorization' => 'Bearer ' . sanitize_text_field($public_key),
+			],
+			'sslverify' => true,
+		]);
+
+		if (is_wp_error($response)) {
+			wc_get_logger()->error(
+				'Daily limit API error: ' . $response->get_error_message(),
+				['order_id' => $orderId]
+			);
+
+			if (is_checkout()) {
+				wc_add_notice(__('Payment validation error.', 'bytenft-payment-gateway'), 'error');
+			}
+
+			return false;
+		}
+
+		$limit_data = json_decode(wp_remote_retrieve_body($response), true);
+
+		if (($limit_data['status'] ?? '') === 'error') {
+			return false;
+		}
+
+		// Corrected log message
+		wc_get_logger()->info('Daily limit API success', [
+			'source' => 'bytenft-payment-gateway',
+			'order_id' => $orderId,
+			'response' => $limit_data
+		]);
+
+		return true;
+	}
+
+	private function prepareAccount($account)
+	{
+		$sanitized_title = preg_replace('/\s+/', '_', $account['title'] ?? 'account');
+		$account['lock_key'] = "bytenft_lock_{$sanitized_title}";
+		return $account;
+	}
+
+	/**
+	 * Get the next available payment account.
+	 * Uses the already-loaded $this->sandbox value — no re-instantiation needed.
+	 */
+	private function get_next_available_account($used_accounts = [], $order = null)
+	{
 		$settings = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
-		if (is_string($settings)) $settings = maybe_unserialize($settings);
-		if (!is_array($settings)) return false;
+
+		if (is_string($settings)) {
+			$settings = maybe_unserialize($settings);
+		}
+
+		if (empty($settings) || !is_array($settings)) {
+			return false;
+		}
 
 		$mode       = $this->sandbox ? 'sandbox' : 'live';
-		$status_key = $mode . '_status';
-		$public_key = $mode . '_public_key';
-		$secret_key = $mode . '_secret_key';
-	
+		$status_key = "{$mode}_status";
+		$public_key = "{$mode}_public_key";
+		$secret_key = "{$mode}_secret_key";
 
-		$available_accounts = array_filter($settings, function ($account) use ($used_accounts, $status_key, $public_key, $secret_key) {
-			if (in_array($account[$public_key] ?? '', $used_accounts, true)) {
-				return false;
-			}
-			if (!isset($account[$status_key]) || !in_array(strtolower($account[$status_key]), ['active'], true)) {
-				return false;
-			}
-			if (empty($account[$public_key]) || empty($account[$secret_key])) {
-				return false;
-			}
-			return true;
-		});
+		// Filter accounts
+		$available_accounts = array_values(array_filter($settings, function ($account) use ($used_accounts, $status_key, $public_key, $secret_key) {
+			$pub = $account[$public_key] ?? '';
+			$sec = $account[$secret_key] ?? '';
 
-		if (empty($available_accounts)) return false;
-
-		$available_accounts = $this->get_routing_sorted_accounts(array_values($available_accounts));
+			return !in_array($pub, $used_accounts, true)
+				&& strtolower($account[$status_key] ?? '') === 'active'
+				&& !empty($pub)
+				&& !empty($sec);
+		}));
 
 		if (empty($available_accounts)) {
 			return false;
 		}
-		$account = $available_accounts[0];
-		$sanitized_title = preg_replace('/\s+/', '_', $account['title'] ?? 'account');
-		$account['lock_key'] = "bytenft_lock_{$sanitized_title}";
-		
-		return $account;
+
+		$available_accounts = $this->get_routing_sorted_accounts($available_accounts);
+
+		if (empty($available_accounts)) {
+			return false;
+		}
+
+		// 🚀 Fast path (no order validation needed)
+		if ($order === null) {
+			return $this->prepareAccount($available_accounts[0]);
+		}
+
+		// Validate accounts against API
+		foreach ($available_accounts as $account) {
+			if ($this->allowAccountPay($order, $account)) {
+				return $this->prepareAccount($account);
+			}
+		}
+		return false;
 	}
 
 	private function acquire_lock($lock_key) {
