@@ -812,6 +812,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			set_transient($cache_key, 1, DAY_IN_SECONDS);
 		}
 
+		wc_get_logger()->error(
+			'Cancel issue log: ' . wp_json_encode($resp_data),
+			['source' => 'bytenft-payment']
+		);
+		
 		$pay_id = $resp_data['data']['pay_id'] ?? '';
 		if (!empty($resp_data['data']['payment_link'])) {
 			$existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $table_name WHERE order_id = %d", $order_id));
