@@ -891,7 +891,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				wc_get_logger()->info('Payment link updated', [
 					'source'  => 'bytenft',
-					'context' => ['order_id' => $order_id],
+					'context' => ['data' => $data],
 				]);
 
 			} else {
@@ -904,7 +904,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				wc_get_logger()->info('Payment link created', [
 					'source'  => 'bytenft',
-					'context' => ['order_id' => $order_id],
+					'context' => ['data' => $data],
 				]);
 			}
 
