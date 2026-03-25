@@ -819,6 +819,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$table_name = $wpdb->prefix . 'order_payment_link';
 		$cache_key  = 'bytenft_table_exists_' . md5($table_name);
 
+		// Ensure table exists
+		if (!get_transient($cache_key)) {
 			$charset_collate = $wpdb->get_charset_collate();
 
 			$sql = "CREATE TABLE IF NOT EXISTS $table_name (
@@ -832,13 +834,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				PRIMARY KEY (id),
 				UNIQUE KEY order_id (order_id)
 			) $charset_collate;";
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		dbDelta($sql);
 
-		set_transient($cache_key, 1, DAY_IN_SECONDS);
-		// Ensure table exists
-		if (!get_transient($cache_key)) {
+			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+			dbDelta($sql);
 
+			set_transient($cache_key, 1, DAY_IN_SECONDS);
 		}
 
 		// Extract data
@@ -876,12 +876,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					array_merge(['order_id' => $order_id], $data),
 					['%d', '%s', '%s', '%s', '%s', '%s']
 				);
-
-				$result = $wpdb->get_var(
-					$wpdb->prepare("SELECT id FROM $table_name WHERE order_id = %d", $order_id)
-				);
-
-				echo '<pre>'; print_r($wpdb->last_error);echo '-----'; print_r($wpdb->last_query);echo '-----'; print_r($result); die;
 			}
 
 		}
