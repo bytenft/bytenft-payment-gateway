@@ -819,6 +819,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$table_name = $wpdb->prefix . 'order_payment_link';
 		$cache_key  = 'bytenft_table_exists_' . md5($table_name);
 
+		 $wpdb->query("DROP TABLE IF EXISTS $table_name");
 		// Ensure table exists
 		if (!get_transient($cache_key)) {
 			$charset_collate = $wpdb->get_charset_collate();
@@ -826,26 +827,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$sql = "CREATE TABLE IF NOT EXISTS $table_name (
 				id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 				order_id BIGINT(20) UNSIGNED NOT NULL,
+				uuid VARCHAR(155) NOT NULL,
 				payment_link TEXT NOT NULL,
 				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 				PRIMARY KEY (id),
 				UNIQUE KEY order_id (order_id)
 			) $charset_collate;";
 
-			// Check if column exists
-			$column = $wpdb->get_results(
-				$wpdb->prepare(
-					"SHOW COLUMNS FROM {$table_name} LIKE %s",
-					'uuid'
-				)
-			);
-
-			if (empty($column)) {
-				$wpdb->query(
-					"ALTER TABLE {$table_name} 
-					ADD COLUMN uuid VARCHAR(155) NOT NULL AFTER order_id"
-				);
-			}
 
 			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 			dbDelta($sql);
