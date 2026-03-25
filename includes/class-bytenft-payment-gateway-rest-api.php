@@ -175,12 +175,14 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		}
 
 		if ($method === 'GET') {
-
-			$api_order_status = sanitize_text_field($parameters['order_status'] ?? '');
+			// Only read query parameters from URL
+			$api_order_status = sanitize_text_field($request->get_param('order_status') ?? '');
+			$pay_id           = sanitize_text_field($request->get_param('pay_id') ?? '');
 
 			$settings = get_option('woocommerce_bytenft_settings', []);
 			$success_status = isset($settings['order_status']) ? sanitize_text_field($settings['order_status']) : 'processing';
 
+			// Map API status to WooCommerce status
 			switch ($api_order_status) {
 				case 'completed':
 					$target_order_status = $success_status;
@@ -200,7 +202,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 
 			$current_status = $order->get_status();
 
-			// Update only if valid and different
+			// Update status if needed
 			if ($target_order_status && $current_status !== $target_order_status) {
 				try {
 					$order->update_status(
@@ -208,10 +210,16 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 						"Updated via ByteNFT GET ({$api_order_status})"
 					);
 
+					if ($pay_id) {
+						$order->update_meta_data('_bytenft_pay_id', $pay_id);
+						$order->save_meta_data();
+					}
+
 					$this->logger->info('GET: Order updated before redirect', [
 						...$log_context,
 						'from' => $current_status,
-						'to' => $target_order_status
+						'to' => $target_order_status,
+						'pay_id' => $pay_id
 					]);
 
 				} catch (\Exception $e) {
@@ -222,16 +230,14 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 				}
 			}
 
-			// If order is failed, cancelled, or expired, redirect back to checkout
-			if (in_array($current_status, ['failed', 'cancelled', 'expired'])) {
-				$return_url = wc_get_checkout_url(); // back to checkout
-				// Optional: add query param for showing error message
+			// Redirect based on status
+			if (in_array($target_order_status, ['failed', 'cancelled', 'expired'])) {
+				$return_url = wc_get_checkout_url();
 				$return_url = add_query_arg([
-					'bytenft_error' => $current_status,
+					'bytenft_error' => $target_order_status,
 					'order_id' => $order->get_id()
 				], $return_url);
 			} else {
-				// Successful or processing → thank you page
 				$return_url = $order->get_checkout_order_received_url();
 			}
 
