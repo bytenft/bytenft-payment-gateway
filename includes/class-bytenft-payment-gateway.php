@@ -1120,6 +1120,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$sorted_accounts = array();
 		$gateway_id = $this->id;
 		$this->selected_account_for_display = null;
+		$selected_account = null;
 		if (!isset($available_gateways[$gateway_id])) return $available_gateways;
 
 		$cart_hash = WC()->cart ? WC()->cart->get_cart_hash() : 'no_cart';
