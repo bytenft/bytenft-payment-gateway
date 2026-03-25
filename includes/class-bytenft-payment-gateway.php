@@ -857,7 +857,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'created_at'     => current_time('mysql', 1),
 			];
 
-
 			if ($existing) {
 
 				$wpdb->update(
@@ -871,21 +870,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				$wpdb->insert(
 					$table_name,
-					[
-						'uuid'           => sanitize_text_field($pay_id),
-						'payment_link'   => esc_url_raw($payment_link),
-						'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
-						'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
-						'created_at'     => current_time('mysql', 1),
-					],
-					['%d', '%s', '%s']
+					array_merge(['order_id' => $order_id], $data),
+					['%d', '%s', '%s', '%s', '%s', '%s']
 				);
 			}
-
-			$new_order = $wpdb->get_var(
-				$wpdb->prepare("SELECT id FROM $table_name WHERE order_id = %d", $order_id)
-			);
-			echo '<pre>'; echo $order_id; echo '---';print_r($new_order); die;
 
 		}
 
