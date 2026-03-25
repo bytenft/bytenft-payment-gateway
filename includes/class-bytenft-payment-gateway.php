@@ -782,6 +782,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$resp_data = json_decode(wp_remote_retrieve_body($response), true);
 
+		wc_get_logger()->error(
+			'Cancel issue log: ' . wp_json_encode($resp_data),
+			['source' => 'bytenft-payment']
+		);
+
 		if (($resp_data['status'] ?? '') === 'error') {
 			$error_msg = sanitize_text_field(
 				$resp_data['message'] ?? $resp_data['context']['message'] ?? 'Payment failed.'
@@ -811,11 +816,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			dbDelta($sql);
 			set_transient($cache_key, 1, DAY_IN_SECONDS);
 		}
-
-		wc_get_logger()->error(
-			'Cancel issue log: ' . wp_json_encode($resp_data),
-			['source' => 'bytenft-payment']
-		);
 		
 		$pay_id = $resp_data['data']['pay_id'] ?? '';
 		if (!empty($resp_data['data']['payment_link'])) {
