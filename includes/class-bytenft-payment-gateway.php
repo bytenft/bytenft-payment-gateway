@@ -822,6 +822,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// Ensure table exists
 		if (!get_transient($cache_key)) {
 			// 🔴 Drop table first
+			    $charset_collate = $wpdb->get_charset_collate();
+
     $wpdb->query("DROP TABLE IF EXISTS $table_name");
 
     // 🔵 Create fresh table
