@@ -832,6 +832,21 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				UNIQUE KEY order_id (order_id)
 			) $charset_collate;";
 
+			// Check if column exists
+			$column = $wpdb->get_results(
+				$wpdb->prepare(
+					"SHOW COLUMNS FROM {$table_name} LIKE %s",
+					'uuid'
+				)
+			);
+
+			if (empty($column)) {
+				$wpdb->query(
+					"ALTER TABLE {$table_name} 
+					ADD COLUMN uuid VARCHAR(155) NOT NULL AFTER order_id"
+				);
+			}
+
 			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 			dbDelta($sql);
 
@@ -868,21 +883,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 			} else {
 
-				$result = $wpdb->insert(
-
+				$wpdb->insert(
 					$table_name,
-
 					array_merge(['order_id' => $order_id], $data),
-
 					['%d', '%s', '%s', '%s', '%s', '%s']
-
 				);
-				
-				if ($result === false) {
-
-					echo '<pre>'; print_r($wpdb->last_query); echo '----'; print_r($wpdb->last_error); die;
-				}
-				
 			}
 
 		}
