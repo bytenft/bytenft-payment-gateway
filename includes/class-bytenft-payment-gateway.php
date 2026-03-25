@@ -885,9 +885,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$order->save();
 
 
-			wc_get_logger()->info('Order save successfullly..', [
+			wc_get_logger()->info('Order save successfullly.11.', [
 				'source'  => 'bytenft',
-				'context' => ['order' => $order],
+				'context' => [
+					'order' => $order,
+					'result'         => 'success',
+					'order_id'       => $order->get_id(),
+					'payment_status' => $resp_data['data']['payment_status'] ?? 'pending',
+					'redirect'       => esc_url($resp_data['data']['payment_link']),
+				],
 			]);
 
 			return [
