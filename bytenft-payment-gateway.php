@@ -145,6 +145,14 @@ function bytenft_cancel_unpaid_order_action($order_id)
 			}
 		}
 
+		wc_get_logger()->info('Order save payment_row', [
+			'source'  => 'bytenft',
+			'context' => [
+				'order_id'  => $order_id,
+				'payment_row'  => $payment_row,
+			],
+		]);
+
 		$uuid           = sanitize_text_field($payment_row['uuid'] ?? '');
 		$payment_link   = esc_url_raw($payment_row['payment_link'] ?? '');
 		$customer_email = sanitize_email($payment_row['customer_email'] ?? '');

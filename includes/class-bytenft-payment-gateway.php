@@ -884,18 +884,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$order->add_order_note(sprintf(__('Payment initiated via ByteNFT. Awaiting completion (%s)', 'bytenft-payment-gateway'), $account['title']));
 			$order->save();
 
-
-			wc_get_logger()->info('Order save successfullly.11.', [
-				'source'  => 'bytenft',
-				'context' => [
-					'order' => $order,
-					'result'         => 'success',
-					'order_id'       => $order->get_id(),
-					'payment_status' => $resp_data['data']['payment_status'] ?? 'pending',
-					'redirect'       => esc_url($resp_data['data']['payment_link']),
-				],
-			]);
-
 			return [
 				'result'         => 'success',
 				'order_id'       => $order->get_id(),
