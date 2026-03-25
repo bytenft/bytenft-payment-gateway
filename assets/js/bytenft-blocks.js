@@ -38,8 +38,11 @@ console.log('bytenft-blocks.js loaded at', new Date().toISOString());
             features: settings.supports || ['products'],
         },
     };
-
-    registerPaymentMethod(methodConfig);
+    if(settings.title){
+        console.log(settings.title);
+        registerPaymentMethod(methodConfig);
+    }
+    
 })();
 
 
