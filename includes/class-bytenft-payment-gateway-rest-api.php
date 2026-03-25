@@ -194,10 +194,12 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		// --------------------------
 		$stored_payment_token = $order->get_meta('_bytenft_pay_id');
 
+
 		if (!empty($stored_payment_token) && $stored_payment_token !== $pay_id) {
 			$this->logger->error('Pay ID mismatch', [
 				...$log_context,
-				'stored_pay_id' => $stored_payment_token
+				'stored_pay_id' => $stored_payment_token,
+				'pay_id' => $pay_id
 			]);
 
 			return new WP_REST_Response([
