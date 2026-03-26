@@ -175,6 +175,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		}
 
 		if ($method === 'GET') {
+			// Read query parameters
 			$api_order_status = sanitize_text_field($request->get_param('order_status') ?? '');
 			$pay_id           = sanitize_text_field($request->get_param('pay_id') ?? '');
 
@@ -201,6 +202,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 
 			$current_status = $order->get_status();
 
+			// Update order if needed
 			if ($target_order_status && $current_status !== $target_order_status) {
 				try {
 					$order->update_status($target_order_status, "Updated via ByteNFT");
@@ -225,7 +227,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 				}
 			}
 
-			// --- Unified redirect / notice handling ---
+			// --- Unified notice and redirect handling ---
 			$message_map = [
 				'failed'    => 'Payment failed. Please try again.',
 				'cancelled' => 'Payment was cancelled.',
@@ -233,19 +235,21 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			];
 
 			if (in_array($target_order_status, ['failed', 'cancelled', 'expired'])) {
-				// Classic checkout: show error notice
+				$notice = $message_map[$target_order_status] ?? 'Payment could not be completed.';
+
+				// Classic checkout: wc_add_notice
 				if (function_exists('wc_add_notice')) {
-					$notice = $message_map[$target_order_status] ?? 'Payment could not be completed.';
 					wc_add_notice($notice, 'error');
 				}
 
-				// Always set session (optional, for internal use)
+				// Block checkout / fallback: session
 				if (function_exists('WC') && WC()->session) {
 					WC()->session->set('bytenft_error', $target_order_status);
+					WC()->session->save_data(); // ✅ ensure notice/session is saved before redirect
 				}
 
+				// Redirect to checkout page
 				$return_url = wc_get_checkout_url();
-
 			} else {
 				// Successful payment: redirect to thank-you page
 				$return_url = $order->get_checkout_order_received_url();

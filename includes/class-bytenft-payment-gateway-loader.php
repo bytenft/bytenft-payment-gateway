@@ -176,23 +176,22 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 	public function bytenft_show_checkout_error()
 	{
-		if (function_exists('WC') && WC()->session) {
-			$error = WC()->session->get('bytenft_error');
+		if (!function_exists('WC')) return;
 
-			if ($error) {
-				$messages = [
-					'failed' => 'Payment failed. Please try again.',
-					'cancelled' => 'Payment was cancelled.',
-					'expired' => 'Payment session expired. Please try again.'
-				];
+		$error = WC()->session->get('bytenft_error');
+		if (!$error) return;
 
-				if (isset($messages[$error])) {
-					wc_add_notice($messages[$error], 'error');
-				}
+		$messages = [
+			'failed'    => 'Payment failed. Please try again.',
+			'cancelled' => 'Payment was cancelled.',
+			'expired'   => 'Payment session expired. Please try again.'
+		];
 
-				// Clear after showing
-				WC()->session->__unset('bytenft_error');
-			}
+		// Clear error immediately
+		WC()->session->__unset('bytenft_error');
+
+		if (isset($messages[$error])) {
+			wc_add_notice($messages[$error], 'error');
 		}
 	}
 
