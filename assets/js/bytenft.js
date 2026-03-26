@@ -37,8 +37,8 @@ jQuery(function ($) {
     }
 
     // PO Box detection regex — covers all common formats:
-    // PO Box, P.O. Box, P O Box, Post Office Box, POBox, P.O.B, etc.
-    var PO_BOX_PATTERN = /\b(p\.?\s*o\.?\s*b(ox|\.)?|post\s+office\s+(box|b\.?))\b[\s#\d]*/i;
+    // PO Box P.O. Box P O Box POBox pobox POBOX pObOX (case-insensitive handles this) P.O.B Post Office Box PostOfficeBox
+    var PO_BOX_PATTERN = /\b(p\.?\s*o\.?\s*b(?:ox|\.?)|pobox|post\s*office\s*b(?:ox|\.?))\b[\s#\d]*/i;
 
     function containsPOBox(value) {
         return PO_BOX_PATTERN.test(value);
