@@ -707,24 +707,29 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$selected_account = null;
 		$payment_data     = null;
 		$last_error_data  = null;
+		$skipped_accounts = [];
+		$accounts_tried   = [];
 
 		while (true) {
 			$account = $this->get_next_available_account($used_accounts);
-			
 			if (!$account) {
 				break;
 			}
-
 			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
 			$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
-			
+			$accounts_tried[] = $account['title'] ?? 'unknown';
+
 			$data = $this->bytenft_prepare_payment_data($order, $public_key, $secret_key);
 			if (is_array($data) && ($data['result'] ?? '') === 'fail') {
+				$skipped_accounts[] = [
+					'title' => $account['title'] ?? 'unknown',
+					'reason' => 'prepare_payment_data_fail',
+				];
 				$used_accounts[] = $public_key;
 				continue;
 			}
 
-			// Daily Limit Check
+			// Daily/Per-Transaction Limit Check
 			$limit_url  = $this->get_api_url('/api/dailylimit');
 			$limit_resp = wp_remote_post($limit_url, [
 				'method'    => 'POST',
@@ -738,15 +743,27 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			]);
 
 			if (is_wp_error($limit_resp)) {
+				$skipped_accounts[] = [
+					'title' => $account['title'] ?? 'unknown',
+					'reason' => 'api_error',
+					'message' => $limit_resp->get_error_message(),
+				];
 				wc_get_logger()->error("Daily limit API error for account '{$account['title']}': " . $limit_resp->get_error_message(), $logger_context);
 				$used_accounts[] = $public_key;
 				continue;
 			}
 
 			$limit_data = json_decode(wp_remote_retrieve_body($limit_resp), true);
-			
+
 			if (($limit_data['status'] ?? '') === 'error') {
-				wc_get_logger()->info("Skipping '{$account['title']}': daily limit exceeded (Status: error, Message: {$limit_data['message']})", $logger_context);
+				$skipped_accounts[] = [
+					'title' => $account['title'] ?? 'unknown',
+					'reason' => 'limit_exceeded',
+					'message' => $limit_data['message'] ?? '',
+					'max_limit_reached' => $limit_data['max_limit_reached'] ?? false,
+					'max_amount' => $limit_data['max_amount'] ?? null,
+				];
+				wc_get_logger()->info("Skipping '{$account['title']}': limit exceeded (Status: error, Message: {$limit_data['message']})", $logger_context);
 				$last_error_data = $limit_data;
 				$used_accounts[] = $public_key;
 				continue;
@@ -759,19 +776,26 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			break;
 		}
 
+		// Log all skipped accounts for debugging
+		if (!empty($skipped_accounts)) {
+			wc_get_logger()->info('Accounts skipped during selection', [
+				'skipped_accounts' => $skipped_accounts,
+				'accounts_tried' => $accounts_tried,
+				'source' => 'bytenft-payment-gateway',
+			]);
+		}
+
 		if (!$selected_account) {
 			if ($last_error_data) {
 				if (isset($last_error_data['max_limit_reached']) && $last_error_data['max_limit_reached'] == true) {
 					wc_add_notice(__('The transaction amount exceeds the maximum allowed limit of '.$last_error_data['max_amount'].'. Please enter a lower amount.', 'bytenft-payment-gateway'), 'error');
 					return ['result' => 'fail'];
 				}
-				
 				$order->update_meta_data('_bytenft_limit_exceeded', true);
 				$order->save();
 				if (is_checkout()) wc_add_notice($last_error_data['message'], 'error');
 				return ['result' => 'failure', 'notices' => $last_error_data['message']];
 			}
-
 			// No available payment accounts found logic
 			$raw = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
 			wc_get_logger()->error('No available payment accounts found after checking limits.', [
@@ -1508,6 +1532,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 		$cart_hash = WC()->cart ? WC()->cart->get_cart_hash() : 'no_cart';
 		$accounts = $this->get_all_accounts();
 		$sorted   = $this->get_routing_sorted_accounts($accounts);
+		$available_gateways = WC()->payment_gateways->get_available_payment_gateways();
 		$account  = !empty($sorted) ? $sorted[0] : null;
 		
 		$accounts = $this->get_all_accounts();
