@@ -1766,6 +1766,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				}
 			}
 		}
+		
 		if (!empty($errors)) {
 			foreach ($errors as $error) wc_add_notice($error, 'error');
 			return false;
