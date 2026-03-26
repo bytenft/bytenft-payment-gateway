@@ -1251,6 +1251,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		// New logic: filter by daily limit, then pick by priority
 		$eligible_accounts = [];
+		$not_eligible_accounts=[];
 		foreach ($accounts as $account) {
 			$acc_title  = $account['title'] ?? '(unknown)';
 			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
@@ -1289,6 +1290,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'max_limit_reached' => $limit_data['max_limit_reached'] ?? false,
 					'message' => $limit_data['message'] ?? '',
 				]);
+
 				continue;
 			}
 			if (($limit_data['status'] ?? '') === 'success' && (!isset($limit_data['max_limit_reached']) || $limit_data['max_limit_reached'] === false)) {
@@ -1297,6 +1299,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$this->send_plugin_logs(
 				$eligible_accounts,
+
 				$public_key,
 				$secret_key,
 				$amount,
@@ -1310,6 +1313,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 		
 		// ================= FALLBACK CASE =================
+
 		if (empty($eligible_accounts)) {
 			if (!empty($accounts)) {
 				$accounts = $this->update_accounts_uniqueID($accounts);
@@ -1329,6 +1333,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					);
 				}
 		  	}
+
 		}
 
 		if ($all_accounts_limited) {
@@ -1617,6 +1622,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 			if (($limit_data['status'] ?? '') === 'success' && (!isset($limit_data['max_limit_reached']) || $limit_data['max_limit_reached'] === false)) {
 				$all_accounts_limited = false;
 			}
+
 
 			$this->send_plugin_logs(
 				$eligible_accounts,
