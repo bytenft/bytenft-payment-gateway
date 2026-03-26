@@ -862,20 +862,31 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$formats  = ['%s', '%s', '%s', '%s', '%s'];
 
 			if ($existing) {
-
 				$wpdb->update(
 					$table_name,
-					$data,
+					[
+						'uuid'           => sanitize_text_field($pay_id),
+						'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
+						'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
+						'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
+						'created_at'     => current_time('mysql', 1),
+					],
 					['order_id' => $order_id],
-					['%s', '%s', '%s', '%s', '%s'],
+					$formats,
 					['%d']
 				);
 			} else {
-
 				$wpdb->insert(
 					$table_name,
-					array_merge(['order_id' => $order_id], $data),
-					['%d', '%s', '%s', '%s', '%s', '%s']
+					[
+						'order_id'       => $order_id,
+						'uuid'           => sanitize_text_field($pay_id),
+						'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
+						'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
+						'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
+						'created_at'     => current_time('mysql', 1),
+					],
+					['%d','%s','%s','%s','%s','%s']
 				);
 			}
 
