@@ -1162,7 +1162,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	public function bytenft_hide_custom_payment_gateway_conditionally($available_gateways) {
-		$sorted_accounts = array();
 		$gateway_id = $this->id;
 		$this->selected_account_for_display = null;
 		if (!isset($available_gateways[$gateway_id])) return $available_gateways;
@@ -1212,6 +1211,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		// New logic: filter by daily limit, then pick by priority
 		$eligible_accounts = [];
+		$not_eligible_accounts=[];
 		foreach ($accounts as $account) {
 			$acc_title  = $account['title'] ?? '(unknown)';
 			$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
@@ -1248,7 +1248,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'response_status' => $limit_data['status'] ?? 'unknown',
 					'message' => $limit_data['message'] ?? '',
 				]);
-				$sorted_accounts = array();
+				$not_eligible_accounts[] = $account;
 				continue;
 			}
 			if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {
@@ -1256,7 +1256,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			$this->send_plugin_logs(
-				$sorted_accounts,
+				$accounts,
 				$public_key,
 				$secret_key,
 				$amount,
@@ -1270,25 +1270,22 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 		
 		// ================= FALLBACK CASE =================
-		if (empty($sorted_accounts)) {
-			if (!empty($accounts)) {
-				$accounts = $this->update_accounts_uniqueID($accounts);
+		if (!empty($not_eligible_accounts)) {
+			$accounts = $this->update_accounts_uniqueID($not_eligible_accounts);
+			foreach ($accounts as $account) {
+				$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
+				$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
 
-				foreach ($accounts as $account) {
-					$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
-					$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
-
-					$this->send_plugin_logs(
-						$accounts,
-						$public_key,
-						$secret_key,
-						$amount,
-						0,
-						$pluginLogApiUrl,
-						$force_refresh
-					);
-				}
-		  	}
+				$this->send_plugin_logs(
+					$accounts,
+					$public_key,
+					$secret_key,
+					$amount,
+					0,
+					$pluginLogApiUrl,
+					$force_refresh
+				);
+			}
 		}
 
 		if ($all_accounts_limited) {
@@ -1580,48 +1577,16 @@ private function get_routing_sorted_accounts(array $accounts): array {
 					'response_status' => $limit_data['status'] ?? 'unknown',
 					'message' => $limit_data['message'] ?? '',
 				]);
-				$sorted_accounts = array();
 				continue;
 			}
 			if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {
 				$all_accounts_limited = false;
 			}
 
-			$this->send_plugin_logs(
-				$sorted_accounts,
-				$public_key,
-				$secret_key,
-				$amount,
-				$all_accounts_limited ? 0 : 1,
-				$pluginLogApiUrl,
-				$force_refresh
-			);
-
 			$selected_account = $account;
 			break;
 		}
-		
-		// ================= FALLBACK CASE =================
-		if (empty($sorted_accounts)) {
-			if (!empty($accounts)) {
-				$accounts = $this->update_accounts_uniqueID($accounts);
 
-				foreach ($accounts as $account) {
-					$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
-					$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
-
-					$this->send_plugin_logs(
-						$accounts,
-						$public_key,
-						$secret_key,
-						$amount,
-						0,
-						$pluginLogApiUrl,
-						$force_refresh
-					);
-				}
-		  	}
-		}
 		$gateway_id = $this->id;
 		$available_gateways = WC()->payment_gateways->get_available_payment_gateways();
 		if ($all_accounts_limited) {
