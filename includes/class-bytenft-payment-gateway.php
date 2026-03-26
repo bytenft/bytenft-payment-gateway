@@ -870,6 +870,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					['%s', '%s', '%s', '%s', '%s'],
 					['%d']
 				);
+				wc_get_logger()->error("wp_order_payment_link data Update error: " . $wpdb->last_error);
 			} else {
 
 				$wpdb->insert(
