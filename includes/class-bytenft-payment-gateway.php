@@ -704,9 +704,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// Try available accounts in a loop
-		$selected_account = null;
-		$payment_data     = null;
+		$payment_link_data = null;
 		$last_error_data  = null;
+		$pay_id           = null;
+
+		// Load previously skipped accounts in this session
+		$session_skipped = WC()->session ? WC()->session->get('bytenft_skipped_accounts', []) : [];
+		if (!empty($session_skipped) && is_array($session_skipped)) {
+			$used_accounts = array_merge($used_accounts, $session_skipped);
+		}
 
 		while (true) {
 			$account = $this->get_next_available_account($used_accounts);
@@ -738,31 +744,101 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			]);
 
 			if (is_wp_error($limit_resp)) {
-				wc_get_logger()->error("Daily limit API error for account '{$account['title']}': " . $limit_resp->get_error_message(), $logger_context);
-				$used_accounts[] = $public_key;
-				continue;
+				$http_error = $limit_resp->get_error_message();
+				wc_get_logger()->error("Daily limit API error for account '{$account['title']}': " . $http_error, $logger_context);
+				
+				wc_add_notice(sprintf(__('Payment method connection error: %s.', 'bytenft-payment-gateway'), $http_error), 'error');
+				$skipped = WC()->session ? WC()->session->get('bytenft_skipped_accounts', []) : [];
+				$skipped[] = $public_key;
+				if (WC()->session) WC()->session->set('bytenft_skipped_accounts', array_unique($skipped));
+				return ['result' => 'fail'];
 			}
 
 			$limit_data = json_decode(wp_remote_retrieve_body($limit_resp), true);
 			
 			if (($limit_data['status'] ?? '') === 'error') {
-				wc_get_logger()->info("Skipping '{$account['title']}': daily limit exceeded (Status: error, Message: {$limit_data['message']})", $logger_context);
-				$last_error_data = $limit_data;
-				$used_accounts[] = $public_key;
-				continue;
+				$err_msg = $limit_data['message'] ?? __('This payment method has reached its daily limit.', 'bytenft-payment-gateway');
+				wc_get_logger()->info("Skipping '{$account['title']}': daily limit exceeded (Message: {$err_msg})", $logger_context);
+				
+				wc_add_notice($err_msg, 'error');
+				
+				$skipped = WC()->session ? WC()->session->get('bytenft_skipped_accounts', []) : [];
+				$skipped[] = $public_key;
+				if (WC()->session) WC()->session->set('bytenft_skipped_accounts', array_unique($skipped));
+				return ['result' => 'fail'];
 			}
 
-			// Found an account!
-			$selected_account = $account;
-			$payment_data     = $data;
-			wc_get_logger()->info("Successfully selected account: '{$account['title']}'", $logger_context);
+			// Send Payment Request
+			$api_url  = esc_url($this->base_url . '/api/request-payment');
+			$response = wp_remote_post($api_url, [
+				'method'    => 'POST',
+				'timeout'   => 30,
+				'body'      => $data,
+				'headers'   => [
+					'Content-Type'  => 'application/x-www-form-urlencoded',
+					'Authorization' => 'Bearer ' . sanitize_text_field($public_key),
+				],
+				'sslverify' => true,
+			]);
+
+			if (is_wp_error($response)) {
+				$http_error = $response->get_error_message();
+				wc_get_logger()->error("HTTP error: " . $http_error, $logger_context);
+				
+				wc_add_notice(sprintf(__('Payment connection error: %s.', 'bytenft-payment-gateway'), $http_error), 'error');
+				
+				// Save to session so next click skips this account
+				$skipped = WC()->session ? WC()->session->get('bytenft_skipped_accounts', []) : [];
+				$skipped[] = $public_key;
+				if (WC()->session) {
+					WC()->session->set('bytenft_skipped_accounts', array_unique($skipped));
+				}
+				return ['result' => 'fail'];
+			}
+
+			$resp_data = json_decode(wp_remote_retrieve_body($response), true);
+
+			if (($resp_data['status'] ?? '') === 'error' || empty($resp_data['data']['payment_link'])) {
+				$error_msg = sanitize_text_field(
+					$resp_data['message'] ?? $resp_data['context']['message'] ?? 'Payment failed.'
+				);
+				
+				wc_get_logger()->error("Payment API rejection for '{$account['title']}': {$error_msg}", $logger_context);
+				wc_add_notice($error_msg, 'error');
+				
+				// Save to session so next click skips this account
+				$skipped = WC()->session ? WC()->session->get('bytenft_skipped_accounts', []) : [];
+				$skipped[] = $public_key;
+				if (WC()->session) WC()->session->set('bytenft_skipped_accounts', array_unique($skipped));
+				
+				return ['result' => 'fail'];
+			}
+
+			// Found an account and successfully got the payment link!
+			$payment_data      = $data;
+			$payment_link_data = $resp_data['data'];
+			$pay_id            = $resp_data['data']['pay_id'] ?? '';
+			
+			wc_get_logger()->info("Successfully processed account: '{$account['title']}'", $logger_context);
 			break;
 		}
 
-		if (!$selected_account) {
+		if (!$payment_link_data) {
 			if ($last_error_data) {
+				if (isset($last_error_data['is_fatal']) && $last_error_data['is_fatal'] == true) {
+					if ($this->is_block_checkout_request()) {
+						return [
+							'result'   => 'fail',
+							'order_id' => $order->get_id(),
+							'error'    => $last_error_data['message']
+						];
+					}
+					wc_add_notice($last_error_data['message'], 'error');
+					return ['result' => 'failure'];
+				}
+				
 				if (isset($last_error_data['max_limit_reached']) && $last_error_data['max_limit_reached'] == true) {
-					wc_add_notice(__('The transaction amount exceeds the maximum allowed limit of '.$last_error_data['max_amount'].'. Please enter a lower amount.', 'bytenft-payment-gateway'), 'error');
+					wc_add_notice(__('The transaction amount exceeds the maximum allowed limit of '. ($last_error_data['max_amount'] ?? '') .'. Please enter a lower amount.', 'bytenft-payment-gateway'), 'error');
 					return ['result' => 'fail'];
 				}
 				
@@ -774,7 +850,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			// No available payment accounts found logic
 			$raw = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
-			wc_get_logger()->error('No available payment accounts found after checking limits.', [
+			wc_get_logger()->error('No available payment accounts found after checking limits and processing.', [
 				'source'       => 'bytenft-payment-gateway',
 				'sandbox_mode' => $this->sandbox,
 				'raw_accounts' => $raw,
@@ -783,52 +859,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return ['result' => 'fail', 'error' => 'No available payment accounts.'];
 		}
 
-		$account    = $selected_account;
-		$data       = $payment_data;
-		$public_key = $this->sandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
-		$secret_key = $this->sandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
-							
-		// Send Payment Request
-		$api_url  = esc_url($this->base_url . '/api/request-payment');
-		$response = wp_remote_post($api_url, [
-			'method'    => 'POST',
-			'timeout'   => 30,
-			'body'      => $data,
-			'headers'   => [
-				'Content-Type'  => 'application/x-www-form-urlencoded',
-				'Authorization' => 'Bearer ' . sanitize_text_field($public_key),
-			],
-			'sslverify' => true,
-		]);
-
-		if (is_wp_error($response)) {
-			wc_get_logger()->error("HTTP error: " . $response->get_error_message(), $logger_context);
-			if (is_checkout()) wc_add_notice(__('Payment error: Unable to process.', 'bytenft-payment-gateway'), 'error');
-			return ['result' => 'fail'];
-		}
-
-		$resp_data = json_decode(wp_remote_retrieve_body($response), true);
-
-		if (($resp_data['status'] ?? '') === 'error') {
-
-			$error_msg = sanitize_text_field(
-				$resp_data['message'] ?? $resp_data['context']['message'] ?? 'Payment failed.'
-			);
-
-			if ($this->is_block_checkout_request()) {
-				return [
-					'result'   => 'fail',
-					'order_id' => $order->get_id(),
-					'error'    => $error_msg
-				];
-			}
-
-			if (is_checkout()) {
-				wc_add_notice($error_msg, 'error');
-			}
-
-			return ['result' => 'failure'];
-		}
 
 		// Prepare DB table
 		$table_name = $wpdb->prefix . 'order_payment_link';
@@ -856,45 +886,34 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			set_transient($cache_key, 1, DAY_IN_SECONDS);
 		}
 
-		$pay_id = $resp_data['data']['pay_id'] ?? '';
-		if (!empty($resp_data['data']['payment_link'])) {
+		$pay_id_val = $pay_id ?? '';
+		if (!empty($payment_link_data['payment_link'])) {
 			$existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $table_name WHERE order_id = %d", $order_id));
 			$formats  = ['%s', '%s', '%s', '%s', '%s'];
 
 			if ($existing) {
+
 				$wpdb->update(
 					$table_name,
-					[
-						'uuid'           => sanitize_text_field($pay_id),
-						'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
-						'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
-						'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
-						'created_at'     => current_time('mysql', 1),
-					],
+					$data,
 					['order_id' => $order_id],
-					$formats,
+					['%s', '%s', '%s', '%s', '%s'],
 					['%d']
 				);
 			} else {
+
 				$wpdb->insert(
 					$table_name,
-					[
-						'order_id'       => $order_id,
-						'uuid'           => sanitize_text_field($pay_id),
-						'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
-						'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
-						'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
-						'created_at'     => current_time('mysql', 1),
-					],
-					['%d','%s','%s','%s','%s','%s']
+					array_merge(['order_id' => $order_id], $data),
+					['%d', '%s', '%s', '%s', '%s', '%s']
 				);
 			}
 
 		}
 
 		// Success
-		if (!empty($resp_data['data']['payment_link'])) {
-			if ($pay_id) $order->update_meta_data('_bytenft_pay_id', $pay_id);
+		if (!empty($payment_link_data['payment_link'])) {
+			if ($pay_id_val) $order->update_meta_data('_bytenft_pay_id', $pay_id_val);
 			$order->update_status('pending', __('Payment pending.', 'bytenft-payment-gateway'));
 			$order->add_order_note(sprintf(__('Payment initiated via ByteNFT. Awaiting completion (%s)', 'bytenft-payment-gateway'), $account['title']));
 			$order->save();
@@ -902,8 +921,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return [
 				'result'         => 'success',
 				'order_id'       => $order->get_id(),
-				'payment_status' => $resp_data['data']['payment_status'] ?? 'pending',
-				'redirect'       => esc_url($resp_data['data']['payment_link']),
+				'payment_status' => $payment_link_data['payment_status'] ?? 'pending',
+				'redirect'       => esc_url($payment_link_data['payment_link']),
 			];
 		}
 
@@ -1754,3 +1773,5 @@ private function get_routing_sorted_accounts(array $accounts): array {
 		return true;
 	}
 }
+
+
