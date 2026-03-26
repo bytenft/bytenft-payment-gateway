@@ -80,6 +80,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				WC()->initialize_session();
 			}
 		});
+
+		add_action('woocommerce_before_checkout_form', [$this, 'bytenft_show_checkout_error']);
 	}
 
 	/**
@@ -170,6 +172,28 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		// Add plugin row meta
 		add_filter('plugin_row_meta', [$this, 'bytenft_plugin_row_meta'], 10, 2);
+	}
+
+	public function bytenft_show_checkout_error()
+	{
+		if (function_exists('WC') && WC()->session) {
+			$error = WC()->session->get('bytenft_error');
+
+			if ($error) {
+				$messages = [
+					'failed' => 'Payment failed. Please try again.',
+					'cancelled' => 'Payment was cancelled.',
+					'expired' => 'Payment session expired. Please try again.'
+				];
+
+				if (isset($messages[$error])) {
+					wc_add_notice($messages[$error], 'error');
+				}
+
+				// Clear after showing
+				WC()->session->__unset('bytenft_error');
+			}
+		}
 	}
 
 	/**
