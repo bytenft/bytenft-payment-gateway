@@ -895,40 +895,31 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		$pay_id = $resp_data['data']['pay_id'] ?? '';
-		if (!empty($resp_data['data']['payment_link'])) {
+		
+			if (!empty($resp_data['data']['payment_link'])) {
 			$existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM $table_name WHERE order_id = %d", $order_id));
 			$formats  = ['%s', '%s', '%s', '%s', '%s'];
 
 			if ($existing) {
+
 				$wpdb->update(
 					$table_name,
-					[
-						'uuid'           => sanitize_text_field($pay_id),
-						'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
-						'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
-						'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
-						'created_at'     => current_time('mysql', 1),
-					],
+					$data,
 					['order_id' => $order_id],
-					$formats,
+					['%s', '%s', '%s', '%s', '%s'],
 					['%d']
 				);
 			} else {
+
 				$wpdb->insert(
 					$table_name,
-					[
-						'order_id'       => $order_id,
-						'uuid'           => sanitize_text_field($pay_id),
-						'payment_link'   => esc_url_raw($resp_data['data']['payment_link'] ?? ''),
-						'customer_email' => sanitize_email($resp_data['data']['customer_email'] ?? ''),
-						'amount'         => number_format((float)($resp_data['data']['amount'] ?? 0), 2, '.', ''),
-						'created_at'     => current_time('mysql', 1),
-					],
-					['%d','%s','%s','%s','%s','%s']
+					array_merge(['order_id' => $order_id], $data),
+					['%d', '%s', '%s', '%s', '%s', '%s']
 				);
 			}
 
 		}
+
 
 		// Success
 		if (!empty($resp_data['data']['payment_link'])) {
@@ -1334,6 +1325,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		if ($all_accounts_limited) {
 			$this->log_info_once_per_session('accounts_limited_' . $cart_hash, 'All accounts limited — gateway still shown with fallback display account.');
 		}
+
 		// Fallback logic if no eligible account found
 		
 		if (!$selected_account) {
@@ -1678,10 +1670,6 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 		$this->selected_account_for_display = $selected_account;
 
-		// return [
-		// 	'title'    => $this->get_title(),
-		// 	'subtitle' => $this->get_description(),
-		// ];
 		if (!empty($selected_account['checkout_title'])) {
 			
 			return [
