@@ -207,7 +207,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 				try {
 					$order->update_status(
 						$target_order_status,
-						"Updated via ByteNFT GET ({$api_order_status})"
+						"Updated via ByteNFT"
 					);
 
 					if ($pay_id) {
@@ -232,11 +232,11 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 
 			// Redirect based on status
 			if (in_array($target_order_status, ['failed', 'cancelled', 'expired'])) {
+				 if (function_exists('WC') && WC()->session) {
+					WC()->session->set('bytenft_error', $target_order_status);
+				}
+
 				$return_url = wc_get_checkout_url();
-				$return_url = add_query_arg([
-					'bytenft_error' => $target_order_status,
-					'order_id' => $order->get_id()
-				], $return_url);
 			} else {
 				$return_url = $order->get_checkout_order_received_url();
 			}
