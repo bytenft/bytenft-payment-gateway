@@ -720,6 +720,16 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			
 			$data = $this->bytenft_prepare_payment_data($order, $public_key, $secret_key);
 			if (is_array($data) && ($data['result'] ?? '') === 'fail') {
+				if (isset($data['error'])) {
+					if ($this->is_block_checkout_request()) {
+						return [
+							'result' => 'fail',
+							'order_id' => $order->get_id(),
+							'error' => $data['error']
+						];
+					}
+					return ['result' => 'failure'];
+				}
 				$used_accounts[] = $public_key;
 				continue;
 			}
