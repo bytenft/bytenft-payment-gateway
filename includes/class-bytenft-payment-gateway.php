@@ -1529,6 +1529,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 		$cart_hash = WC()->cart ? WC()->cart->get_cart_hash() : 'no_cart';
 		$accounts = $this->get_all_accounts();
 		$sorted   = $this->get_routing_sorted_accounts($accounts);
+		$available_gateways= WC()->payment_gateways->get_available_payment_gateways();
 		$account  = !empty($sorted) ? $sorted[0] : null;
 		
 		$accounts = $this->get_all_accounts();
