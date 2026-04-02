@@ -733,7 +733,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$used_accounts[] = $public_key;
 				continue;
 			}
-
+			
 			// Daily Limit Check
 			$limit_url  = $this->get_api_url('/api/dailylimit');
 			$limit_resp = wp_remote_post($limit_url, [
@@ -746,6 +746,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				],
 				'sslverify' => true,
 			]);
+			
 
 			if (is_wp_error($limit_resp)) {
 				wc_get_logger()->error("Daily limit API error for account '{$account['title']}': " . $limit_resp->get_error_message(), $logger_context);
@@ -1304,7 +1305,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			/*if (!isset($limit_data['max_limit_reached']) || $limit_data['max_limit_reached'] == false) {
 				return $this->hide_gateway($available_gateways, $gateway_id);
 			} */
-			return [];
+			return $this->hide_gateway($available_gateways, $gateway_id);
+
 		}
 		// Fallback logic if no eligible account found
 		
