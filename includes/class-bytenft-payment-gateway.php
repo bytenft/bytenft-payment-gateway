@@ -939,8 +939,22 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private function is_po_box($address) {
 		if (!$address) return false;
-		$pattern = '/\b(p\.?\s*o\.?\s*b(ox|\.)?|post\s+office\s+(box|b\.?))\b[\s#\d]*/i';
-		return (bool) preg_match($pattern, $address);
+
+		// Normalize: lowercase + remove spaces and dots
+		$normalized = strtolower($address);
+		$normalized = preg_replace('/[\.\s]/', '', $normalized);
+
+		// Strict detection anywhere in string
+		if (strpos($normalized, 'pobox') !== false) {
+			return true;
+		}
+
+		// Also check full phrase
+		if (strpos($normalized, 'postofficebox') !== false) {
+			return true;
+		}
+
+		return false;
 	}
 
 	private function bytenft_prepare_payment_data($order, $api_public_key, $api_secret) {
