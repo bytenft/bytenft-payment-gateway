@@ -7,8 +7,9 @@ console.log('bytenft-blocks.js loaded at', new Date().toISOString());
         return;
     }
 
-    const settings =
-        window.wc?.wcSettings?.getPaymentMethodData?.('bytenft') || {};
+    const settings = window.wc?.wcSettings?.getSetting?.('bytenft_data') || {};
+
+    if (!settings.title) return;
 
     const label = settings.title || 'ByteNFT';
     const description = settings.description || '';
@@ -18,30 +19,27 @@ console.log('bytenft-blocks.js loaded at', new Date().toISOString());
         label,
         ariaLabel: label,
 
-        content: createElement(
+         content: createElement(
             'div',
             { className: 'bytenft-description' },
-            createElement(RawHTML, {}, description)
+            createElement(RawHTML, {}, settings.description || '')
         ),
 
-        edit: createElement(
+         edit: createElement(
             'div',
             { className: 'bytenft-edit' },
-            label
+            settings.title
         ),
 
-        canMakePayment: async () => {
-            return settings.can_pay !== false;
-        },
+        canMakePayment: async () => settings.can_pay !== false,
 
         supports: {
             features: settings.supports || ['products'],
         },
     };
-    if(settings.title){
-        console.log(settings.title);
-        registerPaymentMethod(methodConfig);
-    }
+
+    console.log('Registering ByteNFT block:', settings.title);
+    registerPaymentMethod(methodConfig);
     
 })();
 

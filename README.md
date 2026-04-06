@@ -142,6 +142,10 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 
 ## Changelog
 
+### Version 1.0.13
+- **Block Checkout Visibility Fix:** Resolved issue where the ByteNFT payment gateway was not visible on first page load in WooCommerce block checkout. Now the gateway registers correctly on initial render.
+- **Multi-Gateway Compatibility:** Fixed a problem where other payment gateways would not appear when the maximum gateway limit was reached. All gateways now display properly.
+
 ### Version 1.0.12
 - **Phone Number Validation:** Enhanced phone number normalization and validation with improved error messages.
 - **Order Status Handling:** Ensured failed, cancelled, or expired orders now update their status correctly in WordPress/WooCommerce.

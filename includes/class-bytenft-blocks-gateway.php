@@ -21,15 +21,21 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 		wp_register_script(
 			'bytenft-blocks-js',
 			plugin_dir_url(BYTENFT_PAYMENT_GATEWAY_FILE) . 'assets/js/bytenft-blocks.js',
-			['wc-blocks-registry', 'wc-settings', 'wp-element'],
+			[
+				'wc-blocks-registry',
+				'wc-settings',
+				'wp-element',
+				'wp-html-entities',
+				'wp-i18n'
+			],
 			'1.0.0',
-			true
+			false
 		);
 		return ['bytenft-blocks-js'];
 	}
 
 	public function get_payment_method_data() {
-         $title       = $this->settings['title'] ?? 'ByteNFT';
+        $title       = $this->settings['title'] ?? 'ByteNFT';
         $description = $this->settings['description'] ?? '';
 
 		if (WC()->cart) {

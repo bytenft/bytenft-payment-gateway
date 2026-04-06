@@ -27,6 +27,11 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 == Changelog ==
 
+= 1.0.13 =
+* ByteNFT payment gateway now appears correctly on first page load in WooCommerce block checkout.
+* Fixed an issue where other payment gateways would not display when the maximum gateway limit was reached.
+* Improved overall stability for block checkout initialization.
+
 = 1.0.12 =
 * Enhanced phone number normalization and validation with improved error messages.
 * Ensured failed, cancelled, or expired orders now update their status correctly in WordPress/WooCommerce.
@@ -75,6 +80,11 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.13 =
+* Update to this version to ensure the ByteNFT payment gateway shows immediately on checkout.
+* Fixed display issues for other payment gateways when the maximum limit is reached.
+* Improved block checkout stability.
 
 = 1.0.12 =
 * Update to this version for improved phone number validation and better error messages during checkout.
