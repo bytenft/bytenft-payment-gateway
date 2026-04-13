@@ -419,12 +419,6 @@ jQuery(function ($) {
         if (popupWindow) { popupWindow.close(); popupWindow = null; }
         $('.wc_er, .wc-block-components-notice-banner').remove();
         var errorMessage = (typeof err === 'string' ? err : err?.message || 'Payment failed').toString().trim();
-
-        // var $error = $('<div>', {
-        //     class: 'wc_er wc-block-components-notice-banner is-error',
-        //     text: errorMessage
-        // });
-
         var $error;
         // If HTML exists, render it
         if (/<[a-z][\s\S]*>/i.test(errorMessage)) {
@@ -434,7 +428,6 @@ jQuery(function ($) {
         }
 
         $form.prepend($error);
-
         $('html, body').animate({ scrollTop: $error.offset().top - 300 }, 500);
         resetButton();
     }
