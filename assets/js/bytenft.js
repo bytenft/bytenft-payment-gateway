@@ -95,14 +95,31 @@ jQuery(function ($) {
             $form.find('#shipping_address_2').val(),
             $form.find('input[autocomplete="address-line1"]').val(),
             $form.find('input[autocomplete="address-line2"]').val(),
-            ...($form.find('input[name*="address"]').map(function () { return $(this).val(); }).get())
+            ...($form.find('input[name*="address"]').map(function () {
+                return $(this).val();
+            }).get())
         ];
 
         for (var i = 0; i < addressFields.length; i++) {
-            if (addressFields[i] && containsPOBox(addressFields[i])) {
-                return 'PO Box addresses are not accepted. Please enter a physical street address.';
+            var val = addressFields[i];
+
+            if (!val) continue;
+
+            var normalized = val
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, ''); // IMPORTANT FIX
+
+            if (
+                normalized.includes('pobox') ||
+                normalized.includes('postofficebox') ||
+                normalized.includes('postalbox') ||
+                normalized.includes('postbox') ||
+                /\bp\s*o\s*b(ox)?\b/i.test(val)
+            ) {
+                return 'PO Box addresses are not allowed. Please enter a physical street address.';
             }
         }
+
         return null;
     }
 
