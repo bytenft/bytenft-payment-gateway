@@ -194,12 +194,27 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$settings = get_option('woocommerce_bytenft_settings', []);
 		$success_status = $settings['order_status'] ?? 'processing';
 
-		$status_map = [
-			'completed' => 'completed', // 🔥 FIX: NEVER map to processing
-			'failed'    => 'failed',
-			'expired'   => 'cancelled',
-			'cancelled' => 'cancelled'
-		];
+		switch ($api_order_status) {
+
+			case 'completed':
+				$target_status = $success_status; // ✅ ADMIN CONTROLLED
+				break;
+
+			case 'failed':
+				$target_status = 'failed';
+				break;
+
+			case 'expired':
+				$target_status = 'cancelled';
+				break;
+
+			case 'cancelled':
+				$target_status = 'cancelled';
+				break;
+
+			default:
+				$target_status = null;
+		}
 
 		$target_status = $status_map[$api_order_status] ?? null;
 
