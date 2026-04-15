@@ -1588,13 +1588,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * @return array          Sorted array of eligible accounts.
 	 */
 
-private function get_routing_sorted_accounts(array $accounts): array {
-	// No max_single_txn logic: return all accounts sorted by priority only
-	usort($accounts, function ($a, $b) {
-		return ($a['priority'] ?? 1) <=> ($b['priority'] ?? 1);
-	});
-	return array_values($accounts);
-}
+	private function get_routing_sorted_accounts(array $accounts): array {
+		// No max_single_txn logic: return all accounts sorted by priority only
+		usort($accounts, function ($a, $b) {
+			return ($a['priority'] ?? 1) <=> ($b['priority'] ?? 1);
+		});
+		return array_values($accounts);
+	}
 
 	/**
 	 * Get checkout display info (title + subtitle) for a given cart amount.
@@ -1618,7 +1618,6 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 		$accStatusApiUrl        = $this->get_api_url('/api/check-merchant-status');
 		$transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
-		$pluginLogApiUrl        = $this->get_api_url('/api/plugin/check/checkout');
 
 		$user_account_active = false;
 		$all_accounts_limited = true;
