@@ -653,8 +653,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// PO Box Validation
 		$billing = $order->get_billing_address_1();
 		if ($this->is_po_box($billing)) {
-			if (is_checkout()) wc_add_notice(__('PO Box addresses are not allowed.', 'bytenft-payment-gateway'), 'error');
-			return ['result' => 'fail', 'error' => 'PO Box addresses are not allowed.'];
+			if (is_checkout()) wc_add_notice(__('PO Box addresses are not accepted. Please enter a physical street address.', 'bytenft-payment-gateway'), 'error');
+			return ['result' => 'fail', 'error' => 'PO Box addresses are not accepted. Please enter a physical street address.'];
 		}
 
 		// Rate Limiting
@@ -927,9 +927,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	private function is_po_box($address) {
-		if (!$address) return false;
-		$clean_address = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $address));
-		return (bool) str_contains($clean_address, "pob");
+		if (empty($address)) return false;
+
+		$clean = strtolower(preg_replace('/[^a-z0-9]/i', '', $address));
+
+		return preg_match('/pob|postoffice/', $clean) === 1;
 	}
 
 	private function bytenft_prepare_payment_data($order, $api_public_key, $api_secret) {

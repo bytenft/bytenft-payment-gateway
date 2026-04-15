@@ -37,8 +37,9 @@ jQuery(function ($) {
     }
 
     function containsPOBox(value) {
-        const cleanAddress = value.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-        return cleanAddress.includes("pob");
+        const clean = value.replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+        return /pob|postoffice/.test(clean);
     }
 
     function isValidEmail(email) {
