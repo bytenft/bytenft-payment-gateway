@@ -374,9 +374,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			wp_die();
 		}
 		wc_clear_notices();
+		$current_status = $order->get_status();
+		
 		// Determine order status
 		if ($order->is_paid() || (isset($response_data['transaction_status']) && ($response_data['transaction_status'] == "success" || $response_data['transaction_status'] == "paid" || $response_data['transaction_status'] == "processing"))) {
-			$order->update_status($configured_order_status, 'Order marked as ' . $configured_order_status . ' by ByteNFT.');
+			
+			if (!in_array($current_status, ['completed', 'processing'])) {
+				$order->update_status($configured_order_status, 'Order marked as ' . $configured_order_status . ' by ByteNFT.');
+			}
 			wp_send_json_success(['status' => 'success', 'redirect_url' => $payment_return_url]);
 			exit;
 		}
