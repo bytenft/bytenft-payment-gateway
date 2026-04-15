@@ -1521,6 +1521,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 		$account  = !empty($sorted) ? $sorted[0] : null;
 		
 		$accounts = $this->get_all_accounts();
+		$available_gateways = WC()->payment_gateways->get_available_payment_gateways();
 		if (empty($accounts)) return $available_gateways;
 
 		usort($accounts, fn($a, $b) => $a['priority'] <=> $b['priority']);
