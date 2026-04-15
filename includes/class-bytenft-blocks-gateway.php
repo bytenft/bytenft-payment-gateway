@@ -21,15 +21,21 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 		wp_register_script(
 			'bytenft-blocks-js',
 			plugin_dir_url(BYTENFT_PAYMENT_GATEWAY_FILE) . 'assets/js/bytenft-blocks.js',
-			['wc-blocks-registry', 'wc-settings', 'wp-element'],
+			[
+				'wc-blocks-registry',
+				'wc-settings',
+				'wp-element',
+				'wp-html-entities',
+				'wp-i18n'
+			],
 			'1.0.0',
-			true
+			false
 		);
 		return ['bytenft-blocks-js'];
 	}
 
 	public function get_payment_method_data() {
-         $title       = $this->settings['title'] ?? 'ByteNFT';
+        $title       = $this->settings['title'] ?? 'ByteNFT';
         $description = $this->settings['description'] ?? '';
 
 		if (WC()->cart) {
@@ -47,7 +53,7 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 				// Debug log for block checkout account info
 				if (function_exists('wc_get_logger')) {
 					$logger = wc_get_logger();
-					$logger->info('Block checkout: get_payment_method_data - amount: ' . $amount . ' | title: ' . $title . ' | description: ' . $description, [ 'source' => 'bytenft-payment-gateway' ]);
+					$logger->info('Block checkout: get_payment_method_data - amount: ' . $amount . ' | title: ' . $title . ' | description: ' . wp_strip_all_tags($description), [ 'source' => 'bytenft-payment-gateway' ]);
 				}
 			}
 		}
@@ -57,6 +63,7 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
             'description' => $description,
 			'supports'    => ['products'],
 			'isActive'    => $this->is_active(),
+			'can_pay'	  => $this->is_active(),
 			'sandbox'     => $this->settings['sandbox'] ?? '',
 			'order_status'=> $this->settings['order_status'] ?? '',
 			'instructions'=> $this->settings['instructions'] ?? '',

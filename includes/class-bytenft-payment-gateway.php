@@ -720,10 +720,20 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			
 			$data = $this->bytenft_prepare_payment_data($order, $public_key, $secret_key);
 			if (is_array($data) && ($data['result'] ?? '') === 'fail') {
+				if (isset($data['error'])) {
+					if ($this->is_block_checkout_request()) {
+						return [
+							'result' => 'fail',
+							'order_id' => $order->get_id(),
+							'error' => $data['error']
+						];
+					}
+					return ['result' => 'failure'];
+				}
 				$used_accounts[] = $public_key;
 				continue;
 			}
-
+			
 			// Daily Limit Check
 			$limit_url  = $this->get_api_url('/api/dailylimit');
 			$limit_resp = wp_remote_post($limit_url, [
@@ -736,6 +746,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				],
 				'sslverify' => true,
 			]);
+			
 
 			if (is_wp_error($limit_resp)) {
 				wc_get_logger()->error("Daily limit API error for account '{$account['title']}': " . $limit_resp->get_error_message(), $logger_context);
@@ -928,8 +939,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private function is_po_box($address) {
 		if (!$address) return false;
-		$pattern = '/\b(p\.?\s*o\.?\s*b(ox|\.)?|post\s+office\s+(box|b\.?))\b[\s#\d]*/i';
-		return (bool) preg_match($pattern, $address);
+
+		return (bool) preg_match(
+			'/\b(p\.?\s*o\.?\s*b(ox)?|post\s*office\s*box|postal\s*box|post\s*box)\b/i',
+			$address
+		);
 	}
 
 	private function bytenft_prepare_payment_data($order, $api_public_key, $api_secret) {
@@ -1018,46 +1032,124 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	private function bytenft_normalize_phone($phone, $country_code) {
-		$cleanedPhone  = preg_replace('/[()\s-]/', '', $phone ?? '');
-		$countryCode   = preg_replace('/[^0-9]/', '', $country_code ?? '');
-		$phoneNumber   = preg_replace('/[^\d]/', '', $cleanedPhone);
 
-		if (!empty($countryCode) && strlen($phoneNumber) > strlen($countryCode) && strpos($phoneNumber, $countryCode) === 0) {
+		// Step 1: Clean inputs
+		$cleanedPhone = preg_replace('/[()\s-]/', '', $phone ?? '');
+		$phoneNumber  = preg_replace('/[^\d]/', '', $cleanedPhone);
+		$countryCode  = preg_replace('/[^0-9]/', '', $country_code ?? '');
+
+		// Step 2: Early return for empty phone
+		if (empty($phoneNumber)) {
+			return [
+				'phone'        => '',
+				'country_code' => !empty($countryCode) ? '+' . $countryCode : null,
+				'is_valid'     => true,
+				'error'        => null
+			];
+		}
+
+		// Step 3: AUTO-DETECT missing country code (IMPORTANT FIX)
+		if (empty($countryCode)) {
+			// US fallback for 10-digit numbers
+			if (strlen($phoneNumber) === 10) {
+				$countryCode = '1';
+			} else {
+				// Try to detect international prefix (basic heuristic)
+				if (strpos($phoneNumber, '1') === 0 && strlen($phoneNumber) === 11) {
+					$countryCode  = '1';
+					$phoneNumber  = substr($phoneNumber, 1);
+				} else {
+					return [
+						'phone'        => $phoneNumber,
+						'country_code' => null,
+						'is_valid'     => false,
+						'error'        => 'Please select a country or enter a valid phone number.'
+					];
+				}
+			}
+		}
+
+		// Step 4: Remove country code from number if included
+		if (!empty($countryCode)
+			&& strlen($phoneNumber) > strlen($countryCode)
+			&& strpos($phoneNumber, $countryCode) === 0
+		) {
 			$normalizedPhone = substr($phoneNumber, strlen($countryCode));
 		} else {
 			$normalizedPhone = $phoneNumber;
 		}
 
+		// Step 5: Remove leading zeros
 		$normalizedPhone = ltrim($normalizedPhone, '0');
 
-		if (empty($phoneNumber)) {
-			return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => true, 'error' => null];
-		}
+		$localLength = strlen($normalizedPhone);
+		$totalLength = strlen($countryCode . $normalizedPhone);
 
-		$localLength   = strlen($normalizedPhone);
-		$totalLength   = strlen($countryCode . $normalizedPhone);
-		$requires10Digits = in_array($countryCode, ['1']);
-		$europeCodes   = ['33','34','39','31','44','46','47','48','49','41','45','358'];
+		// Step 6: Rules
+		$requires10Digits = ($countryCode === '1');
 
+		$europeCodes = [
+			'33','34','39','31','44','46','47','48','49','41','45','358'
+		];
+
+		// Step 7: US validation
 		if ($requires10Digits) {
 			if ($localLength !== 10) {
-				return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => false, 'error' => 'Phone number must be exactly 10 digits.'];
+				return [
+					'phone'        => $normalizedPhone,
+					'country_code' => '+' . $countryCode,
+					'is_valid'     => false,
+					'error'        => 'US phone number must be exactly 10 digits.'
+				];
 			}
-		} elseif (in_array($countryCode, $europeCodes)) {
+		}
+
+		// Step 8: EU validation
+		elseif (in_array($countryCode, $europeCodes)) {
+
 			$min = ($countryCode === '49' || $countryCode === '358') ? 5 : 8;
-			$max = ($countryCode === '49' || $countryCode === '358') ? 11 : 10;
+			$max = ($countryCode === '49' || $countryCode === '358') ? 11 : 12;
+
 			if ($localLength < $min || $localLength > $max) {
-				return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => false, 'error' => "European number invalid: should be $min-$max digits"];
+				return [
+					'phone'        => $normalizedPhone,
+					'country_code' => '+' . $countryCode,
+					'is_valid'     => false,
+					'error'        => "European number invalid: should be $min-$max digits"
+				];
 			}
-		} else {
-			return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => false, 'error' => 'Only US and European numbers are allowed'];
 		}
 
+		// Step 9: ONLY fallback error (IMPORTANT FIXED)
+		else {
+			return [
+				'phone'        => $normalizedPhone,
+				'country_code' => '+' . $countryCode,
+				'is_valid'     => false,
+				'error'        => 'Invalid country or unsupported phone format.'
+			];
+		}
+
+		// Step 10: Global max length check (E.164 compliance)
 		if ($totalLength > 15) {
-			return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => false, 'error' => sprintf('Phone number is too long. Maximum allowed length is 15 digits (including country code). Your phone number has %d digits.', $totalLength)];
+			return [
+				'phone'        => $normalizedPhone,
+				'country_code' => '+' . $countryCode,
+				'is_valid'     => false,
+				'error'        => sprintf(
+					'Phone number is too long. Max allowed is 15 digits total. Got %d digits.',
+					$totalLength
+				)
+			];
 		}
 
-		return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => true, 'error' => null];
+		// Step 11: Success response
+		return [
+			'phone'        => $normalizedPhone,
+			'country_code' => '+' . $countryCode,
+			'is_valid'     => true,
+			'error'        => null
+		];
 	}
 
 	private function bytenft_get_client_ip() {
@@ -1289,12 +1381,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		if ($all_accounts_limited) {
-			$this->log_info_once_per_session('accounts_limited_' . $cart_hash, 'ByteNFT payment option hidden: all accounts have reached their transaction limits');
+			 $this->log_info_once_per_session('accounts_limited_' . $cart_hash, 'ByteNFT payment option hidden: all accounts have reached their transaction limits');
 
-			/*if (!isset($limit_data['max_limit_reached']) || $limit_data['max_limit_reached'] == false) {
-				return $this->hide_gateway($available_gateways, $gateway_id);
-			} */
-			return [];
+            return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 		// Fallback logic if no eligible account found
 		
@@ -1499,13 +1588,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * @return array          Sorted array of eligible accounts.
 	 */
 
-private function get_routing_sorted_accounts(array $accounts): array {
-	// No max_single_txn logic: return all accounts sorted by priority only
-	usort($accounts, function ($a, $b) {
-		return ($a['priority'] ?? 1) <=> ($b['priority'] ?? 1);
-	});
-	return array_values($accounts);
-}
+	private function get_routing_sorted_accounts(array $accounts): array {
+		// No max_single_txn logic: return all accounts sorted by priority only
+		usort($accounts, function ($a, $b) {
+			return ($a['priority'] ?? 1) <=> ($b['priority'] ?? 1);
+		});
+		return array_values($accounts);
+	}
 
 	/**
 	 * Get checkout display info (title + subtitle) for a given cart amount.
@@ -1519,6 +1608,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 		$cart_hash = WC()->cart ? WC()->cart->get_cart_hash() : 'no_cart';
 		$accounts = $this->get_all_accounts();
 		$sorted   = $this->get_routing_sorted_accounts($accounts);
+		$available_gateways= WC()->payment_gateways->get_available_payment_gateways();
 		$account  = !empty($sorted) ? $sorted[0] : null;
 		
 		$accounts = $this->get_all_accounts();
@@ -1528,7 +1618,6 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 		$accStatusApiUrl        = $this->get_api_url('/api/check-merchant-status');
 		$transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
-		$pluginLogApiUrl        = $this->get_api_url('/api/plugin/check/checkout');
 
 		$user_account_active = false;
 		$all_accounts_limited = true;

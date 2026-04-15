@@ -25,23 +25,41 @@ jQuery(function ($) {
         }
         return '';
     }
+     function isUSCountry($form) {
+        if ($('#billing_country').length) return $('#billing_country').val() === 'US';
+        var text = $form.text() || '';
+        return text.indexOf('United States') !== -1 || text.indexOf('US') !== -1;
+    }
+
 
     // Helper: Validate phone number (US/EU/general)
-    function isValidPhoneNumber(phone) {
+     function isValidPhoneNumber(phone, isUS) {
         if (!phone || phone.trim() === '') return true;
+        if ((phone.match(/\+/g) || []).length > 1) return false;
+
         var cleaned        = phone.replace(/[\s\-().]/g, '');
+        var numbersOnly    = cleaned.replace(/[^\d]/g, '');
+
+        if (numbersOnly.length < 5 || numbersOnly.length > 15) return false;
+
+        if (isUS) {
+             return /^(\+1|1)?\d{10}$/.test(cleaned);
+        }
+
         var usPattern      = /^(\+1|1)?\d{10}$/;
         var euPattern      = /^(\+|00)[1-9]\d{6,14}$/;
-        var generalPattern = /^\+?\d{7,20}$/;
+        var generalPattern = /^\+?\d{5,15}$/;
+        
         return usPattern.test(cleaned) || euPattern.test(cleaned) || generalPattern.test(cleaned);
     }
 
-    // PO Box detection regex — covers all common formats:
-    // PO Box P.O. Box P O Box POBox pobox POBOX pObOX (case-insensitive handles this) P.O.B Post Office Box PostOfficeBox
-    var PO_BOX_PATTERN = /\b(p\.?\s*o\.?\s*b(?:ox|\.?)|pobox|post\s*office\s*b(?:ox|\.?))\b[\s#\d]*/i;
-
     function containsPOBox(value) {
-        return PO_BOX_PATTERN.test(value);
+        if (!value) return false;
+
+        // Normalize: lowercase + remove spaces and dots
+        var normalized = value.toLowerCase().replace(/[\.\s]/g, '');
+
+        return normalized.includes('pobox') || normalized.includes('postofficebox');
     }
 
     function isValidEmail(email) {
@@ -77,14 +95,31 @@ jQuery(function ($) {
             $form.find('#shipping_address_2').val(),
             $form.find('input[autocomplete="address-line1"]').val(),
             $form.find('input[autocomplete="address-line2"]').val(),
-            ...($form.find('input[name*="address"]').map(function () { return $(this).val(); }).get())
+            ...($form.find('input[name*="address"]').map(function () {
+                return $(this).val();
+            }).get())
         ];
 
         for (var i = 0; i < addressFields.length; i++) {
-            if (addressFields[i] && containsPOBox(addressFields[i])) {
-                return 'PO Box addresses are not accepted. Please enter a physical street address.';
+            var val = addressFields[i];
+
+            if (!val) continue;
+
+            var normalized = val
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, ''); // IMPORTANT FIX
+
+            if (
+                normalized.includes('pobox') ||
+                normalized.includes('postofficebox') ||
+                normalized.includes('postalbox') ||
+                normalized.includes('postbox') ||
+                /\bp\s*o\s*b(ox)?\b/i.test(val)
+            ) {
+                return 'PO Box addresses are not allowed. Please enter a physical street address.';
             }
         }
+
         return null;
     }
 
@@ -155,9 +190,12 @@ jQuery(function ($) {
 
                 // Classic: Validate phone using getPhoneNumber
                 var phone = getPhoneNumber($('form.checkout'));
-                if (phone !== '' && !isValidPhoneNumber(phone)) return;
+                if (phone !== '' && !isValidPhoneNumber(phone, isUSCountry($('form.checkout')))) return;
+
 
                 if (validateNoPOBox($('form.checkout'))) return;
+                if ($('form.checkout .woocommerce-invalid').length > 0) return;
+
 
                 openPopupEarly();
             });
@@ -218,7 +256,7 @@ jQuery(function ($) {
 
                 // Step 3: Phone (use getPhoneNumber helper)
                 var phone = getPhoneNumber($('form.wc-block-checkout__form'));
-                if (phone !== '' && !isValidPhoneNumber(phone)) {
+                 if (phone !== '' && !isValidPhoneNumber(phone, isUSCountry($('form.wc-block-checkout__form')))) {
                     $('form.wc-block-checkout__form').prepend(
                         '<div class="wc_er wc-block-components-notice-banner is-error"><ul style="margin:0"><li>Please enter a valid phone number or leave it blank.</li></ul></div>'
                     );
@@ -237,6 +275,21 @@ jQuery(function ($) {
                 }
 
                 // Step 5: All valid — open popup (Safari fix) then fire AJAX
+                var hasNativeBlockErrors = false;
+                $('.wc-block-components-validation-error').each(function() {
+                    if ($(this).text().trim() !== '') hasNativeBlockErrors = true;
+                });
+                if ($('form.wc-block-checkout__form .has-error').length > 0 || $('form.wc-block-checkout__form .is-invalid').length > 0) {
+                    hasNativeBlockErrors = true;
+                }
+
+                if (hasNativeBlockErrors) {
+                    $('form.wc-block-checkout__form').prepend(
+                        '<div class="wc_er wc-block-components-notice-banner is-error"><ul style="margin:0"><li>Please fix the errors in the form before continuing.</li></ul></div>'
+                    );
+                    window.scrollTo(0, 0);
+                    return false;
+                }
                 openPopupEarly();
                 handleFormSubmit.call($('form.wc-block-checkout__form'), e);
                 return false;
@@ -266,7 +319,7 @@ jQuery(function ($) {
 
         // Classic: Validate phone using getPhoneNumber
         var phone = getPhoneNumber($form);
-        if (phone !== '' && !isValidPhoneNumber(phone)) {
+        if (phone !== '' && !isValidPhoneNumber(phone, isUSCountry($form))) {
             $form.find('.woocommerce-error, .wc_er, .wc-block-components-notice-banner, ul[role="alert"]').remove();
             var $errorUl = $('<ul class="woocommerce-error" role="alert" style="list-style:none;margin:0 0 32px 0;"></ul>');
             $errorUl.append('<li>Please enter a valid phone number or leave it blank.</li>');
@@ -359,7 +412,7 @@ jQuery(function ($) {
     function handleResponse(response, $form) {
         $('.wc_er').remove();
         try {
-            if (response.result === 'success') {
+            if (response.result === 'success' && response?.redirect) {
                 orderId = response.order_id;
                 openPaymentLink(response.redirect);
             } else {
@@ -383,11 +436,13 @@ jQuery(function ($) {
         if (popupWindow) { popupWindow.close(); popupWindow = null; }
         $('.wc_er, .wc-block-components-notice-banner').remove();
         var errorMessage = (typeof err === 'string' ? err : err?.message || 'Payment failed').toString().trim();
-
-        var $error = $('<div>', {
-            class: 'wc_er wc-block-components-notice-banner is-error',
-            text: errorMessage
-        });
+        var $error;
+        // If HTML exists, render it
+        if (/<[a-z][\s\S]*>/i.test(errorMessage)) {
+            $error = $('<div class="wc_er wc-block-components-notice-banner is-error"></div>').html(errorMessage);
+        } else {
+            $error = $('<div class="wc_er wc-block-components-notice-banner is-error"></div>').text(errorMessage);
+        }
 
         $form.prepend($error);
         $('html, body').animate({ scrollTop: $error.offset().top - 300 }, 500);
@@ -403,12 +458,23 @@ jQuery(function ($) {
         }
     }
 
-    function isValidPhoneNumber(phone) {
+    function isValidPhoneNumber(phone, isUS) {
         if (!phone || phone.trim() === '') return true;
+        if ((phone.match(/\+/g) || []).length > 1) return false;
+
         var cleaned        = phone.replace(/[\s\-().]/g, '');
+        var numbersOnly    = cleaned.replace(/[^\d]/g, '');
+
+        if (numbersOnly.length < 5 || numbersOnly.length > 15) return false;
+
+        if (isUS) {
+             return /^(\+1|1)?\d{10}$/.test(cleaned);
+        }
+
         var usPattern      = /^(\+1|1)?\d{10}$/;
         var euPattern      = /^(\+|00)[1-9]\d{6,14}$/;
-        var generalPattern = /^\+?\d{7,20}$/;
+        var generalPattern = /^\+?\d{5,15}$/;
+
         return usPattern.test(cleaned) || euPattern.test(cleaned) || generalPattern.test(cleaned);
     }
 

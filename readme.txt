@@ -3,7 +3,7 @@ Contributors: ByteNFT
 Tags: woocommerce, payment gateway, fiat, ByteNFT
 Requires at least: 5.0
 Tested up to: 6.9
-Stable tag: 1.0.12
+Stable tag: 1.0.13
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -26,6 +26,11 @@ This plugin integrates ByteNFT Payment Gateway with WooCommerce, enabling you to
 Visit the DFin website and log in to your account. Navigate to Developer Settings to generate or retrieve API keys.
 
 == Changelog ==
+
+= 1.0.13 =
+* ByteNFT payment gateway now appears correctly on first page load in WooCommerce block checkout.
+* Fixed an issue where other payment gateways would not display when the maximum gateway limit was reached.
+* Improved overall stability for block checkout initialization.
 
 = 1.0.12 =
 * Enhanced phone number normalization and validation with improved error messages.
@@ -75,6 +80,11 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.13 =
+* Update to this version to ensure the ByteNFT payment gateway shows immediately on checkout.
+* Fixed display issues for other payment gateways when the maximum limit is reached.
+* Improved block checkout stability.
 
 = 1.0.12 =
 * Update to this version for improved phone number validation and better error messages during checkout.

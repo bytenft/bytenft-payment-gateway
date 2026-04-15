@@ -333,6 +333,17 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			], 200);
 		}
 
+		if ($current_status === 'completed') {
+			$this->logger->info('Order already in target status', $log_context);
+
+			return new WP_REST_Response([
+				'success' => true,
+				'message' => 'Order already in correct status.',
+				'status' => $current_status,
+				'payment_return_url' => $order->get_checkout_order_received_url()
+			], 200);
+		}
+
 		try {
 			$order->update_status(
 				$target_order_status,
