@@ -29,6 +29,7 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 = 1.0.13 =
 * Payment Gateway Visibility Fix: Resolved an issue where when the payment limit was reached, other available payment methods were not displayed correctly.
+* PO Box Validation Improvements: Enhanced billing address validation to prevent PO Box entries where restricted, improving address accuracy and reducing failed or unsupported transactions.
 
 = 1.0.12 =
 * Enhanced phone number normalization and validation with improved error messages.
@@ -80,7 +81,7 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 == Upgrade Notice ==
 
 = 1.0.13 =
-Fixes an issue where other payment methods were not visible when the payment limit was reached. Update is recommended.
+This update fixes a critical issue where available payment methods were not displayed when limits were reached and improves billing address validation by blocking unsupported PO Box entries. It is recommended to update immediately for improved checkout reliability.
 
 = 1.0.12 =
 * Update to this version for improved phone number validation and better error messages during checkout.

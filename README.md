@@ -144,6 +144,7 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 
 ### Version 1.0.13
 - **Payment Gateway Visibility Fix:** Resolved an issue where when the payment limit was reached, other available payment methods were not displayed correctly.
+- **PO Box Validation Improvements:** Enhanced billing address validation to prevent PO Box entries where restricted, improving address accuracy and reducing failed or unsupported transactions.
 
 ### Version 1.0.12
 - **Phone Number Validation:** Enhanced phone number normalization and validation with improved error messages.
