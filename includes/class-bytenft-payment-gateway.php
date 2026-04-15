@@ -928,8 +928,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private function is_po_box($address) {
 		if (!$address) return false;
-		$pattern = '/\b(p\.?\s*o\.?\s*b(ox|\.)?|post\s+office\s+(box|b\.?))\b[\s#\d]*/i';
-		return (bool) preg_match($pattern, $address);
+		$clean_address = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $address));
+		return (bool) str_contains($clean_address, "pob");
 	}
 
 	private function bytenft_prepare_payment_data($order, $api_public_key, $api_secret) {

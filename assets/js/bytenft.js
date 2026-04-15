@@ -36,12 +36,9 @@ jQuery(function ($) {
         return usPattern.test(cleaned) || euPattern.test(cleaned) || generalPattern.test(cleaned);
     }
 
-    // PO Box detection regex — covers all common formats:
-    // PO Box P.O. Box P O Box POBox pobox POBOX pObOX (case-insensitive handles this) P.O.B Post Office Box PostOfficeBox
-    var PO_BOX_PATTERN = /\b(p\.?\s*o\.?\s*b(?:ox|\.?)|pobox|post\s*office\s*b(?:ox|\.?))\b[\s#\d]*/i;
-
     function containsPOBox(value) {
-        return PO_BOX_PATTERN.test(value);
+        const cleanAddress = value.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        return cleanAddress.includes("pob");
     }
 
     function isValidEmail(email) {
