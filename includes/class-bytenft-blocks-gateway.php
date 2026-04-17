@@ -47,7 +47,7 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 				// Debug log for block checkout account info
 				if (function_exists('wc_get_logger')) {
 					$logger = wc_get_logger();
-					$logger->info('Block checkout: get_payment_method_data - amount: ' . $amount . ' | title: ' . $title . ' | description: ' . $description, [ 'source' => 'bytenft-payment-gateway' ]);
+					//$logger->info('Block checkout: get_payment_method_data - amount: ' . $amount . ' | title: ' . $title . ' | description: ' . $description, [ 'source' => 'bytenft-payment-gateway' ]);
 				}
 			}
 		}
