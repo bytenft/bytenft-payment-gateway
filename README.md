@@ -138,7 +138,7 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 
 ## Documentation
 
-The official documentation for this plugin is available at: [https://pay.bytenft.xyz/api/docs/wordpress-plugin](https://pay.bytenft.xyz/api/docs/wordpress-plugin)
+The official documentation for this plugin is available at: [https://pay.bytenft.xyz/docs/wordpress-plugin](https://pay.bytenft.xyz/docs/wordpress-plugin)
 
 ## Changelog
 
@@ -198,7 +198,7 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 
 ## Support
 
-For customer support, visit: [https://pay.bytenft.xyz/reach-out](https://pay.bytenft.xyz/reach-out)
+For customer support, visit: [https://pay.bytenft.xyz/contact-us](https://pay.bytenft.xyz/contact-us)
 
 ## Why Choose ByteNFT Payment Gateway?
 
