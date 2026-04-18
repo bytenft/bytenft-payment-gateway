@@ -382,12 +382,16 @@ jQuery(function ($) {
         $('.wc_er, .wc-block-components-notice-banner').remove();
         var errorMessage = (typeof err === 'string' ? err : err?.message || 'Payment failed').toString().trim();
 
-        var $error = $('<div>', {
-            class: 'wc_er wc-block-components-notice-banner is-error',
-            text: errorMessage
-        });
+        // If HTML exists, render it
+        if (/<[a-z][\s\S]*>/i.test(errorMessage)) {
+            $error = $('<div class="wc_er wc-block-components-notice-banner is-error"></div>');
+            $form.prepend(errorMessage);
+        } else {
+            $error = $('<div class="wc_er wc-block-components-notice-banner is-error"></div>').text(errorMessage);
+            $form.prepend($error);
+        }
 
-        $form.prepend($error);
+        
         $('html, body').animate({ scrollTop: $error.offset().top - 300 }, 500);
         resetButton();
     }
