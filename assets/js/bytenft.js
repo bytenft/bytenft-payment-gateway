@@ -408,15 +408,6 @@ jQuery(function ($) {
         }
     }
 
-    function isValidPhoneNumber(phone) {
-        if (!phone || phone.trim() === '') return true;
-        var cleaned        = phone.replace(/[\s\-().]/g, '');
-        var usPattern      = /^(\+1|1)?\d{10}$/;
-        var euPattern      = /^(\+|00)[1-9]\d{6,14}$/;
-        var generalPattern = /^\+?\d{7,20}$/;
-        return usPattern.test(cleaned) || euPattern.test(cleaned) || generalPattern.test(cleaned);
-    }
-
     var errorSelectors = [
         '.woocommerce-error',
         '.wc_er',
