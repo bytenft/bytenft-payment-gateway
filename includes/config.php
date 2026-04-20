@@ -15,5 +15,5 @@ if (!defined('BYTENFT_BASE_URL')) {
 }
 
 if (!defined('BYTENFT_PLUGIN_VERSION')) {
-    define('BYTENFT_PLUGIN_VERSION', '1.0.12');
+    define('BYTENFT_PLUGIN_VERSION', '1.0.14');
 }

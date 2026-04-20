@@ -319,6 +319,11 @@ jQuery(function ($) {
     }
 
     function openPaymentLink(paymentLink) {
+
+        paymentLink = paymentLink
+            .replace(/#038;/g, '')
+            .replace(/&amp;/g, '&');
+        
         setTimeout(function () {
             if (popupWindow && !popupWindow.closed) {
                 popupWindow.location.href = paymentLink;
