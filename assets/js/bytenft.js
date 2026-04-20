@@ -342,11 +342,18 @@ jQuery(function ($) {
                     if (!isBlockSelected) {
                         $(document.body).trigger('update_checkout');
                     }
+                    const $targetForm = isBlockSelected 
+                        ? $('form.wc-block-checkout__form') 
+                        : $('form.checkout');
+
                     if (response.success && response.data?.redirect_url) {
                         window.location.replace(response.data.redirect_url);
-                    } else if (response.data?.notices) {
-                        var $targetForm = isBlockSelected ? $('form.wc-block-checkout__form') : $('form.checkout');
-                        displayError(response.data.notices, $targetForm);
+                        return;
+                    }
+
+                    const errorMessage = response?.data?.notices || response?.data?.message;
+                    if (errorMessage) {
+                        displayError(errorMessage, $targetForm);
                     }
                     resetButton();
                 }, 'json');
