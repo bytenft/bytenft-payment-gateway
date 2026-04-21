@@ -320,14 +320,10 @@ jQuery(function ($) {
 
     function openPaymentLink(paymentLink) {
 
-        console.log('Before Open Popoup paymentLink-- ', paymentLink)
-
         paymentLink = paymentLink
             .replace(/#038;/g, '')
             .replace(/&amp;/g, '&');
-        
-        console.log('After Open Popoup paymentLink-- ', paymentLink)
-        
+    
         setTimeout(function () {
             if (popupWindow && !popupWindow.closed) {
                 popupWindow.location.href = paymentLink;
