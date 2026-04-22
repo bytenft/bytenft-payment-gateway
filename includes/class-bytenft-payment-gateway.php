@@ -649,7 +649,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
 			}
 
-			return ['result' => 'fail'];
+			return ['result' => 'fail','error'=>'Invalid order.'];
 		}
 
 		// -------------------------------------------------
@@ -801,7 +801,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ($last_error_data) {
 				if (isset($last_error_data['max_limit_reached']) && $last_error_data['max_limit_reached']) {
 					wc_add_notice(__('The transaction amount exceeds the maximum allowed limit.', 'bytenft-payment-gateway'), 'error');
-					return ['result' => 'fail'];
+					return ['result' => 'fail','error'=>'The transaction amount exceeds the maximum allowed limit.'];
 				}
 
 				$order->update_meta_data('_bytenft_limit_exceeded', true);
@@ -811,14 +811,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					wc_add_notice($last_error_data['message'], 'error');
 				}
 
-				return ['result' => 'failure'];
+				return ['result' => 'fail', 'error' => $last_error_data['message']];
 			}
 
 			wc_get_logger()->error('No available payment accounts found.', $logger_context);
 
 			wc_add_notice(__('No available payment accounts.', 'bytenft-payment-gateway'), 'error');
 
-			return ['result' => 'fail'];
+			return ['result' => 'fail', 'error' => 'No available payment accounts.'];
 		}
 
 		// -------------------------------------------------
@@ -846,7 +846,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		if (is_wp_error($response)) {
 			wc_get_logger()->error("HTTP error: " . $response->get_error_message(), $logger_context);
 			wc_add_notice(__('Payment error: Unable to process.', 'bytenft-payment-gateway'), 'error');
-			return ['result' => 'fail'];
+			return ['result' => 'fail','error'=>'Payment error: Unable to process.'];
 		}
 
 		$resp_data = json_decode(wp_remote_retrieve_body($response), true);
@@ -858,7 +858,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			wc_add_notice($error_msg, 'error');
-			return ['result' => 'failure'];
+			return ['result' => 'fail','error'=>$error_msg];
 		}
 
 		// -------------------------------------------------
@@ -1013,7 +1013,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		if (empty($order_id)) {
 			wc_get_logger()->error('Order ID is missing or invalid.', ['source' => 'bytenft-payment-gateway']);
-			return ['result' => 'fail'];
+			return ['result' => 'fail','error'=>'Order ID is missing or invalid.'];
 		}
 
 		$meta_data_array = array_map('sanitize_text_field', [
