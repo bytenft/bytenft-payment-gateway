@@ -222,7 +222,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		// -------------------------------------------------
 		// 3. FINAL STATE RULE
 		// -------------------------------------------------
-		if ($current_status === 'completed') {
+		if ($current_status === 'completed' || $current_status === 'processing') {
 
 			$this->logger->info("Order #{$order_id} already completed. Skipping update.", $log_context);
 
@@ -305,10 +305,9 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 
 			$source = ($method === 'POST') ? 'Webhook/API' : 'Customer Redirect';
 
-			$note  = "🔄 ByteNFT Payment Update\n";
+			$note  = "ByteNFT Payment Update\n";
 			$note .= "Status: {$api_order_status}\n";
 			$note .= "Source: {$source}\n";
-			$note .= "Transaction ID: {$pay_id}";
 
 			$order->update_status($target_status, $note);
 
