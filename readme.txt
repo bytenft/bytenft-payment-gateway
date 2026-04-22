@@ -28,7 +28,9 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 == Changelog ==
 
 = 1.0.14 =
-* Feature: Added Woosa as a new payment provider for WooCommerce.
+* Improved payment order synchronization logic for better reliability and consistency between payment gateway and WooCommerce orders.
+* Optimized payment status handling to reduce race conditions and ensure accurate final order states.
+* Minor code improvements for enhanced stability and maintainability.
 
 = 1.0.13 =
 * Payment Gateway Visibility Fix: Resolved an issue where when the payment limit was reached, other available payment methods were not displayed correctly.
@@ -84,7 +86,7 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 == Upgrade Notice ==
 
 = 1.0.14 =
-Introduces Woosa custom payment integration, enabling seamless and secure payment processing within WooCommerce. This update improves overall checkout flow and ensures better handling of payment transactions. Update recommended.
+This update improves payment synchronization and fixes potential inconsistencies in order status updates. It is recommended to upgrade to ensure more reliable payment processing and accurate order tracking.
 
 = 1.0.13 =
 This update fixes a critical issue where available payment methods were not displayed when limits were reached and improves billing address validation by blocking unsupported PO Box entries. It is recommended to update immediately for improved checkout reliability.
