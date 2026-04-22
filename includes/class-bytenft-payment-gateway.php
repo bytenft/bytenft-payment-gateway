@@ -857,7 +857,18 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$resp_data['message'] ?? $resp_data['context']['message'] ?? 'Payment failed.'
 			);
 
-			wc_add_notice($error_msg, 'error');
+			if ($this->is_block_checkout_request()) {
+				return [
+					'result'   => 'fail',
+					'order_id' => $order->get_id(),
+					'error'    => $error_msg
+				];
+			}
+
+			if (is_checkout()) {
+				wc_add_notice($error_msg, 'error');
+			}
+
 			return ['result' => 'fail','error'=>$error_msg];
 		}
 
