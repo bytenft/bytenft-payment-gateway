@@ -167,6 +167,8 @@ jQuery(function ($) {
             .off("click.bytenft-popup")
             .off("click.bytenft-submit")
             .on("click.bytenft", function (e) {
+                 e.preventDefault();
+                 e.stopImmediatePropagation();
 
                 if ($('input[name="radio-control-wc-payment-method-options"]:checked').val() !== bytenft_params.payment_method) {
                     return;
@@ -320,19 +322,37 @@ jQuery(function ($) {
 
     function openPaymentLink(paymentLink) {
 
+        // ✅ SAFETY GUARD (fix your crash)
+        if (!paymentLink || typeof paymentLink !== 'string') {
+            console.error('Invalid payment link received:', paymentLink);
+            displayError('Payment link is missing or invalid.', $('form.checkout, form.wc-block-checkout__form'));
+            resetButton();
+            return;
+        }
+
+        if (!paymentLink || typeof paymentLink !== 'string') {
+            console.error('Invalid payment link:', paymentLink);
+            displayError('Payment link missing from server response.', $('form.checkout, form.wc-block-checkout__form'));
+            resetButton();
+            return;
+        }
+
         paymentLink = paymentLink
             .replace(/#038;/g, '')
             .replace(/&amp;/g, '&');
-    
+
         setTimeout(function () {
+
             if (popupWindow && !popupWindow.closed) {
                 popupWindow.location.href = paymentLink;
-            } else if (!popupWindow) {
-                window.location.href = paymentLink;
+            } else {
+                window.top.location.assign(paymentLink);
             }
-        }, 300);
+
+        }, 100);
 
         popupInterval = setInterval(function () {
+
             if (!popupWindow || popupWindow.closed) {
                 clearInterval(popupInterval);
                 clearInterval(paymentStatusInterval);
@@ -343,38 +363,54 @@ jQuery(function ($) {
                     order_id: orderId,
                     security: bytenft_params.bytenft_nonce
                 }, function (response) {
-                    var isBlockSelected = $('input[name="radio-control-wc-payment-method-options"]:checked').val() === bytenft_params.payment_method;
-                    if (!isBlockSelected) {
-                        $(document.body).trigger('update_checkout');
-                    }
-                    const $targetForm = isBlockSelected 
-                        ? $('form.wc-block-checkout__form') 
+
+                    var isBlockSelected =
+                        $('input[name="radio-control-wc-payment-method-options"]:checked').val()
+                        === bytenft_params.payment_method;
+
+                    const $targetForm = isBlockSelected
+                        ? $('form.wc-block-checkout__form')
                         : $('form.checkout');
 
-                    if (response.success && response.data?.redirect_url) {
-                        window.location.replace(response.data.redirect_url);
+                    if (response?.success && response?.data?.redirect_url) {
+                        safeRedirect(response.data.redirect_url);
                         return;
                     }
 
                     const errorMessage = response?.data?.notices || response?.data?.message;
+
                     if (errorMessage) {
                         displayError(errorMessage, $targetForm);
                     }
+
                     resetButton();
+
                 }, 'json');
             }
+
         }, 500);
     }
 
     function handleResponse(response, $form) {
         $('.wc_er').remove();
+
         try {
             if (response.result === 'success') {
+
                 orderId = response.order_id;
-                openPaymentLink(response.redirect);
+
+                const paymentLink = response.payment_link || response.redirect;
+
+                if (!paymentLink) {
+                    displayError('Payment link is missing or invalid.', $form);
+                    return;
+                }
+
+                openPaymentLink(paymentLink);
+
             } else {
                 if (popupWindow) { popupWindow.close(); popupWindow = null; }
-                displayError(response?.error || response?.notices || response?.messages || 'Payment failed.', $form);
+                displayError(response?.error || response?.notices || 'Payment failed.', $form);
             }
         } catch (err) {
             if (popupWindow) { popupWindow.close(); popupWindow = null; }
@@ -390,21 +426,36 @@ jQuery(function ($) {
     }
 
     function displayError(err, $form) {
-        if (popupWindow) { popupWindow.close(); popupWindow = null; }
-        $('.wc_er, .wc-block-components-notice-banner').remove();
-        var errorMessage = (typeof err === 'string' ? err : err?.message || 'Payment failed').toString().trim();
-
-        // If HTML exists, render it
-        if (/<[a-z][\s\S]*>/i.test(errorMessage)) {
-            $error = $('<div class="wc_er wc-block-components-notice-banner is-error"></div>');
-            $form.prepend(errorMessage);
-        } else {
-            $error = $('<div class="wc_er wc-block-components-notice-banner is-error"></div>').text(errorMessage);
-            $form.prepend($error);
+        if (popupWindow) {
+            popupWindow.close();
+            popupWindow = null;
         }
 
-        
-        $('html, body').animate({ scrollTop: $error.offset().top - 300 }, 500);
+        $('.wc_er, .wc-block-components-notice-banner').remove();
+
+        var errorMessage = (typeof err === 'string' ? err : err?.message || 'Payment failed')
+            .toString()
+            .trim();
+
+        var $error;
+
+        // If HTML exists, render it safely
+        if (/<[a-z][\s\S]*>/i.test(errorMessage)) {
+            $error = $('<div class="wc_er wc-block-components-notice-banner is-error"></div>');
+            $error.html(errorMessage);
+        } else {
+            $error = $('<div class="wc_er wc-block-components-notice-banner is-error"></div>');
+            $error.text(errorMessage);
+        }
+
+        $form.prepend($error);
+
+        // Safe scroll handling (avoid crash if element not in DOM yet)
+        setTimeout(function () {
+            var offsetTop = $error.offset() ? $error.offset().top : 0;
+            $('html, body').animate({ scrollTop: offsetTop - 300 }, 500);
+        }, 50);
+
         resetButton();
     }
 
@@ -423,4 +474,22 @@ jQuery(function ($) {
         '.wc-block-components-notice-banner',
         'ul[role="alert"]'
     ];
+
+    function safeRedirect(url) {
+        if (!url) return;
+
+        setTimeout(function () {
+            try {
+                // Try top window first (best for WooCommerce)
+                if (window.top && window.top !== window.self) {
+                    window.top.location.href = url;
+                } else {
+                    window.location.href = url;
+                }
+            } catch (e) {
+                window.location.assign(url);
+            }
+        }, 50);
+    }
 });
+

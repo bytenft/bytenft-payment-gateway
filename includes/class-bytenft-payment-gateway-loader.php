@@ -48,8 +48,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('wp_ajax_bytenft_check_payment_status', array($this, 'bytenft_handle_check_payment_status_request'));
 		add_action('wp_ajax_nopriv_bytenft_check_payment_status', array($this, 'bytenft_handle_check_payment_status_request'));
 
-		add_action('wp_ajax_bytenft_popup_closed_event', array($this, 'handle_popup_close'));
-		add_action('wp_ajax_nopriv_bytenft_popup_closed_event', array($this, 'handle_popup_close'));
+		add_action('wp_ajax_bytenft_popup_closed_event', array($this, 'bytenft_handle_popup_close'));
+		add_action('wp_ajax_nopriv_bytenft_popup_closed_event', array($this, 'bytenft_handle_popup_close'));
 
 		add_action('wp_ajax_bytenft_manual_sync', [$this, 'bytenft_manual_sync_callback']);
 		add_filter('cron_schedules', [$this, 'bytenft_add_cron_interval']);
@@ -334,7 +334,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$order = wc_get_order($order_id);
 
 		if (!$order) {
-			return new WP_REST_Response(['error' => esc_html__('Order not found', 'bytenft-payment-gateway')], 404);
+			wp_send_json_error(['message' => 'Order not found']);
+			wp_die();
 		}
 
 		$security = isset($_POST['security']) ? sanitize_text_field(wp_unslash($_POST['security'])) : '';
@@ -346,147 +347,22 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		$current_status = $order->get_status();
 
-		// 🔒 FINAL STATE PROTECTION
-		if (in_array($current_status, ['completed', 'cancelled', 'refunded'])) {
+		if (in_array($current_status, ['completed', 'refunded'])) {
 			wp_send_json_success([
 				'status' => $current_status,
 				'redirect_url' => $order->get_checkout_order_received_url()
 			]);
-			exit;
-		}
-
-		$payment_token = $order->get_meta('_bytenft_pay_id');
-		$transactionStatusApiUrl = $this->get_api_url('/api/update-txn-status');
-
-		$response = wp_remote_post($transactionStatusApiUrl, [
-			'method'  => 'POST',
-			'body'    => wp_json_encode(['order_id' => $order_id, 'payment_token' => $payment_token]),
-			'headers' => [
-				'Content-Type'  => 'application/json',
-				'Authorization' => 'Bearer ' . $security,
-			],
-			'timeout' => 15,
-		]);
-
-		$response_data = json_decode(wp_remote_retrieve_body($response), true);
-
-		$payment_return_url = $order->get_checkout_order_received_url();
-
-		$gateway = WC()->payment_gateways->payment_gateways()['bytenft'] ?? null;
-
-		if (!$gateway) {
-			wp_send_json_error(['message' => 'Payment gateway not found.']);
 			wp_die();
-		}
-
-		$configured_order_status = sanitize_text_field($gateway->get_option('order_status'));
-
-		wc_clear_notices();
-
-		// ✅ SUCCESS CASE (FIXED)
-		if (isset($response_data['transaction_status']) &&
-			in_array($response_data['transaction_status'], ['success', 'paid'])) {
-
-			// ❌ Prevent downgrade
-			if ($current_status !== 'completed') {
-				$order->update_status($configured_order_status, 'Order marked as ' . $configured_order_status . ' by ByteNFT.');
-
-				// 🔒 Lock if completed
-				if ($configured_order_status === 'completed') {
-					$order->update_meta_data('_bytenft_locked', 'yes');
-					$order->save();
-				}
-			}
-
-			wp_send_json_success(['status' => 'success', 'redirect_url' => $payment_return_url]);
-			exit;
-		}
-
-		// ❌ FAILED
-		if (isset($response_data['transaction_status']) && $response_data['transaction_status'] === "failed") {
-			wc_add_notice('Payment Failed: Transaction declined, please try another card.', 'error');
-
-			if ($current_status !== 'completed') {
-				$order->update_status('failed', 'Order marked as failed by ByteNFT.');
-			}
-
-			wp_send_json_success(['status' => 'failed', 'redirect_url' => $payment_return_url]);
-			exit;
-		}
-
-		// ❌ CANCELLED
-		if (isset($response_data['transaction_status']) && $response_data['transaction_status'] === "canceled") {
-			if (WC()->cart) {
-				WC()->cart->empty_cart();
-				WC()->session->cleanup_sessions();
-				WC()->session->destroy_session();
-				WC()->session->set_customer_session_cookie(false);
-			}
-
-			wc_add_notice('Payment Canceled: The Payment method canceled your transaction.', 'error');
-
-			if ($current_status !== 'completed') {
-				$order->update_status('cancelled', 'Order marked as canceled by ByteNFT.');
-			}
-
-			wp_send_json_success(['status' => 'cancelled', 'redirect_url' => $order->get_cancel_order_url()]);
-			exit;
-		}
-
-		// ⏳ Pending
-		if ($order->has_status(['on-hold', 'pending'])) {
-			wp_send_json_success(['status' => 'pending', 'redirect_url' => $payment_return_url]);
-			exit;
-		}
-
-		if ($order->has_status('refunded')) {
-			wp_send_json_success(['status' => 'refunded', 'redirect_url' => $payment_return_url]);
-			exit;
-		}
-
-		wp_send_json_success(['status' => 'unknown', 'redirect_url' => $payment_return_url]);
-		exit;
-	}
-
-	public function handle_popup_close()
-	{
-		$security = isset($_POST['security']) ? sanitize_text_field(wp_unslash($_POST['security'])) : '';
-
-		if (empty($security) || !wp_verify_nonce($security, 'bytenft_payment')) {
-			wp_send_json_error(['message' => 'Nonce verification failed.']);
-			wp_die();
-		}
-
-		$order_id = isset($_POST['order_id']) ? sanitize_text_field(wp_unslash($_POST['order_id'])) : null;
-
-		if (!$order_id) {
-			wp_send_json_error(['message' => 'Order ID is missing.']);
-			wp_die();
-		}
-
-		$order = wc_get_order($order_id);
-
-		if (!$order) {
-			wp_send_json_error(['message' => 'Order not found in WordPress.']);
-			wp_die();
-		}
-
-		$current_status = $order->get_status();
-
-		// 🔒 FINAL STATE PROTECTION
-		if (in_array($current_status, ['completed', 'cancelled', 'refunded'])) {
-			wp_send_json_success([
-				'status' => $current_status,
-				'redirect_url' => $order->get_checkout_order_received_url()
-			]);
-			exit;
 		}
 
 		$payment_token = $order->get_meta('_bytenft_pay_id');
 
 		$response = wp_remote_post($this->get_api_url('/api/update-txn-status'), [
 			'method'  => 'POST',
-			'body'    => wp_json_encode(['order_id' => $order_id, 'payment_token' => $payment_token]),
+			'body'    => wp_json_encode([
+				'order_id' => $order_id,
+				'payment_token' => $payment_token
+			]),
 			'headers' => [
 				'Content-Type'  => 'application/json',
 				'Authorization' => 'Bearer ' . $security,
@@ -495,73 +371,116 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		]);
 
 		if (is_wp_error($response)) {
-			wp_send_json_error(['message' => 'Failed to connect to API.']);
+			wp_send_json_error(['message' => 'API connection failed']);
 			wp_die();
 		}
 
 		$response_data = json_decode(wp_remote_retrieve_body($response), true);
 
-		if (!isset($response_data['payment_status'])) {
-			wp_send_json_error(['message' => 'Invalid API response.']);
+		wc_get_logger()->info('ByteNFT check status', [
+			'order_id' => $order_id,
+			'response' => $response_data,
+			'source'   => 'bytenft-payment-gateway'
+		]);
+
+		$status = $response_data['payment_status']
+			?? $response_data['transaction_status']
+			?? null;
+
+		wp_send_json_success([
+			'status' => $status ?: 'pending',
+			'redirect_url' => $order->get_checkout_order_received_url()
+		]);
+
+		wp_die();
+	}
+
+	public function bytenft_handle_popup_close()
+	{
+		$security = isset($_POST['security']) ? sanitize_text_field(wp_unslash($_POST['security'])) : '';
+
+		if (empty($security) || !wp_verify_nonce($security, 'bytenft_payment')) {
+			wp_send_json_error(['message' => 'Nonce verification failed.']);
 			wp_die();
 		}
 
-		$gateway = WC()->payment_gateways->payment_gateways()['bytenft'] ?? null;
+		$order_id = isset($_POST['order_id']) ? intval($_POST['order_id']) : 0;
 
-		if (!$gateway) {
-			wp_send_json_error(['message' => 'Payment gateway not found.']);
+		if (!$order_id) {
+			wp_send_json_error(['message' => 'Order ID missing']);
 			wp_die();
 		}
 
-		$configured_order_status = sanitize_text_field($gateway->get_option('order_status'));
+		$order = wc_get_order($order_id);
 
-		$payment_return_url = $order->get_checkout_order_received_url();
-
-		switch ($response_data['payment_status']) {
-
-			case 'success':
-			case 'paid':
-
-				if ($current_status !== 'completed') {
-					$order->update_status($configured_order_status, 'Order marked as ' . $configured_order_status . ' by ByteNFT.');
-
-					if ($configured_order_status === 'completed') {
-						$order->update_meta_data('_bytenft_locked', 'yes');
-						$order->save();
-					}
-				}
-
-				wp_send_json_success([
-					'message' => 'Order updated successfully.',
-					'redirect_url' => $payment_return_url
-				]);
-				break;
-
-			case 'failed':
-
-				if ($current_status !== 'completed') {
-					wc_add_notice('Payment Failed: Transaction declined.', 'error');
-					$order->update_status('failed', 'Order marked as failed by ByteNFT.');
-				}
-
-				wp_send_json_success(['message' => 'Order failed']);
-				break;
-
-			case 'canceled':
-
-				if ($current_status !== 'completed') {
-					wc_add_notice('Payment Canceled.', 'error');
-					$order->update_status('cancelled', 'Order marked as canceled by ByteNFT.');
-				}
-
-				wp_send_json_success([
-					'redirect_url' => $order->get_cancel_order_url()
-				]);
-				break;
-
-			default:
-				wp_send_json_error(['message' => 'Unknown Payment Status']);
+		if (!$order) {
+			wp_send_json_error(['message' => 'Order not found']);
+			wp_die();
 		}
+
+		// ✅ If already completed → redirect
+		if (in_array($order->get_status(), ['completed', 'refunded'])) {
+			wp_send_json_success([
+				'status' => $order->get_status(),
+				'redirect_url' => $order->get_checkout_order_received_url()
+			]);
+			wp_die();
+		}
+
+		$payment_token = $order->get_meta('_bytenft_pay_id');
+
+		$response = wp_remote_post($this->get_api_url('/api/update-txn-status'), [
+			'method'  => 'POST',
+			'body'    => wp_json_encode([
+				'order_id' => $order_id,
+				'payment_token' => $payment_token
+			]),
+			'headers' => [
+				'Content-Type'  => 'application/json',
+				'Authorization' => 'Bearer ' . $security,
+			],
+			'timeout' => 15,
+		]);
+
+		if (is_wp_error($response)) {
+			wp_send_json_error(['message' => 'API request failed']);
+			wp_die();
+		}
+
+		$response_data = json_decode(wp_remote_retrieve_body($response), true);
+
+		$status = $response_data['payment_status']
+			?? $response_data['transaction_status']
+			?? 'pending';
+
+		// -------------------------------------------------
+		// ✅ HANDLE BASED ON STATUS
+		// -------------------------------------------------
+
+		if ($status === 'success' || $status === 'completed') {
+
+			wp_send_json_success([
+				'status' => $status,
+				'redirect_url' => $order->get_checkout_order_received_url()
+			]);
+			wp_die();
+		}
+
+		// ❌ FAILED / CANCELLED / EXPIRED → NO REDIRECT
+		if (in_array($status, ['failed', 'cancelled', 'expired'])) {
+
+			wp_send_json_success([
+				'status' => $status,
+				'message' => 'Payment failed. Please try again.'
+			]);
+			wp_die();
+		}
+
+		// ⏳ Pending → stay on checkout
+		wp_send_json_success([
+			'status' => 'pending',
+			'message' => ''
+		]);
 
 		wp_die();
 	}
