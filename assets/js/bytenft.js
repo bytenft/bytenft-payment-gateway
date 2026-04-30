@@ -320,10 +320,6 @@ jQuery(function ($) {
 
     function openPaymentLink(paymentLink) {
 
-        paymentLink = paymentLink
-            .replace(/#038;/g, '')
-            .replace(/&amp;/g, '&');
-    
         setTimeout(function () {
             if (popupWindow && !popupWindow.closed) {
                 popupWindow.location.href = paymentLink;
@@ -347,18 +343,11 @@ jQuery(function ($) {
                     if (!isBlockSelected) {
                         $(document.body).trigger('update_checkout');
                     }
-                    const $targetForm = isBlockSelected 
-                        ? $('form.wc-block-checkout__form') 
-                        : $('form.checkout');
-
                     if (response.success && response.data?.redirect_url) {
                         window.location.replace(response.data.redirect_url);
-                        return;
-                    }
-
-                    const errorMessage = response?.data?.notices || response?.data?.message;
-                    if (errorMessage) {
-                        displayError(errorMessage, $targetForm);
+                    } else if (response.data?.notices) {
+                        var $targetForm = isBlockSelected ? $('form.wc-block-checkout__form') : $('form.checkout');
+                        displayError(response.data.notices, $targetForm);
                     }
                     resetButton();
                 }, 'json');
