@@ -1,77 +1,61 @@
-console.log('bytenft-blocks.js loaded');
-
+console.log('bytenft-blocks.js loaded at', new Date().toISOString());
 (function () {
-
     const { registerPaymentMethod } = window.wc?.wcBlocksRegistry || {};
     const { createElement, RawHTML } = window.wp?.element || {};
 
-    if (!registerPaymentMethod) return;
+    if (typeof registerPaymentMethod !== 'function') {
+        return;
+    }
 
     const settings =
         window.wc?.wcSettings?.getPaymentMethodData?.('bytenft') || {};
 
-    async function processPayment(args) {
-
-        const response = await fetch(settings.ajax_url || bytenft_params.ajax_url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'bytenft_block_gateway_process',
-                nonce: bytenft_params.bytenft_nonce,
-                data: args
-            })
-        });
-
-        return await response.json();
-    }
+    const label = settings.title || 'ByteNFT';
+    const description = settings.description || '';
 
     const methodConfig = {
         name: settings.id || 'bytenft',
-        label: settings.title || 'ByteNFT',
+        label,
+        ariaLabel: label,
 
-        content: createElement('div', null,
-            createElement(RawHTML, {}, settings.description || '')
+        content: createElement(
+            'div',
+            { className: 'bytenft-description' },
+            createElement(RawHTML, {}, description)
         ),
 
-        canMakePayment: async () => true,
+        edit: createElement(
+            'div',
+            { className: 'bytenft-edit' },
+            label
+        ),
 
-        paymentMethodInterface: {
+        canMakePayment: async () => {
+            return settings.can_pay !== false;
+        },
 
-            initialize: async () => {
-                return true; // DO NOT open popup here
-            },
-
-            processPayment: async (args) => {
-
-                const res = await processPayment(args);
-
-                if (res.result === 'success' && res.redirect) {
-
-                    // ✅ ONLY SUCCESS OPENS POPUP
-                    if (window.ByteNFTPopup.openLoading()) {
-                        window.ByteNFTPopup.redirect(res.redirect);
-                    } else {
-                        window.location.href = res.redirect;
-                    }
-
-                    return { type: 'success' };
-                }
-
-                // ❌ ERROR = NO POPUP
-                window.ByteNFTPopup.close();
-
-                return {
-                    type: 'error',
-                    message: res?.error || 'Payment failed'
-                };
-            },
-
-            onPaymentError: () => {
-                window.ByteNFTPopup.close();
-            }
-        }
+        supports: {
+            features: settings.supports || ['products'],
+        },
     };
-
-    registerPaymentMethod(methodConfig);
-
+    if(settings.title){
+        console.log(settings.title);
+        registerPaymentMethod(methodConfig);
+    }
+    
 })();
+
+
+// Call this function whenever you want to refresh payment methods in the block checkout
+function refreshBlockPaymentMethods() {
+    if (window.wc && window.wc.blocksCheckout) {
+        // For WC Blocks 8.x+ (newer API)
+        document.body.dispatchEvent(new CustomEvent('wc-blocks_checkout_update_payment_methods'));
+    } else {
+        // Fallback for older versions
+        $(document.body).trigger('update_checkout');
+    }
+}
+
+// Example: Refresh after a custom event, or after a failed payment, or after a cart update
+// Call refreshBlockPaymentMethods() only in response to relevant events, not on every load.
