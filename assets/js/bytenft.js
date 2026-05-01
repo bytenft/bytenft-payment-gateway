@@ -242,65 +242,53 @@ jQuery(function ($) {
         }
     }
 
+    function extractFromHTML(html) {
+
+        try {
+            var $html = $('<div>').html(html);
+
+            var text = $html.find('li').first().text();
+
+            if (text) return text;
+
+            return $html.text().trim();
+        } catch (e) {
+            return 'Payment failed';
+        }
+    }
+
     function extractErrorMessage(response) {
 
         if (!response) return 'Payment failed';
 
-        // 1. Direct fields (highest priority)
-        if (typeof response === 'string') return response;
-
-        if (response.error && typeof response.error === 'string') {
-            return response.error;
+        // 1. Raw string (HTML or plain)
+        if (typeof response === 'string') {
+            return extractFromHTML(response);
         }
 
-        if (response.message && typeof response.message === 'string') {
-            return response.message;
-        }
-
-        // 2. WooCommerce notices (sometimes array or HTML)
+        // 2. WooCommerce HTML messages
         if (response.messages) {
-            if (typeof response.messages === 'string') return response.messages;
-
-            if (Array.isArray(response.messages) && response.messages.length) {
-                return response.messages[0];
-            }
+            return extractFromHTML(response.messages);
         }
 
         if (response.notices) {
-            if (typeof response.notices === 'string') return response.notices;
+            return extractFromHTML(response.notices);
+        }
 
-            if (Array.isArray(response.notices) && response.notices.length) {
-                return response.notices[0];
+        // 3. Direct fields
+        if (response.error) return response.error;
+        if (response.message) return response.message;
+
+        // 4. YOUR payment_result
+        if (response.payment_result?.payment_details) {
+            for (var i = 0; i < response.payment_result.payment_details.length; i++) {
+                var item = response.payment_result.payment_details[i];
+
+                if (item.key === 'error' && item.value) return item.value;
+                if (item.key === 'message' && item.value) return item.value;
             }
         }
 
-        // 3. 🔥 YOUR CASE (payment_result)
-        if (response.payment_result) {
-
-            // direct message
-            if (response.payment_result.message) {
-                return response.payment_result.message;
-            }
-
-            // nested details
-            if (Array.isArray(response.payment_result.payment_details)) {
-
-                for (var i = 0; i < response.payment_result.payment_details.length; i++) {
-
-                    var item = response.payment_result.payment_details[i];
-
-                    if (item.key === 'error' && item.value) {
-                        return item.value;
-                    }
-
-                    if (item.key === 'message' && item.value) {
-                        return item.value;
-                    }
-                }
-            }
-        }
-
-        // 4. fallback
         return 'Payment failed. Please try again.';
     }
 
