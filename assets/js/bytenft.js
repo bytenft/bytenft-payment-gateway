@@ -15,6 +15,10 @@ jQuery(function ($) {
         'ul[role="alert"]'
     ];
 
+    /* =========================
+       HELPERS (UNCHANGED LOGIC)
+    ========================== */
+
     function getPhoneNumber($form) {
         var selectors = [
             'input[name="billing_phone"]',
@@ -82,21 +86,35 @@ jQuery(function ($) {
         return null;
     }
 
-    // ❌ VISUAL ONLY
+    /* =========================
+       POPUP (SAFE FIX)
+    ========================== */
+
     function openPopupEarly() {
         if (!popupWindow || popupWindow.closed) {
             popupWindow = window.open('', '_blank', 'width=700,height=700');
         }
 
-        if (popupWindow) {
-            popupWindow.document.write(
-                '<html><head><title>Secure Payment</title></head>' +
-                '<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">' +
-                '<h3>Connecting to secure payment...</h3>' +
-                '</body></html>'
-            );
+        if (!popupWindow) {
+            console.warn("Popup blocked");
+            return;
         }
+
+        popupWindow.document.open();
+        popupWindow.document.write(`
+            <html>
+            <head><title>Secure Payment</title></head>
+            <body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
+                <h3>Connecting to secure payment...</h3>
+            </body>
+            </html>
+        `);
+        popupWindow.document.close();
     }
+
+    /* =========================
+       FORM CONTROL FIX
+    ========================== */
 
     function markCheckoutFormIfNeeded() {
         var $form = $("form.checkout");
@@ -110,76 +128,74 @@ jQuery(function ($) {
         }
     }
 
-    // =========================================================
-    // 🚨 FIX 1: FORCE BLOCK WOOCOMMERCE DEFAULT SUBMIT
-    // =========================================================
+    /* =========================
+       🚨 CRITICAL FIX: STOP AUTO SUBMIT
+    ========================== */
+
     $(document).on('submit', 'form.checkout', function (e) {
-        e.preventDefault();
+        if ($('input[name="payment_method"]:checked').val() === bytenft_params.payment_method) {
+            e.preventDefault();
+            return false;
+        }
     });
+
+    /* =========================
+       MAIN HANDLER
+    ========================== */
 
     function bindCheckoutHandler() {
 
-        // =========================
-        // CLASSIC CHECKOUT
-        // =========================
         $('form.checkout')
-    .off('click.bytenft-classic')
-    .on('click.bytenft-classic', 'button[name="woocommerce_checkout_place_order"]', function (e) {
+            .off('click.bytenft-classic')
+            .on('click.bytenft-classic', 'button[name="woocommerce_checkout_place_order"]', function (e) {
 
-        if ($('input[name="payment_method"]:checked').val() !== bytenft_params.payment_method) return;
+                if ($('input[name="payment_method"]:checked').val() !== bytenft_params.payment_method) return;
 
-        e.preventDefault();
+                e.preventDefault();
 
-        if (isSubmitting) return;
-        isSubmitting = true;
+                if (isSubmitting) return;
+                isSubmitting = true;
 
-        var $form = $('form.checkout');
+                var $form = $('form.checkout');
 
-        $button = $(this);
-        originalButtonText = $button.text();
+                $button = $(this);
+                originalButtonText = $button.text();
 
-        var email = getBillingEmail($form);
-        var phone = getPhoneNumber($form);
-        var poBoxError = validateNoPOBox($form);
+                var email = getBillingEmail($form);
+                var phone = getPhoneNumber($form);
+                var poBoxError = validateNoPOBox($form);
 
-        // ❗ VALIDATE FIRST
-        if (!isValidEmail(email)) {
-            return handleError($form, "Invalid email");
-        }
+                // 🚨 VALIDATE FIRST
+                if (!isValidEmail(email)) return handleError($form, "Invalid email");
+                if (phone !== '' && !isValidPhoneNumber(phone)) return handleError($form, "Invalid phone");
+                if (poBoxError) return handleError($form, poBoxError);
 
-        if (phone !== '' && !isValidPhoneNumber(phone)) {
-            return handleError($form, "Invalid phone");
-        }
+                $button.prop('disabled', true).text('Processing...');
 
-        if (poBoxError) {
-            return handleError($form, poBoxError);
-        }
+                // 🚨 OPEN ONLY AFTER VALIDATION PASSES
+                openPopupEarly();
 
-        $button.prop('disabled', true).text('Processing...');
+                $.ajax({
+                    type: 'POST',
+                    url: wc_checkout_params.checkout_url,
+                    data: $form.serialize(),
+                    dataType: 'json',
 
-        $.ajax({
-            type: 'POST',
-            url: wc_checkout_params.checkout_url,
-            data: $form.serialize(),
-            dataType: 'json',
+                    success: function (response) {
+                        handleResponse(response, $form);
+                    },
 
-            success: function (response) {
-                handleResponse(response, $form);
-            },
+                    error: function () {
+                        handleError($form, "Server error");
+                    },
 
-            error: function () {
-                handleError($form, "Server error");
-            },
+                    complete: function () {
+                        isSubmitting = false;
+                    }
+                });
+            });
 
-            complete: function () {
-                isSubmitting = false;
-            }
-        });
-    });
-
-        // =========================
-        // BLOCK CHECKOUT
-        // =========================
+        /* BLOCK CHECKOUT */
         $('form.wc-block-checkout__form button.wc-block-components-checkout-place-order-button')
             .off("click.bytenft")
             .on("click.bytenft", function (e) {
@@ -188,51 +204,49 @@ jQuery(function ($) {
                     return;
                 }
 
-                e.preventDefault(); // 🚨 FIX
+                e.preventDefault();
 
                 var $form = $('form.wc-block-checkout__form');
 
                 var email = getBillingEmail($form);
                 var phone = getPhoneNumber($form);
+                var poBoxError = validateNoPOBox($form);
 
                 if (!isValidEmail(email)) return handleError($form, "Invalid email");
                 if (phone !== '' && !isValidPhoneNumber(phone)) return handleError($form, "Invalid phone");
-                if (validateNoPOBox($form)) return handleError($form, "PO Box not allowed");
+                if (poBoxError) return handleError($form, poBoxError);
 
                 openPopupEarly();
+
+                handleFormSubmit.call($form, e);
             });
     }
 
-    // =========================================================
-    // 🚨 FIX 2: SAFARI SAFE RESPONSE HANDLING
-    // =========================================================
+    /* =========================
+       AJAX RESPONSE
+    ========================== */
+
     function handleResponse(response, $form) {
 
-    if (response && response.result === 'success') {
+        if (response && response.result === 'success') {
 
-        orderId = response.order_id;
+            orderId = response.order_id;
 
-        // ✅ OPEN ONLY ON SUCCESS
-        openPopupEarly();
-
-        if (response.redirect) {
-            if (popupWindow && !popupWindow.closed) {
-                popupWindow.location.href = response.redirect;
-            } else {
-                window.location.href = response.redirect;
+            if (response.redirect) {
+                if (popupWindow && !popupWindow.closed) {
+                    popupWindow.location.href = response.redirect;
+                } else {
+                    window.location.href = response.redirect;
+                }
             }
+
+            return;
         }
 
-        return;
+        var msg = extractErrorMessage(response);
+        handleError($form, msg);
     }
 
-    var msg = extractErrorMessage(response);
-    handleError($form, msg);
-}
-
-    // =========================================================
-    // 🚨 FIX 3: SAFARI SAFE ERROR EXTRACTION
-    // =========================================================
     function extractErrorMessage(response) {
 
         if (!response) return 'Payment failed';
@@ -240,13 +254,9 @@ jQuery(function ($) {
         if (response.error) return response.error;
         if (response.message) return response.message;
 
-        if (response.payment_result &&
-            response.payment_result.payment_details &&
-            response.payment_result.payment_details.length) {
-
+        if (response.payment_result?.payment_details) {
             for (var i = 0; i < response.payment_result.payment_details.length; i++) {
                 var item = response.payment_result.payment_details[i];
-
                 if (item.key === 'message' || item.key === 'error') {
                     return item.value;
                 }
@@ -256,33 +266,43 @@ jQuery(function ($) {
         return 'Payment failed. Please try again.';
     }
 
+    /* =========================
+       ERROR HANDLING (FIXED UI)
+    ========================== */
+
     function handleError($form, msg) {
 
-    isSubmitting = false;
+        isSubmitting = false;
 
-    if (popupWindow) {
-        popupWindow.close();
-        popupWindow = null;
+        if (popupWindow) {
+            popupWindow.close();
+            popupWindow = null;
+        }
+
+        $('.woocommerce-error, .wc_er, .wc-block-components-notice-banner').remove();
+
+        var $error = $('<ul class="woocommerce-error" role="alert"><li>' + msg + '</li></ul>');
+
+        var $wrap = $('.woocommerce-notices-wrapper').first();
+
+        if ($wrap.length) {
+            $wrap.prepend($error);
+        } else {
+            $form.prepend($error);
+        }
+
+        if ($button) {
+            $button.prop('disabled', false).text(originalButtonText);
+        }
+
+        $('html, body').animate({
+            scrollTop: $error.offset().top - 200
+        }, 500);
     }
 
-    $('.woocommerce-error').remove();
-
-    var $error = $(
-        '<ul class="woocommerce-error" role="alert"><li>' + msg + '</li></ul>'
-    );
-
-    var $wrap = $('.woocommerce-notices-wrapper').first();
-
-    if ($wrap.length) {
-        $wrap.prepend($error);
-    } else {
-        $form.prepend($error);
-    }
-
-    if ($button) {
-        $button.prop('disabled', false).text(originalButtonText);
-    }
-}
+    /* =========================
+       INIT
+    ========================== */
 
     $(document.body).on("updated_checkout change", 'input[name="payment_method"]', function () {
         markCheckoutFormIfNeeded();
@@ -291,5 +311,4 @@ jQuery(function ($) {
 
     markCheckoutFormIfNeeded();
     bindCheckoutHandler();
-
 });
