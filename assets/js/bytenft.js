@@ -214,34 +214,94 @@ jQuery(function ($) {
 
     function handleResponse(response, $form) {
 
-        var success = response && response.result === 'success' && response.redirect;
+        var success =
+            response &&
+            response.result === 'success' &&
+            (!response.payment_result || response.payment_result.payment_status !== 'failure');
 
         if (!success) {
-            return showError($form, extractErrorMessage(response));
+
+            if (popupWindow) {
+                popupWindow.close();
+                popupWindow = null;
+            }
+
+            var msg = extractErrorMessage(response);
+            handleError($form, msg);
+            return;
         }
 
         orderId = response.order_id;
 
-        openPopup(response.redirect);
+        if (response.redirect) {
+            if (popupWindow && !popupWindow.closed) {
+                popupWindow.location.href = response.redirect;
+            } else {
+                window.location.href = response.redirect;
+            }
+        }
     }
 
     function extractErrorMessage(response) {
 
-        if (!response) return "Payment failed";
+        if (!response) return 'Payment failed';
 
-        if (response.error) return response.error;
-        if (response.message) return response.message;
+        // 1. Direct fields (highest priority)
+        if (typeof response === 'string') return response;
 
-        if (response.payment_result && response.payment_result.payment_details) {
-            for (var i = 0; i < response.payment_result.payment_details.length; i++) {
-                var item = response.payment_result.payment_details[i];
-                if (item.key === 'message' || item.key === 'error') {
-                    return item.value;
+        if (response.error && typeof response.error === 'string') {
+            return response.error;
+        }
+
+        if (response.message && typeof response.message === 'string') {
+            return response.message;
+        }
+
+        // 2. WooCommerce notices (sometimes array or HTML)
+        if (response.messages) {
+            if (typeof response.messages === 'string') return response.messages;
+
+            if (Array.isArray(response.messages) && response.messages.length) {
+                return response.messages[0];
+            }
+        }
+
+        if (response.notices) {
+            if (typeof response.notices === 'string') return response.notices;
+
+            if (Array.isArray(response.notices) && response.notices.length) {
+                return response.notices[0];
+            }
+        }
+
+        // 3. 🔥 YOUR CASE (payment_result)
+        if (response.payment_result) {
+
+            // direct message
+            if (response.payment_result.message) {
+                return response.payment_result.message;
+            }
+
+            // nested details
+            if (Array.isArray(response.payment_result.payment_details)) {
+
+                for (var i = 0; i < response.payment_result.payment_details.length; i++) {
+
+                    var item = response.payment_result.payment_details[i];
+
+                    if (item.key === 'error' && item.value) {
+                        return item.value;
+                    }
+
+                    if (item.key === 'message' && item.value) {
+                        return item.value;
+                    }
                 }
             }
         }
 
-        return "Payment failed";
+        // 4. fallback
+        return 'Payment failed. Please try again.';
     }
 
     /* =========================
