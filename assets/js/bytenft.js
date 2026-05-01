@@ -123,48 +123,59 @@ jQuery(function ($) {
         // CLASSIC CHECKOUT
         // =========================
         $('form.checkout')
-            .off('click.bytenft-classic')
-            .on('click.bytenft-classic', 'button[name="woocommerce_checkout_place_order"]', function (e) {
+    .off('click.bytenft-classic')
+    .on('click.bytenft-classic', 'button[name="woocommerce_checkout_place_order"]', function (e) {
 
-                if ($('input[name="payment_method"]:checked').val() !== bytenft_params.payment_method) return;
+        if ($('input[name="payment_method"]:checked').val() !== bytenft_params.payment_method) return;
 
-                e.preventDefault(); // 🚨 FIX
+        e.preventDefault();
 
-                if (isSubmitting) return;
-                isSubmitting = true;
+        if (isSubmitting) return;
+        isSubmitting = true;
 
-                var $form = $('form.checkout');
+        var $form = $('form.checkout');
 
-                $button = $(this);
-                originalButtonText = $button.text();
+        $button = $(this);
+        originalButtonText = $button.text();
 
-                $button.prop('disabled', true).text('Processing...');
+        var email = getBillingEmail($form);
+        var phone = getPhoneNumber($form);
+        var poBoxError = validateNoPOBox($form);
 
-                var email = getBillingEmail($form);
-                var phone = getPhoneNumber($form);
-                var poBoxError = validateNoPOBox($form);
+        // ❗ VALIDATE FIRST
+        if (!isValidEmail(email)) {
+            return handleError($form, "Invalid email");
+        }
 
-                if (!isValidEmail(email)) return handleError($form, "Invalid email");
-                if (phone !== '' && !isValidPhoneNumber(phone)) return handleError($form, "Invalid phone");
-                if (poBoxError) return handleError($form, poBoxError);
+        if (phone !== '' && !isValidPhoneNumber(phone)) {
+            return handleError($form, "Invalid phone");
+        }
 
-                openPopupEarly();
+        if (poBoxError) {
+            return handleError($form, poBoxError);
+        }
 
-                $.ajax({
-                    type: 'POST',
-                    url: wc_checkout_params.checkout_url,
-                    data: $form.serialize(),
-                    dataType: 'json',
+        $button.prop('disabled', true).text('Processing...');
 
-                    success: function (response) {
-                        handleResponse(response, $form);
-                    },
+        $.ajax({
+            type: 'POST',
+            url: wc_checkout_params.checkout_url,
+            data: $form.serialize(),
+            dataType: 'json',
 
-                    error: function () {
-                        handleError($form, "Server error");
-                    }
-                });
-            });
+            success: function (response) {
+                handleResponse(response, $form);
+            },
+
+            error: function () {
+                handleError($form, "Server error");
+            },
+
+            complete: function () {
+                isSubmitting = false;
+            }
+        });
+    });
 
         // =========================
         // BLOCK CHECKOUT
@@ -197,24 +208,27 @@ jQuery(function ($) {
     // =========================================================
     function handleResponse(response, $form) {
 
-        if (response && response.result === 'success') {
+    if (response && response.result === 'success') {
 
-            orderId = response.order_id;
+        orderId = response.order_id;
 
-            if (response.redirect) {
-                if (popupWindow && !popupWindow.closed) {
-                    popupWindow.location.href = response.redirect;
-                } else {
-                    window.location.href = response.redirect;
-                }
+        // ✅ OPEN ONLY ON SUCCESS
+        openPopupEarly();
+
+        if (response.redirect) {
+            if (popupWindow && !popupWindow.closed) {
+                popupWindow.location.href = response.redirect;
+            } else {
+                window.location.href = response.redirect;
             }
-
-            return;
         }
 
-        var msg = extractErrorMessage(response);
-        handleError($form, msg);
+        return;
     }
+
+    var msg = extractErrorMessage(response);
+    handleError($form, msg);
+}
 
     // =========================================================
     // 🚨 FIX 3: SAFARI SAFE ERROR EXTRACTION
@@ -244,31 +258,31 @@ jQuery(function ($) {
 
     function handleError($form, msg) {
 
-        isSubmitting = false;
+    isSubmitting = false;
 
-        if (popupWindow) {
-            popupWindow.close();
-            popupWindow = null;
-        }
-
-        $('.woocommerce-error').remove();
-
-        var $error = $(
-            '<ul class="woocommerce-error" role="alert"><li>' + msg + '</li></ul>'
-        );
-
-        var $wrap = $('.woocommerce-notices-wrapper').first();
-
-        if ($wrap.length) {
-            $wrap.prepend($error);
-        } else {
-            $form.prepend($error);
-        }
-
-        if ($button) {
-            $button.prop('disabled', false).text(originalButtonText);
-        }
+    if (popupWindow) {
+        popupWindow.close();
+        popupWindow = null;
     }
+
+    $('.woocommerce-error').remove();
+
+    var $error = $(
+        '<ul class="woocommerce-error" role="alert"><li>' + msg + '</li></ul>'
+    );
+
+    var $wrap = $('.woocommerce-notices-wrapper').first();
+
+    if ($wrap.length) {
+        $wrap.prepend($error);
+    } else {
+        $form.prepend($error);
+    }
+
+    if ($button) {
+        $button.prop('disabled', false).text(originalButtonText);
+    }
+}
 
     $(document.body).on("updated_checkout change", 'input[name="payment_method"]', function () {
         markCheckoutFormIfNeeded();
