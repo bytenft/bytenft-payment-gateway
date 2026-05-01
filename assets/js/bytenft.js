@@ -235,7 +235,6 @@ jQuery(function ($) {
                 }
 
                 // Step 5: All valid — open popup (Safari fix) then fire AJAX
-                openPopupEarly();
                 handleFormSubmit.call($('form.wc-block-checkout__form'), e);
                 return false;
             });
@@ -320,10 +319,15 @@ jQuery(function ($) {
 
     function openPaymentLink(paymentLink) {
 
+       if (!paymentLink || paymentLink.includes('undefined')) {
+            console.warn('Invalid payment link');
+            return;
+        }
+
         setTimeout(function () {
             if (popupWindow && !popupWindow.closed) {
                 popupWindow.location.href = paymentLink;
-            } else if (!popupWindow) {
+            } else {
                 window.location.href = paymentLink;
             }
         }, 300);
@@ -357,16 +361,40 @@ jQuery(function ($) {
 
     function handleResponse(response, $form) {
         $('.wc_er').remove();
+
         try {
-            if (response.result === 'success') {
+            if (response.result === 'success' && response.redirect) {
+
                 orderId = response.order_id;
-                openPaymentLink(response.redirect);
-            } else {
-                if (popupWindow) { popupWindow.close(); popupWindow = null; }
-                displayError(response?.error || response?.notices || response?.messages || 'Payment failed.', $form);
+
+                if (popupWindow && popupWindow.closed) {
+                    popupWindow = null;
+                }
+
+                // ONLY open popup when URL is valid
+                if (response.redirect && typeof response.redirect === 'string') {
+                    if (!popupWindow) {
+                        popupWindow = window.open('', '_blank', 'width=700,height=700');
+                    }
+
+                    openPaymentLink(response.redirect);
+                    return;
+                }
             }
+
+            // everything else = error
+            if (popupWindow) {
+                popupWindow.close();
+                popupWindow = null;
+            }
+
+            displayError(response?.error || 'Payment failed.', $form);
+
         } catch (err) {
-            if (popupWindow) { popupWindow.close(); popupWindow = null; }
+            if (popupWindow) {
+                popupWindow.close();
+                popupWindow = null;
+            }
             displayError(err, $form);
         }
     }
