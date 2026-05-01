@@ -122,21 +122,21 @@ jQuery(function ($) {
         // --- CLASSIC CHECKOUT ---
         $('form.checkout').off('click.bytenft-classic').on('click.bytenft-classic', 'button[name="woocommerce_checkout_place_order"]', function (e) {
             if ($('input[name="payment_method"]:checked').val() !== bytenft_params.payment_method) return;
-
+            
             var $form = $(this).closest('form');
+            
+            // PERFORM ALL CHECKS FIRST
             var email = getBillingEmail($form);
             var phone = getPhoneNumber($form);
+            var poBoxError = validateNoPOBox($form);
 
-            // Pre-validation to avoid opening popup for obvious errors
-            if (!isValidEmail(email) || (phone !== '' && !isValidPhoneNumber(phone)) || validateNoPOBox($form)) return;
+            // If ANY validation fails, stop here and do NOT open popup
+            if (!isValidEmail(email)) return; 
+            if (phone !== '' && !isValidPhoneNumber(phone)) return;
+            if (poBoxError) return;
 
+            // Only if validation passed, open the window
             openPopupEarly();
-        });
-
-        var formId = '#' + bytenft_params.payment_method + '-checkout-form';
-        $(formId).off("submit.bytenft").on("submit.bytenft", function (e) {
-            handleFormSubmit.call(this, e);
-            return false;
         });
 
         // --- BLOCK CHECKOUT ---
@@ -144,24 +144,19 @@ jQuery(function ($) {
             if ($('input[name="radio-control-wc-payment-method-options"]:checked').val() !== bytenft_params.payment_method) return;
 
             var $form = $('form.wc-block-checkout__form');
-            $('.wc_er, .wc-block-components-notice-banner').remove();
-
-            var errorList = '';
-            var errorFlag = false;
-            $form.find('input').each(function () {
-                if (this.hasAttribute('required') && ($(this).val() === "" && !$(this).is(':checked'))) {
-                    const inputLabel = $(this).attr("aria-label");
-                    errorFlag = true;
-                    errorList += '<li>' + (inputLabel || 'Field') + ' is required</li>';
-                    $(this).focus().blur();
-                }
+            
+            // Strict check for required fields in Blocks
+            var missingFields = false;
+            $form.find('input[required]').each(function() {
+                if (!$(this).val()) { missingFields = true; }
             });
 
-            if (errorFlag || !isValidEmail(getBillingEmail($form)) || (getPhoneNumber($form) !== '' && !isValidPhoneNumber(getPhoneNumber($form))) || validateNoPOBox($form)) {
-                if (errorFlag) displayError('<ul>' + errorList + '</ul>', $form);
-                return false;
+            if (missingFields || !isValidEmail(getBillingEmail($form)) || validateNoPOBox($form)) {
+                // Let the natural validation show the errors, don't open popup
+                return;
             }
 
+            // Validation passed locally
             openPopupEarly();
             handleFormSubmit.call($form, e);
             return false;
@@ -200,17 +195,26 @@ jQuery(function ($) {
     }
 
     function handleResponse(response, $form) {
-        // THE FIX: If PHP returns fail/error, kill popup immediately
         if (response.result === 'success' && response.redirect) {
             orderId = response.order_id;
             if (popupWindow && !popupWindow.closed) {
+                // Move to center and resize to normal
+                popupWindow.resizeTo(700, 700);
+                popupWindow.moveTo(
+                    (screen.width - 700) / 2,
+                    (screen.height - 700) / 2
+                );
                 popupWindow.location.href = response.redirect;
             } else {
                 window.location.href = response.redirect;
             }
             startPopupInterval();
         } else {
-            if (popupWindow) { popupWindow.close(); popupWindow = null; }
+            // API FAILED: Close it before user sees it
+            if (popupWindow) {
+                popupWindow.close();
+                popupWindow = null;
+            }
             var err = response.error || response.messages || 'Payment failed.';
             displayError(err, $form);
         }
