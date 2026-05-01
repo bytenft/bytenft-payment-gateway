@@ -1191,44 +1191,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	public function bytenft_enqueue_styles_and_scripts() {
 		if (is_checkout()) {
-
 			$image_url = plugin_dir_url(dirname(__FILE__)) . 'assets/images/loader.gif';
-
-			wp_enqueue_style(
-				'bytenft-payment-loader-styles',
-				plugins_url('../assets/css/frontend.css', __FILE__),
-				[],
-				'1.0',
-				'all'
-			);
-
-			// CORE SCRIPT
-			wp_enqueue_script(
-				'bytenft-js',
-				plugins_url('../assets/js/bytenft.js', __FILE__),
-				['jquery', 'bytenft-popup'],
-				'1.0',
-				true
-			);
-
-			// POPUP + POLLING (GLOBAL DEPENDENCY)
-			wp_enqueue_script(
-				'bytenft-popup',
-				plugins_url('../assets/js/bytenft-popup.js', __FILE__),
-				[],
-				'1.0',
-				true
-			);
-
-			// BLOCK CHECKOUT SCRIPT
-			wp_enqueue_script(
-				'bytenft-block',
-				plugins_url('../assets/js/bytenft-block.js', __FILE__),
-				['wp-element', 'wp-hooks'],
-				'1.0',
-				true
-			);
-
+			wp_enqueue_style('bytenft-payment-loader-styles', plugins_url('../assets/css/frontend.css', __FILE__), [], '1.0', 'all');
+			wp_enqueue_script('bytenft-js', plugins_url('../assets/js/bytenft.js', __FILE__), ['jquery'], '1.0', true);
 			wp_localize_script('bytenft-js', 'bytenft_params', [
 				'ajax_url'       => admin_url('admin-ajax.php'),
 				'checkout_url'   => wc_get_checkout_url(),
@@ -1238,7 +1203,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			]);
 		}
 	}
-	
+
 	function bytenft_admin_scripts($hook) {
 		if (
 			'woocommerce_page_wc-settings' !== $hook ||
