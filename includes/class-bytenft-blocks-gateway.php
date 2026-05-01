@@ -89,45 +89,45 @@ function bytenft_register_block_ajax_handlers() {
 add_action('init', 'bytenft_register_block_ajax_handlers');
 
 function handle_bytenft_gateway_ajax() {
-	// ── Nonce verification ────────────────────────────────────────────────────
-	$nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
-	if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
-		wp_send_json(['result' => 'fail', 'error' => 'Security check failed.']);
-		die;
-	}
 
-	// ── Get the already-initialised gateway instance from WooCommerce ─────────
-	// This is the critical fix. WC()->payment_gateways()->payment_gateways()
-	// returns instances that have already been through init_settings(), so
-	// sandbox mode, enabled state, and all options are correctly loaded.
-	$gateways       = WC()->payment_gateways()->payment_gateways();
-	$bytenftPayment = $gateways['bytenft'] ?? null;
+    $raw  = file_get_contents('php://input');
+    $data = json_decode($raw, true);
 
-	if (!$bytenftPayment) {
-		// Fallback: if for any reason the registry doesn't have it yet,
-		// instantiate manually and force-reload settings from the DB.
-		$bytenftPayment = new BYTENFT_PAYMENT_GATEWAY();
-		$bytenftPayment->init_settings();
-		$bytenftPayment->load_gateway_settings();
+    $nonce = $data['nonce'] ?? ($_POST['nonce'] ?? '');
 
-		wc_get_logger()->warning(
-			'ByteNFT: gateway not found in WC registry during AJAX — fell back to manual instantiation.',
-			['source' => 'bytenft-payment-gateway']
-		);
-	}
+    if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
+        wp_send_json([
+            'result' => 'fail',
+            'error'  => 'Security check failed.'
+        ]);
+    }
 
-	// ── Resolve the draft order ID from the block checkout session ────────────
-	$orderID = WC()->session ? WC()->session->get('store_api_draft_order') : null;
+    $gateways = WC()->payment_gateways()->payment_gateways();
+    $gateway  = $gateways['bytenft'] ?? null;
 
-	$status = [];
+    if (!$gateway) {
+        $gateway = new BYTENFT_PAYMENT_GATEWAY();
+        $gateway->init_settings();
+        $gateway->load_gateway_settings();
+    }
 
-	if ($orderID) {
-		$status = $bytenftPayment->process_payment($orderID);
-	} else {
-		wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
-		$status = ['result' => 'fail', 'error' => 'Invalid order.'];
-	}
+    $orderID = (WC()->session)
+        ? WC()->session->get('store_api_draft_order')
+        : null;
 
-	wp_send_json($status);
-	die;
+    if (!$orderID) {
+        wp_send_json([
+            'result' => 'fail',
+            'error'  => 'Invalid order'
+        ]);
+    }
+
+    $status = $gateway->process_payment($orderID);
+
+    wp_send_json([
+        'result'   => $status['result'] ?? 'fail',
+        'order_id' => $orderID,
+        'redirect' => $status['redirect'] ?? null,
+        'error'    => $status['error'] ?? null,
+    ]);
 }
