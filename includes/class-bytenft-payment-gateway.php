@@ -857,19 +857,18 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$resp_data['message'] ?? $resp_data['context']['message'] ?? 'Payment failed.'
 			);
 
-			if ($this->is_block_checkout_request()) {
-				return [
-					'result'   => 'fail',
-					'order_id' => $order->get_id(),
-					'error'    => $error_msg
-				];
-			}
-
-			if (is_checkout()) {
+			// Classic checkout only → Woo notices
+			if (!$this->is_block_checkout_request() && is_checkout()) {
 				wc_add_notice($error_msg, 'error');
 			}
 
-			return ['result' => 'fail','error'=>$error_msg];
+			return $this->build_response(
+				'fail',
+				$error_msg,
+				[],
+				400,
+				$order->get_id()
+			);
 		}
 
 		// -------------------------------------------------
@@ -950,6 +949,23 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'order_id'       => $order->get_id(),
 			'payment_status' => $resp_data['data']['payment_status'] ?? 'pending',
 			'redirect'       => esc_url($resp_data['data']['payment_link']),
+		];
+	}
+
+	private function build_response(
+		string $result,
+		string $message = '',
+		array $data = [],
+		int $code = 200,
+		int $order_id = null
+	) {
+		return [
+			'result'   => $result,   // success | fail
+			'message'  => $message,  // human readable
+			'error'    => $result === 'fail' ? $message : null,
+			'data'     => $data,
+			'order_id' => $order_id,
+			'code'     => $code,
 		];
 	}
 
