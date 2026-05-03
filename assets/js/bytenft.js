@@ -319,6 +319,7 @@ jQuery(function ($) {
     }
 
     function openPaymentLink(paymentLink) {
+
         setTimeout(function () {
             if (popupWindow && !popupWindow.closed) {
                 popupWindow.location.href = paymentLink;
@@ -382,12 +383,16 @@ jQuery(function ($) {
         $('.wc_er, .wc-block-components-notice-banner').remove();
         var errorMessage = (typeof err === 'string' ? err : err?.message || 'Payment failed').toString().trim();
 
-        var $error = $('<div>', {
-            class: 'wc_er wc-block-components-notice-banner is-error',
-            text: errorMessage
-        });
+        // If HTML exists, render it
+        if (/<[a-z][\s\S]*>/i.test(errorMessage)) {
+            $error = $('<div class="wc_er wc-block-components-notice-banner is-error"></div>');
+            $form.prepend(errorMessage);
+        } else {
+            $error = $('<div class="wc_er wc-block-components-notice-banner is-error"></div>').text(errorMessage);
+            $form.prepend($error);
+        }
 
-        $form.prepend($error);
+        
         $('html, body').animate({ scrollTop: $error.offset().top - 300 }, 500);
         resetButton();
     }
@@ -399,15 +404,6 @@ jQuery(function ($) {
         if ($button) {
             $button.prop('disabled', false).text(originalButtonText);
         }
-    }
-
-    function isValidPhoneNumber(phone) {
-        if (!phone || phone.trim() === '') return true;
-        var cleaned        = phone.replace(/[\s\-().]/g, '');
-        var usPattern      = /^(\+1|1)?\d{10}$/;
-        var euPattern      = /^(\+|00)[1-9]\d{6,14}$/;
-        var generalPattern = /^\+?\d{7,20}$/;
-        return usPattern.test(cleaned) || euPattern.test(cleaned) || generalPattern.test(cleaned);
     }
 
     var errorSelectors = [
