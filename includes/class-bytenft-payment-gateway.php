@@ -975,7 +975,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'success',
 			'Payment initiated',
 			[
-				'payment_status' => $resp_data['data']['payment_status'] ?? 'pending'
+				'payment_status' => $resp_data['data']['payment_status'] ?? 'pending',
+				'redirect' => esc_url($resp_data['data']['payment_link'] ?? '')
 			],
 			200,
 			$order->get_id()

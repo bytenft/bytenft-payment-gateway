@@ -360,7 +360,7 @@ jQuery(function ($) {
         try {
             if (response.result === 'success') {
                 orderId = response.order_id;
-                openPaymentLink(response.redirect);
+                openPaymentLink(response.data.redirect);
             } else {
                 if (popupWindow) { popupWindow.close(); popupWindow = null; }
                 displayError(response?.error || response?.notices || response?.messages || 'Payment failed.', $form);
