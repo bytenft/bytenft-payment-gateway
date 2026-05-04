@@ -1380,7 +1380,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		if ($all_accounts_limited) {
-			//$this->log_info_once_per_session('accounts_limited_' . $cart_hash, 'ByteNFT payment option hidden: all accounts have reached their transaction limits');
+			$this->log_info_once_per_session('accounts_limited_' . $cart_hash, 'ByteNFT payment option hidden: all accounts have reached their transaction limits');
 
 			return $this->hide_gateway($available_gateways, $gateway_id);
 		}
@@ -1679,9 +1679,9 @@ private function get_routing_sorted_accounts(array $accounts): array {
 		$gateway_id = $this->id;
 		$available_gateways = WC()->payment_gateways->get_available_payment_gateways();
 		if ($all_accounts_limited) {
-			$this->log_info_once_per_session('accounts_limited_' . $cart_hash, 'ByteNFT payment option hidden: all accounts have reached their transaction limits');
-
+			
 			if (!isset($limit_data['max_limit_reached']) || $limit_data['max_limit_reached'] == false) {
+				$this->log_info_once_per_session('accounts_limited_' . $cart_hash, 'ByteNFT payment option hidden: all accounts have reached their transaction limits');
 				return $this->hide_gateway($available_gateways, $gateway_id);
 			}
 		}
