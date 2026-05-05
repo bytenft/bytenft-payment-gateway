@@ -1681,7 +1681,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 		$gateway_id = $this->id;
 		$available_gateways = WC()->payment_gateways->get_available_payment_gateways();
 		if ($all_accounts_limited) {
-			wc_get_logger()->info("All Account Limited: " . $all_accounts_limited . "Limit Response Data : " . json_encode($limit_data), ['source' => 'bytenft-payment-gateway']);
+			wc_get_logger()->info("All Account Limited: " . $all_accounts_limited . "--- Limit Response Data : " . json_encode($limit_data), ['source' => 'bytenft-payment-gateway']);
 			
 			if (!isset($limit_data['max_limit_reached']) || $limit_data['max_limit_reached'] == false) {
 				return $this->hide_gateway($available_gateways, $gateway_id);
