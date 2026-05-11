@@ -610,7 +610,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				$order->update_status('failed', 'ByteNFT failure');
 
 				wp_send_json_success([
-					'message' => 'Payment failed.'
+					'message' => 'Your payment has failed. Please try again.'
 				]);
 				break;
 

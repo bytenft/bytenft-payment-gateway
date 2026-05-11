@@ -213,7 +213,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			if (!in_array($order->get_status(), $paid_statuses)) {
 				
 				$source = ($method === 'POST') ? 'Webhook' : 'Redirect';
-				$note   = "🔄 ByteNFT Update ($source)\nStatus: $api_order_status\nID: $pay_id";
+				$note   = "ByteNFT Update ($source)\nStatus: $api_order_status\nID: $pay_id";
 
 				$order->update_status($target_status, $note);
 				
