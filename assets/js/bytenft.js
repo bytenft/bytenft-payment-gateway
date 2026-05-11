@@ -343,11 +343,25 @@ jQuery(function ($) {
                     if (!isBlockSelected) {
                         $(document.body).trigger('update_checkout');
                     }
+                    var $targetForm = isBlockSelected
+                        ? $('form.wc-block-checkout__form')
+                        : $('form.checkout');
+
                     if (response.success && response.data?.redirect_url) {
+
                         window.location.replace(response.data.redirect_url);
+
+                    } else if (response.data?.message) {
+
+                        displayError(response.data.message, $targetForm);
+
                     } else if (response.data?.notices) {
-                        var $targetForm = isBlockSelected ? $('form.wc-block-checkout__form') : $('form.checkout');
+
                         displayError(response.data.notices, $targetForm);
+
+                    } else {
+
+                        displayError('Payment failed.', $targetForm);
                     }
                     resetButton();
                 }, 'json');
@@ -359,19 +373,38 @@ jQuery(function ($) {
         $('.wc_er').remove();
 
         try {
-            if (response.result === 'success' || response.success === true) {
+
+            // SUCCESS ONLY if redirect exists
+            if (
+                (response.result === 'success' || response.success === true)
+                && response.data?.redirect
+            ) {
+
                 orderId = response.order_id;
                 openPaymentLink(response.data.redirect);
-            } else {
-                if (popupWindow) { popupWindow.close(); popupWindow = null; }
 
-               displayError(
-                    response.message || response.data?.message || 'Payment failed.',
+            } else {
+
+                if (popupWindow) {
+                    popupWindow.close();
+                    popupWindow = null;
+                }
+
+                displayError(
+                    response.message ||
+                    response.data?.message ||
+                    'Payment failed.',
                     $form
                 );
             }
+
         } catch (err) {
-            if (popupWindow) { popupWindow.close(); popupWindow = null; }
+
+            if (popupWindow) {
+                popupWindow.close();
+                popupWindow = null;
+            }
+
             displayError('Unexpected error occurred.', $form);
         }
     }
