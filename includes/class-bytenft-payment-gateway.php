@@ -1046,15 +1046,33 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$account['title']
 		));
 		
+		$payment_link = $resp_data['data']['payment_link'] ?? null;
+
+		if (empty($payment_link)) {
+
+			wc_get_logger()->error(
+				"Missing payment link for order {$order_id}",
+				$logger_context
+			);
+
+			return $this->build_response(
+				'fail',
+				'Payment could not be initiated. Please try again in a moment.',
+				[],
+				500,
+				$order_id
+			);
+		}
+
 		return $this->build_response(
 			'success',
 			'Payment initiated',
 			[
 				'payment_status' => $resp_data['data']['payment_status'] ?? 'pending',
-				'redirect' => esc_url($resp_data['data']['payment_link'] ?? '')
+				'redirect' => esc_url($payment_link)
 			],
 			200,
-			$order->get_id()
+			$order_id
 		);
 
 		}catch (\Exception $e) {
@@ -1075,7 +1093,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		string $message = '',
 		array $data = [],
 		int $code = 200,
-		int $order_id = null
+		?int $order_id = null
 	) {
 		return [
 			'result'   => $result, // success | fail

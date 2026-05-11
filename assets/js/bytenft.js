@@ -320,18 +320,39 @@ jQuery(function ($) {
 
     function openPaymentLink(paymentLink) {
 
-        setTimeout(function () {
-            if (popupWindow && !popupWindow.closed) {
+        // Open payment URL immediately
+        if (popupWindow && !popupWindow.closed) {
+
+            try {
                 popupWindow.location.href = paymentLink;
-            } else if (!popupWindow) {
+                popupWindow.focus();
+            } catch (e) {
                 window.location.href = paymentLink;
             }
-        }, 300);
+
+        } else {
+
+            // Popup blocked or closed
+            popupWindow = window.open(
+                paymentLink,
+                '_blank',
+                'width=700,height=700'
+            );
+
+            // Final fallback
+            if (!popupWindow) {
+                window.location.href = paymentLink;
+                return;
+            }
+        }
 
         popupInterval = setInterval(function () {
+
             if (!popupWindow || popupWindow.closed) {
+
                 clearInterval(popupInterval);
                 clearInterval(paymentStatusInterval);
+
                 popupWindow = null;
 
                 $.post(bytenft_params.ajax_url, {
@@ -339,10 +360,15 @@ jQuery(function ($) {
                     order_id: orderId,
                     security: bytenft_params.bytenft_nonce
                 }, function (response) {
-                    var isBlockSelected = $('input[name="radio-control-wc-payment-method-options"]:checked').val() === bytenft_params.payment_method;
+
+                    var isBlockSelected =
+                        $('input[name="radio-control-wc-payment-method-options"]:checked').val()
+                        === bytenft_params.payment_method;
+
                     if (!isBlockSelected) {
                         $(document.body).trigger('update_checkout');
                     }
+
                     var $targetForm = isBlockSelected
                         ? $('form.wc-block-checkout__form')
                         : $('form.checkout');
@@ -363,9 +389,12 @@ jQuery(function ($) {
 
                         displayError('Payment failed.', $targetForm);
                     }
+
                     resetButton();
+
                 }, 'json');
             }
+
         }, 500);
     }
 
