@@ -370,18 +370,17 @@ jQuery(function ($) {
     }
 
     function handleResponse(response, $form) {
+
         $('.wc_er').remove();
 
         try {
 
-            // SUCCESS ONLY if redirect exists
-            if (
-                (response.result === 'success' || response.success === true)
-                && response.data?.redirect
-            ) {
+            const paymentLink = response?.data?.redirect;
+
+            if (paymentLink) {
 
                 orderId = response.order_id;
-                openPaymentLink(response.data.redirect);
+                openPaymentLink(paymentLink);
 
             } else {
 
@@ -391,8 +390,8 @@ jQuery(function ($) {
                 }
 
                 displayError(
-                    response.message ||
-                    response.data?.message ||
+                    response?.message ||
+                    response?.data?.message ||
                     'Payment failed.',
                     $form
                 );
