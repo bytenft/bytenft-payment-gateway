@@ -624,6 +624,16 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 					'redirect_url' => $order->get_cancel_order_url()
 				]);
 				break;
+
+			default:
+
+				$this->bytenft_log('UNKNOWN status received', [
+					'status' => $payment_status
+				]);
+
+				wp_send_json_error([
+					'message' => 'Unknown Payment Status'
+				]);
 		}
 
 		wp_die();
