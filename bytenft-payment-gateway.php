@@ -164,7 +164,7 @@ function bytenft_cancel_unpaid_order_action($order_id)
 
 		$request_payload = [
 			'order_id'   => $order_id,
-			'order_uuid' => base64_encode($uuid),
+			'order_uuid' => $uuid,
 			'status'     => 'canceled',
 		];
 
