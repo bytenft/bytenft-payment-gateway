@@ -635,6 +635,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		global $wpdb;
 
 		$logger_context = ['source' => 'bytenft-payment-gateway'];
+		$lock_name = '';
 		wc_clear_notices();
 
 		// -------------------------------------------------
@@ -657,6 +658,27 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$order_id
 			);
 		}
+
+		// Acquire MySQL Named Lock
+		$lock_name = 'bytenft_order_' . (int)$order_id;
+		$lock_result = $wpdb->get_var($wpdb->prepare("SELECT GET_LOCK(%s, 5)", $lock_name));
+
+		if ("1" !== (string)$lock_result) {
+			return $this->build_response('fail', 'Payment already in progress (DB Lock).', [], 409, $order_id);
+		}
+
+		// Acquire Application Meta Lock (Atomic check)
+		$is_locked = $order->get_meta('_bytenft_lock');
+		if ('1' === (string)$is_locked) {
+			$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
+			return $this->build_response('fail', 'Payment already in progress (App Lock).', [], 409, $order_id);
+		}
+
+		// Set the lock
+		$order->update_meta_data('_bytenft_lock', '1');
+		$order->save();
+		
+		try {
 
 		// -------------------------------------------------
 		// 2. EMAIL VALIDATION
@@ -733,7 +755,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// -------------------------------------------------
 		$status = $order->get_status();
 
-		if ($status === 'completed' || $status === 'cancelled') {
+		if ($status === 'completed' || $status === 'cancelled' || $status === 'processing') {
 
 			if (WC()->cart) {
 				WC()->cart->empty_cart();
@@ -827,6 +849,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ($last_error_data) {
 
 				if (!empty($last_error_data['max_limit_reached'])) {
+
 					return $this->build_response(
 						'fail',
 						'The transaction amount exceeds the maximum allowed limit.',
@@ -882,6 +905,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		]);
 
 		if (is_wp_error($response)) {
+
 			return $this->build_response(
 				'fail',
 				'Payment error: Unable to process.',
@@ -959,6 +983,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		if (!empty($pay_id)) {
 			$order->update_meta_data('_bytenft_pay_id', $pay_id);
 			$order->update_meta_data('_bytenft_pay_id_updated_at', time());
+
+			$order->update_meta_data('_bytenft_active_pay_id', $pay_id);
+			$order->update_meta_data('_bytenft_payment_finalized', false);
 		}
 
 		// -------------------------------------------------
@@ -969,8 +996,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			__('Payment initiated via ByteNFT (%s)', 'bytenft-payment-gateway'),
 			$account['title']
 		));
-		$order->save();
-
+		
 		return $this->build_response(
 			'success',
 			'Payment initiated',
@@ -981,6 +1007,18 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			200,
 			$order->get_id()
 		);
+
+		}catch (\Exception $e) {
+			wc_get_logger()->error("Payment processing error: " . $e->getMessage(), $logger_context);
+			return $this->build_response('fail', 'An internal error occurred.', [], 500, $order_id);
+		} finally {
+			if ($order instanceof WC_Order) {
+				$order->update_meta_data('_bytenft_lock', '0');
+				$order->save();
+			}
+			
+			$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
+		}
 	}
 
 	private function build_response(
