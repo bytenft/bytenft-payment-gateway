@@ -517,6 +517,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		$payment_return_url = $order->get_checkout_order_received_url();
 
+		// 🧹 IMPORTANT: Clear all previous "Ghost" notices
+        // so the user only sees the result of the actual payment attempt.
+        wc_clear_notices();
+
 		switch ($response_data['payment_status']) {
 
 			case 'success':
