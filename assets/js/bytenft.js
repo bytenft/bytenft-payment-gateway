@@ -357,17 +357,22 @@ jQuery(function ($) {
 
     function handleResponse(response, $form) {
         $('.wc_er').remove();
+
         try {
             if (response.result === 'success') {
                 orderId = response.order_id;
                 openPaymentLink(response.data.redirect);
             } else {
                 if (popupWindow) { popupWindow.close(); popupWindow = null; }
-                displayError(response?.error || response?.notices || response?.messages || 'Payment failed.', $form);
+
+                displayError(
+                    response.message || 'Payment failed.',
+                    $form
+                );
             }
         } catch (err) {
             if (popupWindow) { popupWindow.close(); popupWindow = null; }
-            displayError(err, $form);
+            displayError('Unexpected error occurred.', $form);
         }
     }
 
@@ -380,20 +385,23 @@ jQuery(function ($) {
 
     function displayError(err, $form) {
         if (popupWindow) { popupWindow.close(); popupWindow = null; }
+
         $('.wc_er, .wc-block-components-notice-banner').remove();
-        var errorMessage = (typeof err === 'string' ? err : err?.message || 'Payment failed').toString().trim();
 
-        // If HTML exists, render it
-        if (/<[a-z][\s\S]*>/i.test(errorMessage)) {
-            $error = $('<div class="wc_er wc-block-components-notice-banner is-error"></div>');
-            $form.prepend(errorMessage);
-        } else {
-            $error = $('<div class="wc_er wc-block-components-notice-banner is-error"></div>').text(errorMessage);
-            $form.prepend($error);
-        }
+        var errorMessage = (typeof err === 'string')
+            ? err
+            : (err?.message || 'Payment failed');
 
-        
-        $('html, body').animate({ scrollTop: $error.offset().top - 300 }, 500);
+        var $error = $('<div class="wc_er wc-block-components-notice-banner is-error"></div>');
+
+        $error.text(errorMessage);
+
+        $form.prepend($error);
+
+        $('html, body').animate({
+            scrollTop: $error.offset().top - 200
+        }, 500);
+
         resetButton();
     }
 
