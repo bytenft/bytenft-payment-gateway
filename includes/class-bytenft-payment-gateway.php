@@ -1078,11 +1078,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		int $order_id = null
 	) {
 		return [
-			'result'   => $result,   // success | fail
-			'message'  => $message,  // human readable
+			'result'   => $result, // success | fail
+			'message'  => $message,
 			'data'     => $data,
 			'order_id' => $order_id,
 			'code'     => $code,
+			'success'  => $result === 'success',
 		];
 	}
 

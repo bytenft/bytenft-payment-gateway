@@ -359,14 +359,14 @@ jQuery(function ($) {
         $('.wc_er').remove();
 
         try {
-            if (response.result === 'success') {
+            if (response.result === 'success' || response.success === true) {
                 orderId = response.order_id;
                 openPaymentLink(response.data.redirect);
             } else {
                 if (popupWindow) { popupWindow.close(); popupWindow = null; }
 
-                displayError(
-                    response.message || 'Payment failed.',
+               displayError(
+                    response.message || response.data?.message || 'Payment failed.',
                     $form
                 );
             }
