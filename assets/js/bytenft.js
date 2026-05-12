@@ -412,59 +412,88 @@
          * RESPONSE HANDLER
          * ========================================================= */
 
-        handleResponse: function (res) {
+       handleResponse: function (res) {
 
             const self = this;
 
             try {
+
+                // ✅ SAFE PARSE (no silent failure)
                 if (typeof res === 'string') {
-                    try { res = JSON.parse(res); } catch (e) {}
-                }
-
-                const success = res?.success === true;
-                const orderId = res?.order_id || res?.data?.order_id || null;
-
-                const redirectUrl = res?.data?.redirect || res?.redirect || null;
-
-                if (success) {
-
-                    this.state.orderId = orderId;
-                    this.state.redirectUrl = redirectUrl;
-
-                    self.reset();
-
-                    const popup = self.state.popup;
-
-                    // ✅ OPEN PAYMENT LINK INSIDE POPUP
-                    if (popup && !popup.closed) {
-
-                        if (redirectUrl) {
-                            try {
-                                popup.location.href = redirectUrl;
-                                popup.focus();
-                            } catch (e) {
-                                window.open(redirectUrl, '_blank');
-                            }
-                        }
-
-                        // start tracking close AFTER redirect is opened
-                        this.trackPopupClose();
-
+                    try {
+                        res = JSON.parse(res);
+                    } catch (e) {
+                        console.error('[Bytenft] Invalid JSON response:', res);
+                        self.showCheckoutError('Invalid server response');
+                        self.reset();
                         return;
                     }
+                }
 
-                    // fallback (popup blocked)
-                    if (redirectUrl) {
-                        window.location.href = redirectUrl;
-                    }
+                // ✅ normalize success
+                const isSuccess =
+                    res?.success === true ||
+                    res?.success === 'true' ||
+                    res?.result === 'success';
 
+                // ✅ FIX: support both structures
+                const redirectUrl =
+                    res?.redirect ||
+                    res?.data?.redirect ||
+                    null;
+
+                const orderId =
+                    res?.order_id ||
+                    res?.data?.order_id ||
+                    null;
+
+                console.log('[Bytenft] Parsed response:', res);
+
+                // ❌ FAILURE CASE
+                if (!isSuccess) {
+                    self.showCheckoutError(res?.message || 'Payment failed');
+                    self.reset();
                     return;
                 }
 
-                self.showCheckoutError(res?.message || 'Payment failed');
+                // ✅ SUCCESS CASE
+                this.state.orderId = orderId;
+
+                self.reset();
+
+                const popup = self.state.popup;
+
+                // =========================
+                // POPUP FLOW
+                // =========================
+                if (popup && !popup.closed) {
+
+                    if (redirectUrl) {
+                        try {
+                            popup.location.href = redirectUrl;
+                            popup.focus();
+                        } catch (e) {
+                            window.open(redirectUrl, '_blank');
+                        }
+                    }
+
+                    this.trackPopupClose();
+                    return;
+                }
+
+                // =========================
+                // FALLBACK FLOW
+                // =========================
+                if (redirectUrl) {
+                    window.location.href = redirectUrl;
+                    return;
+                }
+
+                self.showCheckoutError('Missing redirect URL');
                 self.reset();
 
             } catch (e) {
+                console.error('[Bytenft] handleResponse error:', e);
                 self.showCheckoutError('Unexpected error occurred.');
                 self.reset();
             }
