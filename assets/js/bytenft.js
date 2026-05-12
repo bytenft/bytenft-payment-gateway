@@ -291,7 +291,9 @@
                         }
 
                         // ❌ ERROR HANDLING
-                        if (response?.data?.message) {
+                        if (response?.message) {
+                            self.showCheckoutError(response.message);
+                        } else if (response?.data?.message) {
                             self.showCheckoutError(response.data.message);
                         } else if (response?.data?.notices) {
                             self.showCheckoutError(response.data.notices);
