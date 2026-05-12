@@ -297,9 +297,6 @@
 
         showCheckoutError: function (message) {
 
-            // Clear previous notices first
-            $('.woocommerce-notices-wrapper').remove();
-
             const html = `
                 <div class="woocommerce-notices-wrapper">
                     <ul class="woocommerce-error" role="alert">
@@ -308,19 +305,35 @@
                 </div>
             `;
 
-            // Block checkout
+            // BLOCK CHECKOUT
             const blockTarget = $('.wc-block-checkout__form');
 
             if (blockTarget.length) {
+
+                // remove only existing errors (NOT wrapper)
+                blockTarget.find('.woocommerce-error').remove();
+
                 blockTarget.prepend(html);
+
+                // force scroll so user sees it
+                $('html, body').animate({
+                    scrollTop: blockTarget.offset().top - 100
+                }, 300);
+
                 return;
             }
 
-            // Classic checkout fallback
+            // CLASSIC CHECKOUT
             const classicTarget = $('form.checkout');
 
             if (classicTarget.length) {
+
+                classicTarget.find('.woocommerce-error').remove();
                 classicTarget.prepend(html);
+
+                $('html, body').animate({
+                    scrollTop: classicTarget.offset().top - 100
+                }, 300);
             }
         },
 
