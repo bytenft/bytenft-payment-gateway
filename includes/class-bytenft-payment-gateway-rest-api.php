@@ -161,23 +161,49 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$success_status = $settings['order_status'] ?? 'processing';
 
 		// -------------------------------------------------
-		// 2. ONE-WAY VALVE: PREVENT PAID -> FAILED (May 6 Fix)
+		// 2. SAFE STATUS TRANSITIONS (MATCH popup_close LOGIC)
 		// -------------------------------------------------
-		$paid_statuses = ['completed', 'processing', $success_status];
-		
-		if (in_array($current_status, $paid_statuses)) {
-			$this->logger->info("ByteNFT: Order #{$order_id} already paid. Ignoring {$api_order_status} update.", $log_context);
-			return $this->bytenft_finalize_response($method, $order, true, 'Order already finalized');
+
+		$target_status = $this->bytenft_map_status($api_order_status, $success_status);
+
+		if (!$target_status) {
+			return $this->bytenft_finalize_response($method, $order, true, 'No mapping needed');
+		}
+
+		$can_update = true;
+
+		// ❌ Never downgrade completed
+		if ($current_status === 'completed' && $target_status !== 'completed') {
+			$can_update = false;
+		}
+
+		// ❌ Never downgrade processing/success to failed
+		if (
+			in_array($current_status, ['processing', $success_status], true)
+			&& $target_status === 'failed'
+		) {
+			$can_update = false;
+		}
+
+		if (!$can_update) {
+
+			$this->logger->info(
+				"ByteNFT: Downgrade prevented for Order #{$order_id} ({$current_status} -> {$target_status})",
+				$log_context
+			);
+
+			return $this->bytenft_finalize_response(
+				$method,
+				$order,
+				true,
+				'Order already finalized',
+				$current_status
+			);
 		}
 
 		// -------------------------------------------------
 		// 3. STATUS MAPPING & SECURITY
 		// -------------------------------------------------
-		$target_status = $this->bytenft_map_status($api_order_status, $success_status);
-		
-		if (!$target_status) {
-			return $this->bytenft_finalize_response($method, $order, true, 'No mapping needed');
-		}
 
 		// POST Request Security (Webhook)
 		if ($method === 'POST') {
@@ -208,21 +234,21 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		// 5. THE UPDATE
 		// -------------------------------------------------
 		try {
-			// Final sanity check on status
-			$order = wc_get_order($order_id);
-			if (!in_array($order->get_status(), $paid_statuses)) {
-				
-				$source = ($method === 'POST') ? 'Webhook' : 'Redirect';
-				$note   = "ByteNFT Update ($source)\nStatus: $api_order_status\nID: $pay_id";
 
-				$order->update_status($target_status, $note);
-				
-				if (!empty($pay_id)) {
-					$order->update_meta_data('_bytenft_pay_id', $pay_id);
-				}
-				$order->update_meta_data('_bytenft_last_status', $api_order_status);
-				$order->save();
+			$source = ($method === 'POST') ? 'Webhook' : 'Redirect';
+
+			$note = "ByteNFT Update ($source)\nStatus: $api_order_status\nID: $pay_id";
+
+			$order->update_status($target_status, $note);
+
+			if (!empty($pay_id)) {
+				$order->update_meta_data('_bytenft_pay_id', $pay_id);
 			}
+
+			$order->update_meta_data('_bytenft_last_status', $api_order_status);
+
+			$order->save();
+
 		} catch (\Exception $e) {
 			$this->logger->error("ByteNFT Update Error: " . $e->getMessage(), $log_context);
 		} finally {
