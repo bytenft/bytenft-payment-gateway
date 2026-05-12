@@ -86,6 +86,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_filter('woocommerce_available_payment_gateways', [$this, 'bytenft_hide_custom_payment_gateway_conditionally']);
 
 		add_action('woocommerce_after_checkout_validation', [$this, 'bytenft_validate_checkout_fields'], 10, 2);
+
+		add_action('wp_ajax_bytenft_log_event', [$this, 'handle_log_event']);
+		add_action('wp_ajax_nopriv_bytenft_log_event', [$this, 'handle_log_event']);
 	}
 
 	/**
@@ -1103,6 +1106,31 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'code'     => $code,
 			'success'  => $result === 'success',
 		];
+	}
+
+	private function log_event($level, $message, $context = [])
+	{
+		$logger = wc_get_logger();
+
+		$logger_context = array_merge([
+			'source' => 'bytenft-payment-gateway'
+		], $context);
+
+		switch ($level) {
+
+			case 'error':
+				$logger->error($message, $logger_context);
+				break;
+
+			case 'warning':
+				$logger->warning($message, $logger_context);
+				break;
+
+			case 'info':
+			default:
+				$logger->info($message, $logger_context);
+				break;
+		}
 	}
 
 	private function is_block_checkout_request() {
