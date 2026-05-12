@@ -255,41 +255,53 @@
 
             self.state.popupInterval = setInterval(function () {
 
-                try {
-
-                    if (!self.state.popup || self.state.popup.closed) {
-
-                        clearInterval(self.state.popupInterval);
-
-                        console.log('[Bytenft] popup closed detected');
-
-                        $.post(bytenft_params.ajax_url, {
-                            action: 'bytenft_popup_closed_event',
-                            order_id: self.state.orderId,
-                            security: bytenft_params.bytenft_nonce
-                        }, function (response) {
-
-                            console.log('[Bytenft] popup close response:', response);
-
-                            if (
-                                response &&
-                                response.success &&
-                                response.data &&
-                                response.data.redirect_url
-                            ) {
-                                window.location.href = response.data.redirect_url;
-                                return;
-                            }
-
-                            self.reset();
-                        });
-                    }
-
-                } catch (e) {
+                if (!self.state.popup || self.state.popup.closed) {
 
                     clearInterval(self.state.popupInterval);
-                    console.error('[Bytenft] popup tracking error', e);
-                    self.reset();
+
+                    self.state.popup = null;
+
+                    $.post(bytenft_params.ajax_url, {
+                        action: 'bytenft_popup_closed_event',
+                        order_id: self.state.orderId,
+                        security: bytenft_params.bytenft_nonce
+                    }, function (response) {
+
+                        // Optional Woo refresh (only for block checkout UX)
+                        const isBlockSelected =
+                            $('input[name="radio-control-wc-payment-method-options"]:checked').val()
+                            === bytenft_params.payment_method;
+
+                        if (!isBlockSelected) {
+                            $(document.body).trigger('update_checkout');
+                        }
+
+                        const $targetForm = isBlockSelected
+                            ? $('form.wc-block-checkout__form')
+                            : $('form.checkout');
+
+                        // ✅ SUCCESS → redirect WordPress page
+                        if (response?.success && response?.data?.redirect_url) {
+
+                            const url = response.data.redirect_url;
+
+                            // final redirect (WordPress context)
+                            window.location.replace(url);
+                            return;
+                        }
+
+                        // ❌ ERROR HANDLING
+                        if (response?.data?.message) {
+                            self.showCheckoutError(response.data.message);
+                        } else if (response?.data?.notices) {
+                            self.showCheckoutError(response.data.notices);
+                        } else {
+                            self.showCheckoutError('Payment failed.');
+                        }
+
+                        self.reset();
+
+                    }, 'json');
                 }
 
             }, 500);
@@ -410,34 +422,21 @@
                 }
 
                 const success = res?.success === true;
-                const url = res?.redirect || res?.data?.redirect;
+                const orderId = res?.order_id || res?.data?.order_id || null;
+                const redirectUrl = res?.data?.redirect || res?.redirect || null;
 
-                if (success && url) {
+                if (success) {
 
-                    this.state.orderId = res.order_id || res?.data?.order_id || null;
+                    // store everything for later decision
+                    this.state.orderId = orderId;
+                    this.state.redirectUrl = redirectUrl;
 
                     self.reset();
 
-                    // close loader UI popup safety
-                    if (self.state.popup && !self.state.popup.closed) {
-                        try {
-                            self.state.popup.location.href = url; // 🔥 LOAD IN POPUP
-                        } catch (e) {
-                            self.state.popup.close();
-                            window.open(url, '_blank'); // fallback
-                        }
-
-                        return;
-                    }
-
-                    // If popup is missing (Safari / blocked)
-                    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-
-                    if (isSafari) {
-                        window.open(url, '_blank'); // Safari safe behavior
-                    } else {
-                        window.location.href = url;
-                    }
+                    // IMPORTANT:
+                    // do NOT redirect here
+                    // just start monitoring popup lifecycle
+                    this.trackPopupClose();
 
                     return;
                 }
