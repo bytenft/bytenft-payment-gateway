@@ -420,6 +420,7 @@ jQuery(function ($) {
 
                 displayError(
                     response?.message ||
+                    response?.messages ||
                     response?.data?.message ||
                     'Payment failed.',
                     $form
