@@ -271,20 +271,42 @@
 
         redirectPopup: function (url) {
 
+            const self = this;
+
             try {
 
-                this.track('redirect', { url });
+                self.track('redirect', { url });
 
-                if (this.state.popup && !this.state.popup.closed) {
-                    this.state.popup.location.href = url;
-                    this.state.popup.focus();
-                } else {
-                    window.location.href = url;
-                }
+                setTimeout(function () {
+
+                    try {
+
+                        if (self.state.popup && !self.state.popup.closed) {
+
+                            self.state.popup.location.href = url;
+                            self.state.popup.focus();
+
+                        } else {
+
+                            window.location.href = url;
+                        }
+
+                    } catch (e) {
+
+                        self.track('redirect_fallback', {
+                            error: e.message
+                        });
+
+                        window.location.href = url;
+                    }
+
+                }, 300);
 
             } catch (e) {
 
-                this.track('redirect_fallback', { error: e.message });
+                self.track('redirect_error', {
+                    error: e.message
+                });
 
                 window.location.href = url;
             }
@@ -390,14 +412,23 @@
 
                 error: function (err) {
 
-                    self.track('ajax_error', { err });
+                    self.track('ajax_error', {
+                        status: err.status,
+                        response: err.responseText
+                    });
+
+                    try {
+
+                        if (self.state.popup && !self.state.popup.closed) {
+                            self.state.popup.close();
+                        }
+
+                    } catch (e) {}
+
+                    self.resetButton();
 
                     self.state.submitting = false;
                 },
-
-                complete: function () {
-                    self.state.submitting = false;
-                }
             });
 
             return false;
@@ -431,6 +462,22 @@
                 }
 
                 this.track('payment_failed', res);
+
+                try {
+
+                    if (this.state.popup && !this.state.popup.closed) {
+                        this.state.popup.close();
+                    }
+
+                } catch (e) {}
+
+                alert(
+                    res?.message ||
+                    res?.data?.message ||
+                    'Payment failed'
+                );
+
+                this.resetButton();
 
                 this.state.submitting = false;
 
