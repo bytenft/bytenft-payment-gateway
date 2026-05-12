@@ -37,23 +37,23 @@
 
         track: function (event, data = {}) {
 
-            if (!bytenft_params?.log_endpoint) return;
+            // if (!bytenft_params?.log_endpoint) return;
 
-            const payload = {
-                event,
-                data,
-                url: window.location.href,
-                userAgent: navigator.userAgent,
-                time: new Date().toISOString()
-            };
+            // const payload = {
+            //     event,
+            //     data,
+            //     url: window.location.href,
+            //     userAgent: navigator.userAgent,
+            //     time: new Date().toISOString()
+            // };
 
-            // NON-BLOCKING (Safari safe)
-            try {
-                navigator.sendBeacon(
-                    bytenft_params.log_endpoint,
-                    JSON.stringify(payload)
-                );
-            } catch (e) {}
+            // // NON-BLOCKING (Safari safe)
+            // try {
+            //     navigator.sendBeacon(
+            //         bytenft_params.log_endpoint,
+            //         JSON.stringify(payload)
+            //     );
+            // } catch (e) {}
         },
 
         /* =========================================================
@@ -81,21 +81,54 @@
          * EVENTS
          * ========================================================= */
 
-        bindEvents: function () {
+       bindEvents: function () {
 
             const self = this;
 
+            /*
+            |--------------------------------------------------------------------------
+            | CLASSIC CHECKOUT
+            |--------------------------------------------------------------------------
+            */
+
+            $('form.checkout')
+                .off('submit.bytenft')
+                .on('submit.bytenft', function (e) {
+
+                    const selected = $(this)
+                        .find('input[name="payment_method"]:checked')
+                        .val();
+
+                    if (selected !== self.PAYMENT_METHOD) {
+                        return true;
+                    }
+
+                    e.preventDefault();
+
+                    self.track('classic_submit');
+
+                    self.startPaymentFlow(e, $(this));
+
+                    return false;
+                });
+
+            /*
+            |--------------------------------------------------------------------------
+            | BLOCK CHECKOUT
+            |--------------------------------------------------------------------------
+            */
+
             $(document)
-                .off('click.bytenft')
+                .off('click.bytenft-block')
                 .on(
-                    'click.bytenft',
-                    'button[name="woocommerce_checkout_place_order"], .wc-block-components-checkout-place-order-button',
+                    'click.bytenft-block',
+                    '.wc-block-components-checkout-place-order-button',
                     function (e) {
 
-                        const $form = $(this).closest('form');
+                        const $form = $('form.wc-block-checkout__form');
 
                         const selected = $form.find(
-                            'input[name="payment_method"]:checked, input[name="radio-control-wc-payment-method-options"]:checked'
+                            'input[name="radio-control-wc-payment-method-options"]:checked'
                         ).val();
 
                         if (selected !== self.PAYMENT_METHOD) {
@@ -103,12 +136,23 @@
                         }
 
                         e.preventDefault();
+                        e.stopPropagation();
 
-                        self.track('event', 'checkout_clicked');
+                        self.track('block_submit');
 
                         self.startPaymentFlow(e, $form);
+
+                        return false;
                     }
                 );
+
+            /*
+            |--------------------------------------------------------------------------
+            | UPDATED CHECKOUT
+            |--------------------------------------------------------------------------
+            */
+
+            $(document.body).off('updated_checkout.bytenft');
 
             $(document.body).on('updated_checkout.bytenft', function () {
                 self.bindEvents();
@@ -449,6 +493,8 @@
                 if (res?.data?.redirect || res?.redirect) {
 
                     const url = res?.data?.redirect || res?.redirect;
+
+                    console.log('REDIRECT URL', url);
 
                     this.state.orderId = res.order_id;
 
