@@ -237,7 +237,29 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 
 			$source = ($method === 'POST') ? 'Webhook' : 'Redirect';
 
-			$note = "ByteNFT Update ($source)\nStatus: $api_order_status\nID: $pay_id";
+			if (in_array($api_order_status, ['completed', 'success', 'paid'], true)) {
+
+				$note  = "ByteNFT Payment Successful\n";
+				$note .= "Payment has been confirmed successfully.\n";
+				$note .= "Order Status: " . ucfirst($target_status) . "\n";
+				$note .= "Source: {$source}\n";
+
+			} elseif (in_array($api_order_status, ['failed'], true)) {
+
+				$note  = "ByteNFT Payment Failed\n";
+				$note .= "The payment could not be completed.\n";
+				$note .= "Source: {$source}\n";
+
+			} else {
+
+				$note  = "ByteNFT Payment Cancelled\n";
+				$note .= "Customer cancelled the payment.\n";
+				$note .= "Source: {$source}\n";
+			}
+
+			if (!empty($pay_id)) {
+				$note .= "Transaction ID: {$pay_id}\n";
+			}
 
 			$order->update_status($target_status, $note);
 

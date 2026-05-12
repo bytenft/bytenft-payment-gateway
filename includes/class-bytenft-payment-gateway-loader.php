@@ -654,7 +654,36 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if ($can_update) {
 
-			$order->update_status($new_status, 'ByteNFT update');
+			$source = 'Popup Close Validation';
+
+			if (in_array($payment_status, ['success', 'paid'], true)) {
+
+				$note  = "ByteNFT Payment Successful\n";
+				$note .= "Payment has been confirmed successfully.\n";
+				$note .= "Payment Status: {$payment_status}\n";
+				$note .= "Order Status: " . ucfirst($new_status) . "\n";
+				$note .= "Source: {$source}\n";
+
+			} elseif ($payment_status === 'failed') {
+
+				$note  = "ByteNFT Payment Failed\n";
+				$note .= "The payment could not be completed.\n";
+				$note .= "Payment Status: {$payment_status}\n";
+				$note .= "Source: {$source}\n";
+
+			} else {
+
+				$note  = "ByteNFT Payment Cancelled\n";
+				$note .= "Customer cancelled the payment.\n";
+				$note .= "Payment Status: {$payment_status}\n";
+				$note .= "Source: {$source}\n";
+			}
+
+			if (!empty($current_token)) {
+				$note .= "Transaction ID: {$current_token}\n";
+			}
+
+			$order->update_status($new_status, $note);
 
 			if (in_array($payment_status, ['success', 'paid'], true)) {
 				$order->update_meta_data('_bytenft_payment_success', 'yes');
