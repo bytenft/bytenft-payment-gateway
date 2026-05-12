@@ -409,14 +409,28 @@
                     try { res = JSON.parse(res); } catch (e) {}
                 }
 
-               const success = res?.success === true || res?.data?.success === true;
+                const success = res?.success === true;
                 const url = res?.redirect || res?.data?.redirect;
 
                 if (success && url) {
-                    this.state.orderId = res.order_id || res?.data?.order_id;
 
-                    this.redirectPopup(url);
-                    this.trackPopupClose();
+                    this.state.orderId = res.order_id || res?.data?.order_id || null;
+
+                    // IMPORTANT: stop spinner state
+                    self.reset();
+
+                    // IMPORTANT: close popup first (prevents redirect conflicts)
+                    if (self.state.popup && !self.state.popup.closed) {
+                        try {
+                            self.state.popup.close();
+                        } catch (e) {}
+                    }
+
+                    self.state.popup = null;
+
+                    // FINAL redirect (single source of truth)
+                    window.location.href = url;
+
                     return;
                 }
 
