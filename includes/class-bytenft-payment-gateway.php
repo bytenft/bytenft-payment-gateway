@@ -807,7 +807,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// -------------------------------------------------
 		$status = $order->get_status();
 
-		if ($status === 'completed' || $status === 'cancelled' || $status === 'processing') {
+		if ($status === 'completed' || $status === 'processing') {
 
 			if (WC()->cart) {
 				WC()->cart->empty_cart();
