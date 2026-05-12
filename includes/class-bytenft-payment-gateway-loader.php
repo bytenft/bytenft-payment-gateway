@@ -480,7 +480,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			$this->bytenft_log('$log_prefix PopupClose | Invalid nonce', $log_ctx);
 
-			wp_send_json_error(['message' => 'Nonce verification failed.']);
+			wc_add_notice('Nonce verification failed.', 'error');
+			wp_send_json_error([
+				'reload' => true
+			]);
 			wp_die();
 		}
 
@@ -491,7 +494,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			$this->bytenft_log('$log_prefix PopupClose | Missing order ID', $log_ctx);
 
-			wp_send_json_error(['message' => 'Order ID missing.']);
+			wc_add_notice('Order ID missing.', 'error');
+			wp_send_json_error([
+				'reload' => true
+			]);
 			wp_die();
 		}
 
@@ -501,7 +507,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			$this->bytenft_log('$log_prefix PopupClose | Order not found', $log_ctx);
 
-			wp_send_json_error(['message' => 'Order not found.']);
+			wc_add_notice('Order not found.', 'error');
+			wp_send_json_error([
+				'reload' => true
+			]);
 			wp_die();
 		}
 
@@ -589,7 +598,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			$this->bytenft_log('$log_prefix PopupClose | API error', $log_ctx);
 
-			wp_send_json_error(['message' => 'API connection failed.']);
+			wc_add_notice('API connection failed.', 'error');
+			wp_send_json_error([
+				'reload' => true
+			]);
+
 			wp_die();
 		}
 
@@ -602,7 +615,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			$this->bytenft_log('$log_prefix PopupClose | Invalid API response', $log_ctx);
 
-			wp_send_json_error(['message' => 'Invalid API response.']);
+			wc_add_notice('Invalid API response.', 'error');
+			wp_send_json_error([
+				'reload' => true
+			]);
 			wp_die();
 		}
 
@@ -614,7 +630,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			$this->bytenft_log('$log_prefix PopupClose | Missing status', $log_ctx);
 
-			wp_send_json_error(['message' => 'Payment status missing.']);
+			wc_add_notice('Payment status missing.', 'error');
+			wp_send_json_error([
+				'reload' => true
+			]);
+
 			wp_die();
 		}
 
@@ -625,7 +645,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (!$gateway) {
 
-			wp_send_json_error(['message' => 'Gateway not found.']);
+			wc_add_notice('Gateway not found.', 'error');
+			wp_send_json_error([
+				'reload' => true
+			]);
+
 			wp_die();
 		}
 
@@ -651,7 +675,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				break;
 
 			default:
-				wp_send_json_error(['message' => 'Unknown status']);
+				wc_add_notice('Unknown status', 'error');
+				wp_send_json_error([
+					'reload' => true
+				]);
+
 				wp_die();
 		}
 

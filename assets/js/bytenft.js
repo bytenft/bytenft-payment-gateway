@@ -295,6 +295,35 @@
             }, 500);
         },
 
+        showCheckoutError: function (message) {
+
+            // Clear previous notices first
+            $('.woocommerce-notices-wrapper').remove();
+
+            const html = `
+                <div class="woocommerce-notices-wrapper">
+                    <ul class="woocommerce-error" role="alert">
+                        <li>${message}</li>
+                    </ul>
+                </div>
+            `;
+
+            // Block checkout
+            const blockTarget = $('.wc-block-checkout__form');
+
+            if (blockTarget.length) {
+                blockTarget.prepend(html);
+                return;
+            }
+
+            // Classic checkout fallback
+            const classicTarget = $('form.checkout');
+
+            if (classicTarget.length) {
+                classicTarget.prepend(html);
+            }
+        },
+
         /* =========================================================
          * MAIN FLOW (SAFE ORDER)
          * ========================================================= */
@@ -311,7 +340,7 @@
 
             const error = self.validateAll($form);
             if (error) {
-                alert(error);
+                self.showCheckoutError(error);
                 return;
             }
 
@@ -356,6 +385,8 @@
 
         handleResponse: function (res) {
 
+            const self = this;
+
             try {
                 if (typeof res === 'string') {
                     try { res = JSON.parse(res); } catch (e) {}
@@ -369,17 +400,18 @@
 
                     this.redirectPopup(url);
 
-                     // track Popup Close
+                    // track Popup Close
                     this.trackPopupClose();
 
                     return;
                 }
 
-                alert(res?.message || 'Payment failed');
-                this.reset();
+                self.showCheckoutError(res?.message || 'Payment failed');
+                self.reset();
 
             } catch (e) {
-                this.reset();
+                self.showCheckoutError('Unexpected error occurred.');
+                self.reset();
             }
         },
 
