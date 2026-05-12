@@ -281,9 +281,9 @@
                             : $('form.checkout');
 
                         // ✅ SUCCESS → redirect WordPress page
-                        if (response?.success && response?.data?.redirect_url) {
+                        if (response?.success && response?.data?.redirect) {
 
-                            const url = response.data.redirect_url;
+                            const url = response.data.redirect;
 
                             // final redirect (WordPress context)
                             window.location.replace(url);
