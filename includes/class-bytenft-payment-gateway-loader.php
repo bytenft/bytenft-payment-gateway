@@ -481,9 +481,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$this->bytenft_log($log_prefix.' PopupClose | Invalid nonce', $log_ctx);
 
 			wc_add_notice('Nonce verification failed.', 'error');
-			wp_send_json_error([
-				'reload' => true
-			]);
+			wp_send_json_error(['reload' => true]);
 			wp_die();
 		}
 
@@ -495,9 +493,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$this->bytenft_log($log_prefix.' PopupClose | Missing order ID', $log_ctx);
 
 			wc_add_notice('Order ID missing.', 'error');
-			wp_send_json_error([
-				'reload' => true
-			]);
+			wp_send_json_error(['reload' => true]);
 			wp_die();
 		}
 
@@ -508,38 +504,23 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$this->bytenft_log($log_prefix.' PopupClose | Order not found', $log_ctx);
 
 			wc_add_notice('Order not found.', 'error');
-			wp_send_json_error([
-				'reload' => true
-			]);
+			wp_send_json_error(['reload' => true]);
 			wp_die();
 		}
 
 		$current_status = $order->get_status();
-
 		$log_ctx['status'] = $current_status;
 
 		$this->bytenft_log($log_prefix.' PopupClose | Start flow', $log_ctx);
 
 		// -------------------------
-		// IDEMPOTENCY CHECK (GLOBAL LOCK)
+		// TOKENS
 		// -------------------------
-		$is_processed = $order->get_meta('_bytenft_processed');
 		$last_token    = $order->get_meta('_bytenft_last_token');
 		$current_token = $order->get_meta('_bytenft_pay_id');
 
-		if ($is_processed === 'yes') {
-
-			$this->bytenft_log($log_prefix.' PopupClose | Already processed', $log_ctx);
-
-			wp_send_json_success([
-				'message'      => 'Already processed.',
-				'redirect_url' => $order->get_checkout_order_received_url()
-			]);
-
-			wp_die();
-		}
-
-		if ($last_token && $last_token === $current_token) {
+		// prevent duplicate SAME attempt only
+		if ($last_token && $last_token === $current_token && $current_status !== 'failed') {
 
 			$this->bytenft_log($log_prefix.' PopupClose | Duplicate token detected', $log_ctx);
 
@@ -551,22 +532,20 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			wp_die();
 		}
 
-		// store token immediately to prevent double execution
 		$order->update_meta_data('_bytenft_last_token', $current_token);
 		$order->save();
 
 		// -------------------------
-		// FINAL STATE CHECK
+		// FINAL STATE PROTECTION
 		// -------------------------
-		if (in_array($current_status, ['completed', 'cancelled', 'refunded'], true)) {
+		if ($current_status === 'completed') {
 
-			$this->bytenft_log($log_prefix.' PopupClose | Final state skip', $log_ctx);
+			$this->bytenft_log($log_prefix.' PopupClose | Already completed', $log_ctx);
 
-			$order->update_meta_data('_bytenft_processed', 'yes');
-			$order->save();
+			wc_add_notice('Payment already completed.', 'success');
 
 			wp_send_json_success([
-				'status'       => $current_status,
+				'message'      => 'Already completed',
 				'redirect_url' => $order->get_checkout_order_received_url()
 			]);
 
@@ -576,15 +555,13 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		// API CALL
 		// -------------------------
-		$payment_token = $current_token;
-
 		$response = wp_remote_post(
 			$this->get_api_url('/api/update-txn-status'),
 			[
 				'method'  => 'POST',
 				'body'    => wp_json_encode([
 					'order_id'      => $order_id,
-					'payment_token' => $payment_token
+					'payment_token' => $current_token
 				]),
 				'headers' => [
 					'Content-Type'  => 'application/json',
@@ -599,26 +576,18 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$this->bytenft_log($log_prefix.' PopupClose | API error', $log_ctx);
 
 			wc_add_notice('API connection failed.', 'error');
-			wp_send_json_error([
-				'reload' => true
-			]);
-
+			wp_send_json_error(['reload' => true]);
 			wp_die();
 		}
 
-		$response_data = json_decode(
-			wp_remote_retrieve_body($response),
-			true
-		);
+		$response_data = json_decode(wp_remote_retrieve_body($response), true);
 
 		if (!is_array($response_data)) {
 
 			$this->bytenft_log($log_prefix.' PopupClose | Invalid API response', $log_ctx);
 
 			wc_add_notice('Invalid API response.', 'error');
-			wp_send_json_error([
-				'reload' => true
-			]);
+			wp_send_json_error(['reload' => true]);
 			wp_die();
 		}
 
@@ -631,69 +600,60 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$this->bytenft_log($log_prefix.' PopupClose | Missing status', $log_ctx);
 
 			wc_add_notice('Payment status missing.', 'error');
-			wp_send_json_error([
-				'reload' => true
-			]);
-
+			wp_send_json_error(['reload' => true]);
 			wp_die();
 		}
 
 		// -------------------------
-		// GATEWAY CONFIG
+		// GATEWAY
 		// -------------------------
 		$gateway = WC()->payment_gateways->payment_gateways()['bytenft'] ?? null;
 
 		if (!$gateway) {
 
 			wc_add_notice('Gateway not found.', 'error');
-			wp_send_json_error([
-				'reload' => true
-			]);
-
+			wp_send_json_error(['reload' => true]);
 			wp_die();
 		}
 
-		$configured_status = sanitize_text_field(
-			$gateway->get_option('order_status')
-		);
+		$configured_status = sanitize_text_field($gateway->get_option('order_status'));
 
-		$new_status = null;
+		$new_status = match ($payment_status) {
+			'success', 'paid' => $configured_status ?: 'processing',
+			'failed' => 'failed',
+			'canceled' => 'cancelled',
+			default => null
+		};
 
-		switch ($payment_status) {
+		if (!$new_status) {
 
-			case 'success':
-			case 'paid':
-				$new_status = $configured_status ?: 'processing';
-				break;
-
-			case 'failed':
-				$new_status = 'failed';
-				break;
-
-			case 'canceled':
-				$new_status = 'cancelled';
-				break;
-
-			default:
-				wc_add_notice('Unknown status', 'error');
-				wp_send_json_error([
-					'reload' => true
-				]);
-
-				wp_die();
+			wc_add_notice('Unknown status', 'error');
+			wp_send_json_error(['reload' => true]);
+			wp_die();
 		}
 
 		// -------------------------
-		// FINAL GUARD (NO DOWNGRADE)
+		// 🔥 FIXED RULE ENGINE (IMPORTANT)
 		// -------------------------
-		if (!in_array($current_status, ['completed', 'cancelled', 'refunded'], true)) {
+
+		$can_update = true;
+
+		// ❌ never downgrade success
+		if ($current_status === 'completed' && $new_status !== 'completed') {
+			$can_update = false;
+		}
+
+		// ❌ prevent failed overwrite after success
+		if ($current_status === 'processing' && $new_status === 'failed') {
+			$can_update = false;
+		}
+
+		if ($can_update) {
 
 			$order->update_status($new_status, 'ByteNFT update');
 
 			if (in_array($payment_status, ['success', 'paid'], true)) {
 				$order->update_meta_data('_bytenft_payment_success', 'yes');
-			} else {
-				$order->delete_meta_data('_bytenft_payment_success');
 			}
 
 			$order->update_meta_data('_bytenft_processed', 'yes');
