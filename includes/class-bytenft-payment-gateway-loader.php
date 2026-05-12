@@ -699,8 +699,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		}
 
 		wp_send_json_success([
-			'message'      => 'Processed successfully',
-			'redirect_url' => $order->get_checkout_order_received_url()
+			'status'  => $payment_status,
+			'order_status' => $order->get_status(),
+			'redirect' => ($payment_status === 'success') 
+				? $order->get_checkout_order_received_url()
+				: null
 		]);
 
 		wp_die();
