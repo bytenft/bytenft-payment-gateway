@@ -423,20 +423,40 @@
 
                 const success = res?.success === true;
                 const orderId = res?.order_id || res?.data?.order_id || null;
+
                 const redirectUrl = res?.data?.redirect || res?.redirect || null;
 
                 if (success) {
 
-                    // store everything for later decision
                     this.state.orderId = orderId;
                     this.state.redirectUrl = redirectUrl;
 
                     self.reset();
 
-                    // IMPORTANT:
-                    // do NOT redirect here
-                    // just start monitoring popup lifecycle
-                    this.trackPopupClose();
+                    const popup = self.state.popup;
+
+                    // ✅ OPEN PAYMENT LINK INSIDE POPUP
+                    if (popup && !popup.closed) {
+
+                        if (redirectUrl) {
+                            try {
+                                popup.location.href = redirectUrl;
+                                popup.focus();
+                            } catch (e) {
+                                window.open(redirectUrl, '_blank');
+                            }
+                        }
+
+                        // start tracking close AFTER redirect is opened
+                        this.trackPopupClose();
+
+                        return;
+                    }
+
+                    // fallback (popup blocked)
+                    if (redirectUrl) {
+                        window.location.href = redirectUrl;
+                    }
 
                     return;
                 }
