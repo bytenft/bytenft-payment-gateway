@@ -478,7 +478,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if (empty($security) || !wp_verify_nonce($security, 'bytenft_payment')) {
 
-			$this->bytenft_log('$log_prefix PopupClose | Invalid nonce', $log_ctx);
+			$this->bytenft_log($log_prefix.' PopupClose | Invalid nonce', $log_ctx);
 
 			wc_add_notice('Nonce verification failed.', 'error');
 			wp_send_json_error([
@@ -492,7 +492,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if (!$order_id || $order_id === 'unknown') {
 
-			$this->bytenft_log('$log_prefix PopupClose | Missing order ID', $log_ctx);
+			$this->bytenft_log($log_prefix.' PopupClose | Missing order ID', $log_ctx);
 
 			wc_add_notice('Order ID missing.', 'error');
 			wp_send_json_error([
@@ -505,7 +505,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (!$order) {
 
-			$this->bytenft_log('$log_prefix PopupClose | Order not found', $log_ctx);
+			$this->bytenft_log($log_prefix.' PopupClose | Order not found', $log_ctx);
 
 			wc_add_notice('Order not found.', 'error');
 			wp_send_json_error([
@@ -518,7 +518,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		$log_ctx['status'] = $current_status;
 
-		$this->bytenft_log('$log_prefix PopupClose | Start flow', $log_ctx);
+		$this->bytenft_log($log_prefix.' PopupClose | Start flow', $log_ctx);
 
 		// -------------------------
 		// IDEMPOTENCY CHECK (GLOBAL LOCK)
@@ -529,7 +529,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if ($is_processed === 'yes') {
 
-			$this->bytenft_log('$log_prefix PopupClose | Already processed (idempotent block)', $log_ctx);
+			$this->bytenft_log($log_prefix.' PopupClose | Already processed (idempotent block)', $log_ctx);
 
 			wp_send_json_success([
 				'message'      => 'Already processed.',
@@ -541,7 +541,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if ($last_token && $last_token === $current_token) {
 
-			$this->bytenft_log('$log_prefix PopupClose | Duplicate token detected', $log_ctx);
+			$this->bytenft_log($log_prefix.' PopupClose | Duplicate token detected', $log_ctx);
 
 			wp_send_json_success([
 				'message'      => 'Duplicate payment event ignored.',
@@ -560,7 +560,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if (in_array($current_status, ['completed', 'cancelled', 'refunded'], true)) {
 
-			$this->bytenft_log('$log_prefix PopupClose | Final state skip', $log_ctx);
+			$this->bytenft_log($log_prefix.' PopupClose | Final state skip', $log_ctx);
 
 			$order->update_meta_data('_bytenft_processed', 'yes');
 			$order->save();
@@ -596,7 +596,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (is_wp_error($response)) {
 
-			$this->bytenft_log('$log_prefix PopupClose | API error', $log_ctx);
+			$this->bytenft_log($log_prefix.' PopupClose | API error', $log_ctx);
 
 			wc_add_notice('API connection failed.', 'error');
 			wp_send_json_error([
@@ -613,7 +613,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (!is_array($response_data)) {
 
-			$this->bytenft_log('$log_prefix PopupClose | Invalid API response', $log_ctx);
+			$this->bytenft_log($log_prefix.' PopupClose | Invalid API response', $log_ctx);
 
 			wc_add_notice('Invalid API response.', 'error');
 			wp_send_json_error([
@@ -628,7 +628,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (!$payment_status) {
 
-			$this->bytenft_log('$log_prefix PopupClose | Missing status', $log_ctx);
+			$this->bytenft_log($log_prefix.' PopupClose | Missing status', $log_ctx);
 
 			wc_add_notice('Payment status missing.', 'error');
 			wp_send_json_error([
@@ -693,7 +693,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$order->update_meta_data('_bytenft_processed', 'yes');
 			$order->save();
 
-			$this->bytenft_log('$log_prefix PopupClose | Status updated safely', array_merge($log_ctx, [
+			$this->bytenft_log($log_prefix.' PopupClose | Status updated safely', array_merge($log_ctx, [
 				'new_status' => $new_status
 			]));
 		}
