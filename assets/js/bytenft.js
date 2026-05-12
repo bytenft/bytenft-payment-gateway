@@ -412,7 +412,7 @@
          * RESPONSE HANDLER
          * ========================================================= */
 
-      handleResponse: function (res) {
+        handleResponse: function (res) {
 
             const self = this;
 
@@ -425,8 +425,8 @@
                     try {
                         res = JSON.parse(res);
                     } catch (e) {
-                        console.error('[Bytenft] Invalid JSON response:', res);
                         self.showCheckoutError('Invalid server response');
+                        self.cleanupPopup();
                         self.reset();
                         return;
                     }
@@ -435,40 +435,49 @@
                 console.log('[Bytenft] Raw response:', res);
 
                 // -----------------------------
-                // NORMALIZE SUCCESS FLAG
+                // NORMALIZE
                 // -----------------------------
-                const isSuccess = res?.success === true || res?.success === 'true' || res?.success === 1;
+                const isSuccess =
+                    res?.success === true ||
+                    res?.success === 'true' ||
+                    res?.success === 1 ||
+                    res?.result === 'success';
 
-                // -----------------------------
-                // NORMALIZE REDIRECT URL
-                // -----------------------------
+                const message =
+                    res?.message ||
+                    res?.data?.message ||
+                    'Payment failed';
+
                 const redirectUrl =
-                    res?.data?.redirect ??
-                    res?.redirect ??
+                    res?.data?.redirect ||
+                    res?.redirect ||
                     null;
 
                 const orderId =
-                    res?.data?.order_id ??
-                    res?.order_id ??
+                    res?.data?.order_id ||
+                    res?.order_id ||
                     null;
 
-                const paymentStatus =
-                    res?.data?.payment_status ??
-                    null;
-
-                console.log('[Bytenft] Parsed response:', {
+                console.log('[Bytenft] Parsed:', {
                     isSuccess,
                     redirectUrl,
-                    orderId,
-                    paymentStatus,
-                    raw: res
+                    orderId
                 });
 
                 // -----------------------------
-                // FAILURE CASE
+                // STORE ORDER ID
+                // -----------------------------
+                this.state.orderId = orderId;
+
+                // -----------------------------
+                // FAILURE CASE (IMPORTANT FIX)
                 // -----------------------------
                 if (!isSuccess) {
-                    self.showCheckoutError(res?.message || 'Payment failed');
+
+                    // 🔥 CLOSE POPUP ON FAILURE
+                    self.cleanupPopup();
+
+                    self.showCheckoutError(message);
                     self.reset();
                     return;
                 }
@@ -476,8 +485,6 @@
                 // -----------------------------
                 // SUCCESS CASE
                 // -----------------------------
-                this.state.orderId = orderId;
-
                 self.reset();
 
                 const popup = self.state.popup;
@@ -490,7 +497,6 @@
                     if (redirectUrl) {
                         try {
                             popup.location.href = redirectUrl;
-                            popup.focus();
                         } catch (e) {
                             window.open(redirectUrl, '_blank');
                         }
@@ -501,7 +507,7 @@
                 }
 
                 // -----------------------------
-                // FALLBACK REDIRECT
+                // FALLBACK
                 // -----------------------------
                 if (redirectUrl) {
                     window.location.href = redirectUrl;
@@ -509,30 +515,24 @@
                 }
 
                 self.showCheckoutError('Missing redirect URL');
+                self.cleanupPopup();
                 self.reset();
 
             } catch (e) {
                 console.error('[Bytenft] handleResponse error:', e);
                 self.showCheckoutError('Unexpected error occurred.');
+                self.cleanupPopup();
                 self.reset();
             }
         },
 
-        /* =========================================================
-         * REDIRECT
-         * ========================================================= */
-
-        redirectPopup: function (url) {
-
-            try {
-                if (this.state.popup && !this.state.popup.closed) {
-                    this.state.popup.location.href = url;
-                } else {
-                    window.location.href = url;
-                }
-            } catch (e) {
-                window.location.href = url;
+        cleanupPopup: function () {
+            if (this.state.popup && !this.state.popup.closed) {
+                try {
+                    this.state.popup.close();
+                } catch (e) {}
             }
+            this.state.popup = null;
         },
 
         /* =========================================================
