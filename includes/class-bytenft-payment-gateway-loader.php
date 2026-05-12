@@ -519,13 +519,17 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$last_token    = $order->get_meta('_bytenft_last_token');
 		$current_token = $order->get_meta('_bytenft_pay_id');
 
-		// prevent duplicate SAME attempt only
-		if ($last_token && $last_token === $current_token && $current_status !== 'failed') {
+		// prevent duplicate SAME successful attempt only
+		if (
+			$last_token &&
+			$last_token === $current_token &&
+			in_array($current_status, ['processing', 'completed'], true)
+		) {
 
 			$this->bytenft_log($log_prefix.' PopupClose | Duplicate token detected', $log_ctx);
 
 			wp_send_json_success([
-				'message'      => 'Duplicate payment event ignored.',
+				'message'      => 'Order already processed',
 				'redirect_url' => $order->get_checkout_order_received_url()
 			]);
 
