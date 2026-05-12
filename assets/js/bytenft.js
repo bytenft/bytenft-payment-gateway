@@ -468,20 +468,84 @@
                             action: 'bytenft_popup_closed_event',
                             order_id: self.state.orderId,
                             security: bytenft_params.bytenft_nonce
-                        });
+                        }, function (response) {
 
-                        self.state.submitting = false;
+                            try {
+
+                                const isBlockSelected =
+                                    $('input[name="radio-control-wc-payment-method-options"]:checked').val()
+                                    === bytenft_params.payment_method;
+
+                                /*
+                                * Refresh classic checkout fragments
+                                */
+                                if (!isBlockSelected) {
+                                    $(document.body).trigger('update_checkout');
+                                }
+
+                                /*
+                                * SUCCESS REDIRECT
+                                */
+                                if (
+                                    response &&
+                                    response.success &&
+                                    response.data &&
+                                    response.data.redirect_url
+                                ) {
+
+                                    self.track('redirect_to_thankyou', {
+                                        orderId: self.state.orderId
+                                    });
+
+                                    window.location.replace(
+                                        response.data.redirect_url
+                                    );
+
+                                    return;
+                                }
+
+                                /*
+                                * OPTIONAL ERROR NOTICE
+                                */
+                                if (
+                                    response &&
+                                    response.data &&
+                                    response.data.notices
+                                ) {
+
+                                    self.track('popup_closed_with_notice');
+
+                                    alert(response.data.notices);
+                                }
+
+                            } catch (e) {
+
+                                self.track('popup_close_response_error', {
+                                    error: e.message
+                                });
+                            }
+
+                            self.resetButton();
+                            self.state.submitting = false;
+
+                        }, 'json');
                     }
 
                 } catch (e) {
 
                     clearInterval(self.state.popupInterval);
 
-                    self.track('popup_tracking_error', { error: e.message });
+                    self.track('popup_tracking_error', {
+                        error: e.message
+                    });
+
+                    self.resetButton();
+
+                    self.state.submitting = false;
                 }
 
             }, 500);
-        }
+        },
     };
 
     $(document).ready(function () {
