@@ -529,7 +529,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if ($is_processed === 'yes') {
 
-			$this->bytenft_log($log_prefix.' PopupClose | Already processed (idempotent block)', $log_ctx);
+			$this->bytenft_log($log_prefix.' PopupClose | Already processed', $log_ctx);
 
 			wp_send_json_success([
 				'message'      => 'Already processed.',
@@ -688,7 +688,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if (!in_array($current_status, ['completed', 'cancelled', 'refunded'], true)) {
 
-			$order->update_status($new_status, 'ByteNFT idempotent update');
+			$order->update_status($new_status, 'ByteNFT update');
 
 			if (in_array($payment_status, ['success', 'paid'], true)) {
 				$order->update_meta_data('_bytenft_payment_success', 'yes');
