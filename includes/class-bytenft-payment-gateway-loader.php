@@ -662,9 +662,16 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		$is_success = in_array($payment_status, ['success', 'paid'], true);
 
+		$message = match ($payment_status) {
+			'success', 'paid' => 'Your payment was completed successfully.',
+			'failed' => 'Your payment could not be completed. Please try again.',
+			'canceled', 'cancelled' => 'Your payment was cancelled.',
+			default => 'Unable to verify payment status. Please try again.'
+		};
+
 		wp_send_json([
 			'success' => $is_success,
-			'message' => $is_success ? 'Payment successful' : 'Payment failed',
+			'message' => $message,
 			'data' => [
 				'payment_status' => $payment_status,
 				'redirect'       => $is_success ? $order->get_checkout_order_received_url() : null,
