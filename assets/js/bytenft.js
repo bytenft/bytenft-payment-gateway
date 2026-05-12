@@ -416,20 +416,28 @@
 
                     this.state.orderId = res.order_id || res?.data?.order_id || null;
 
-                    // IMPORTANT: stop spinner state
                     self.reset();
 
-                    // IMPORTANT: close popup first (prevents redirect conflicts)
+                    // close loader UI popup safety
                     if (self.state.popup && !self.state.popup.closed) {
                         try {
+                            self.state.popup.location.href = url; // 🔥 LOAD IN POPUP
+                        } catch (e) {
                             self.state.popup.close();
-                        } catch (e) {}
+                            window.open(url, '_blank'); // fallback
+                        }
+
+                        return;
                     }
 
-                    self.state.popup = null;
+                    // If popup is missing (Safari / blocked)
+                    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
-                    // FINAL redirect (single source of truth)
-                    window.location.href = url;
+                    if (isSafari) {
+                        window.open(url, '_blank'); // Safari safe behavior
+                    } else {
+                        window.location.href = url;
+                    }
 
                     return;
                 }
