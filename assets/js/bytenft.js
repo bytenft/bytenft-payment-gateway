@@ -412,92 +412,111 @@
          * RESPONSE HANDLER
          * ========================================================= */
 
-       handleResponse: function (res) {
+      handleResponse: function (res) {
 
-            const self = this;
+        const self = this;
 
-            try {
+        try {
 
-                // ✅ SAFE PARSE (no silent failure)
-                if (typeof res === 'string') {
-                    try {
-                        res = JSON.parse(res);
-                    } catch (e) {
-                        console.error('[Bytenft] Invalid JSON response:', res);
-                        self.showCheckoutError('Invalid server response');
-                        self.reset();
-                        return;
-                    }
-                }
-
-                // ✅ normalize success
-                const isSuccess =
-                    res?.success === true ||
-                    res?.success === 'true' ||
-                    res?.result === 'success';
-
-                // ✅ FIX: support both structures
-                const redirectUrl =
-                    res?.redirect ||
-                    res?.data?.redirect ||
-                    null;
-
-                const orderId =
-                    res?.order_id ||
-                    res?.data?.order_id ||
-                    null;
-
-                console.log('[Bytenft] Parsed response:', res);
-
-                // ❌ FAILURE CASE
-                if (!isSuccess) {
-                    self.showCheckoutError(res?.message || 'Payment failed');
+            // -----------------------------
+            // SAFE PARSE
+            // -----------------------------
+            if (typeof res === 'string') {
+                try {
+                    res = JSON.parse(res);
+                } catch (e) {
+                    console.error('[Bytenft] Invalid JSON response:', res);
+                    self.showCheckoutError('Invalid server response');
                     self.reset();
                     return;
                 }
-
-                // ✅ SUCCESS CASE
-                this.state.orderId = orderId;
-
-                self.reset();
-
-                const popup = self.state.popup;
-
-                // =========================
-                // POPUP FLOW
-                // =========================
-                if (popup && !popup.closed) {
-
-                    if (redirectUrl) {
-                        try {
-                            popup.location.href = redirectUrl;
-                            popup.focus();
-                        } catch (e) {
-                            window.open(redirectUrl, '_blank');
-                        }
-                    }
-
-                    this.trackPopupClose();
-                    return;
-                }
-
-                // =========================
-                // FALLBACK FLOW
-                // =========================
-                if (redirectUrl) {
-                    window.location.href = redirectUrl;
-                    return;
-                }
-
-                self.showCheckoutError('Missing redirect URL');
-                self.reset();
-
-            } catch (e) {
-                console.error('[Bytenft] handleResponse error:', e);
-                self.showCheckoutError('Unexpected error occurred.');
-                self.reset();
             }
-        },
+
+            console.log('[Bytenft] Raw response:', res);
+
+            // -----------------------------
+            // NORMALIZE SUCCESS FLAG
+            // -----------------------------
+            const isSuccess = Boolean(res?.success);
+
+            // -----------------------------
+            // NORMALIZE REDIRECT URL
+            // -----------------------------
+            const redirectUrl =
+                res?.data?.redirect ??
+                res?.redirect ??
+                null;
+
+            const orderId =
+                res?.data?.order_id ??
+                res?.order_id ??
+                null;
+
+            const paymentStatus =
+                res?.data?.payment_status ??
+                null;
+
+            console.log('[Bytenft] Parsed response:', {
+                isSuccess,
+                redirectUrl,
+                orderId,
+                paymentStatus,
+                raw: res
+            });
+
+            // -----------------------------
+            // FAILURE CASE
+            // -----------------------------
+            if (!isSuccess) {
+                self.showCheckoutError(res?.message || 'Payment failed');
+                self.reset();
+                return;
+            }
+
+            // -----------------------------
+            // SUCCESS CASE
+            // -----------------------------
+            this.state.orderId = orderId;
+
+            self.reset();
+
+            const popup = self.state.popup;
+
+            // -----------------------------
+            // POPUP FLOW
+            // -----------------------------
+            if (popup && !popup.closed) {
+
+                if (redirectUrl) {
+                    try {
+                        popup.location.href = redirectUrl;
+                        popup.focus();
+                    } catch (e) {
+                        window.open(redirectUrl, '_blank');
+                    }
+                }
+
+                this.trackPopupClose();
+                return;
+            }
+
+            // -----------------------------
+            // FALLBACK REDIRECT
+            // -----------------------------
+            if (redirectUrl) {
+                window.location.href = redirectUrl;
+                return;
+            }
+
+            self.showCheckoutError('Missing redirect URL');
+            self.reset();
+
+        } catch (e) {
+            console.error('[Bytenft] handleResponse error:', e);
+            self.showCheckoutError('Unexpected error occurred.');
+            self.reset();
+        }
+    },
 
         /* =========================================================
          * REDIRECT
