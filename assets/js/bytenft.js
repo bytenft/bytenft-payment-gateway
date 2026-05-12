@@ -409,17 +409,14 @@
                     try { res = JSON.parse(res); } catch (e) {}
                 }
 
-                if (res?.data?.redirect || res?.redirect) {
+               const success = res?.success === true || res?.data?.success === true;
+                const url = res?.redirect || res?.data?.redirect;
 
-                    const url = res?.data?.redirect || res?.redirect;
-
-                    this.state.orderId = res.order_id;
+                if (success && url) {
+                    this.state.orderId = res.order_id || res?.data?.order_id;
 
                     this.redirectPopup(url);
-
-                    // track Popup Close
                     this.trackPopupClose();
-
                     return;
                 }
 

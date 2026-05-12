@@ -45,6 +45,29 @@ add_action('woocommerce_cancel_unpaid_order', 'bytenft_cancel_unpaid_order_actio
 add_action('woocommerce_order_status_cancelled', 'bytenft_cancel_unpaid_order_action');
 add_action('woocommerce_order_status_changed', 'bytenft_cancel_unpaid_order_action', 10, 4);
 
+add_filter('woocommerce_get_checkout_order_received_url', function($url, $order) {
+
+    if (!$order) {
+        return $url;
+    }
+
+    $status = $order->get_status();
+
+    // allow only real successful states
+    $allowed_statuses = ['processing', 'completed'];
+
+    $is_valid =
+        in_array($status, $allowed_statuses, true) &&
+        $order->get_meta('_bytenft_payment_success') === 'yes';
+
+    if (!$is_valid) {
+        return wc_get_checkout_url();
+    }
+
+    return $url;
+
+}, 10, 2);
+
 
 /**
  * Cancels an unpaid order after a specified timeout.

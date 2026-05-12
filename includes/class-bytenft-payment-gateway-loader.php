@@ -690,20 +690,24 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			$order->update_status($new_status, 'ByteNFT idempotent update');
 
+			if (in_array($payment_status, ['success', 'paid'], true)) {
+				$order->update_meta_data('_bytenft_payment_success', 'yes');
+			} else {
+				$order->delete_meta_data('_bytenft_payment_success');
+			}
+
 			$order->update_meta_data('_bytenft_processed', 'yes');
 			$order->save();
-
-			$this->bytenft_log($log_prefix.' PopupClose | Status updated safely', array_merge($log_ctx, [
-				'new_status' => $new_status
-			]));
 		}
 
-		wp_send_json_success([
-			'status'  => $payment_status,
-			'order_status' => $order->get_status(),
-			'redirect' => ($payment_status === 'success') 
-				? $order->get_checkout_order_received_url()
-				: null
+		$is_success = in_array($payment_status, ['success', 'paid'], true);
+
+		wp_send_json([
+			'success' => $is_success,
+			'message' => $is_success ? 'Payment successful' : 'Payment failed',
+			'payment_status' => $payment_status,
+			'redirect' => $is_success ? $order->get_checkout_order_received_url() : false,
+			'order_status' => $order->get_status()
 		]);
 
 		wp_die();
