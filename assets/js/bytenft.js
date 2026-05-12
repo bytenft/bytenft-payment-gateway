@@ -487,6 +487,9 @@
                 // -----------------------------
                 // SUCCESS CASE
                 // -----------------------------
+
+                // 🔥 KEEP BUTTON LOCKED
+                self.reset(true);
                 
                 const popup = self.state.popup;
 
@@ -540,12 +543,38 @@
          * RESET
          * ========================================================= */
 
-        reset: function () {
+        reset: function (keepProcessing = false) {
+
             this.state.submitting = false;
 
-            if (this.state.button) {
-                this.state.button.prop('disabled', false).text(this.state.buttonText);
+            // 🔥 Always re-fetch latest button from DOM
+            const $blockBtn = $('.wc-block-components-checkout-place-order-button');
+            const $classicBtn = $('button[name="woocommerce_checkout_place_order"]');
+
+            const $btn = $blockBtn.length ? $blockBtn : $classicBtn;
+
+            if (!$btn.length) {
+                return;
             }
+
+            // 🔥 KEEP PROCESSING STATE
+            if (keepProcessing) {
+
+                $btn
+                    .prop('disabled', true)
+                    .attr('disabled', 'disabled')
+                    .addClass('loading')
+                    .text('Processing...');
+
+                return;
+            }
+
+            // Normal reset
+            $btn
+                .prop('disabled', false)
+                .removeAttr('disabled')
+                .removeClass('loading')
+                .text(this.state.buttonText || 'Place order');
         }
     };
 
