@@ -341,6 +341,23 @@
             const error = self.validateAll($form);
             if (error) {
                 self.showCheckoutError(error);
+
+                // 🔥 reset full flow state
+                self.state.submitting = false;
+
+                if (self.state.button) {
+                    self.state.button.prop('disabled', false).text(self.state.buttonText);
+                }
+
+                // 🚨 close popup if opened
+                if (self.state.popup && !self.state.popup.closed) {
+                    try {
+                        self.state.popup.close();
+                    } catch (e) {}
+                }
+
+                self.state.popup = null;
+
                 return;
             }
 
