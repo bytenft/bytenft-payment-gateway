@@ -603,7 +603,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			$this->bytenft_log($log_prefix.' PopupClose | Missing status', $log_ctx);
 
-			wc_add_notice('Payment status missing.', 'error');
+			wc_add_notice('', 'error');
 			wp_send_json_error(['reload' => true]);
 			wp_die();
 		}

@@ -546,11 +546,21 @@
                 self.state.currentRequest.abort();
             }
 
-            const ajaxUrl = bytenft_params.ajax_url;
+            const ajaxUrl = isBlock ? bytenft_params.ajax_url : wc_checkout_params.checkout_url;
 
-            const ajaxData = isBlock
-                ? { action: 'bytenft_block_gateway_process', nonce: bytenft_params.bytenft_nonce }
-                : $form.serialize();
+            let ajaxData;
+
+            if (isBlock) {
+
+                ajaxData = $form.serialize();
+
+                ajaxData += '&action=bytenft_block_gateway_process';
+                ajaxData += '&nonce=' + encodeURIComponent(bytenft_params.bytenft_nonce);
+
+            } else {
+
+                ajaxData = $form.serialize();
+            }
 
             self.state.currentRequest = $.ajax({
                 type: 'POST',
