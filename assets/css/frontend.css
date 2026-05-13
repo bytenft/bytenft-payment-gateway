@@ -74,6 +74,8 @@
 .bytenft-error-fields li {
     margin-bottom: 4px;
     color: #111;
+    font-size:16px;
+    list-style: disc !important;
 }
 
 .woocommerce-invalid input,

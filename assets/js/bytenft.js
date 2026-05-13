@@ -401,8 +401,10 @@
 
         showCheckoutError: function (message, fields = []) {
 
+            // Clear previous notices first
             $('.woocommerce-notices-wrapper').remove();
 
+            // Build fields list
             let fieldsHtml = '';
 
             if (fields.length) {
@@ -416,34 +418,44 @@
 
             const html = `
                 <div class="woocommerce-notices-wrapper">
-                    <div class="woocommerce-error bytenft-main-error" role="alert">
+
+                    <div class="woocommerce-error bytenft-error-box" role="alert">
 
                         <div class="bytenft-error-header">
-                            <strong>Please review the highlighted fields</strong>
-                        </div>
-
-                        <div class="bytenft-error-message">
-                            ${message}
+                            <span class="bytenft-error-icon">⚠</span>
+                            <strong>${message}</strong>
                         </div>
 
                         ${fieldsHtml}
 
                     </div>
+
                 </div>
             `;
 
+            // Block checkout
             const blockTarget = $('.wc-block-checkout__form');
 
             if (blockTarget.length) {
                 blockTarget.prepend(html);
-            } else {
-                $('form.checkout').prepend(html);
+            }
+
+            // Classic checkout fallback
+            const classicTarget = $('form.checkout');
+
+            if (classicTarget.length) {
+                classicTarget.prepend(html);
             }
 
             // Scroll to top notice
-            $('html, body').animate({
-                scrollTop: $('.woocommerce-notices-wrapper').offset().top - 80
-            }, 300);
+            const $notice = $('.woocommerce-notices-wrapper');
+
+            if ($notice.length) {
+
+                $('html, body').animate({
+                    scrollTop: $notice.offset().top - 80
+                }, 300);
+            }
         },
 
         /* =========================================================
