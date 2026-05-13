@@ -601,10 +601,21 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (!$payment_status) {
 
-			$this->bytenft_log($log_prefix.' PopupClose | Missing status', $log_ctx);
+			$this->bytenft_log(
+				$log_prefix . ' PopupClose | Payment still pending',
+				$log_ctx
+			);
 
-			wc_add_notice('', 'error');
-			wp_send_json_error(['reload' => true]);
+			wp_send_json([
+				'success' => false,
+				'message' => 'Your payment is still being processed. Please wait a moment and refresh the page if needed.',
+				'data' => [
+					'payment_status' => 'pending',
+					'order_id'       => $order_id,
+					'order_status'   => $order->get_status(),
+				]
+			]);
+
 			wp_die();
 		}
 
@@ -624,9 +635,16 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		$new_status = match ($payment_status) {
 			'success', 'paid' => $configured_status ?: 'processing',
-			'failed' => 'failed',
-			'canceled' => 'cancelled',
-			default => null
+			'failed'            => 'failed',
+			'canceled',
+			'cancelled'         => 'cancelled',
+
+			// IMPORTANT
+			'pending',
+			'processing',
+			null                => null,
+
+			default             => null
 		};
 
 		// -------------------------
@@ -689,10 +707,21 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$is_success = in_array($payment_status, ['success', 'paid'], true);
 
 		$message = match ($payment_status) {
-			'success', 'paid' => 'Your payment was completed successfully.',
-			'failed' => 'Your payment could not be completed. Please try again.',
-			'canceled', 'cancelled' => 'Your payment was cancelled.',
-			default => ''
+			'success',
+			'paid'
+				=> 'Your payment was completed successfully.',
+			'failed'
+				=> 'Your payment could not be completed. Please try again.',
+			'canceled',
+			'cancelled'
+				=> 'Your payment was cancelled.',
+			// IMPORTANT FIX
+			'pending',
+			'processing',
+			null
+				=> 'Your payment is still being processed. Please wait a moment and refresh the page if needed.',
+			default
+				=> 'Your payment is currently being processed.'
 		};
 
 		wp_send_json([
