@@ -692,7 +692,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			'success', 'paid' => 'Your payment was completed successfully.',
 			'failed' => 'Your payment could not be completed. Please try again.',
 			'canceled', 'cancelled' => 'Your payment was cancelled.',
-			default => 'Unable to verify payment status. Please try again.'
+			default => ''
 		};
 
 		wp_send_json([
