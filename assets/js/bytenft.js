@@ -160,41 +160,74 @@
             return null;
         },
 
-        validateRequiredFields: function ($form) {
+       validateRequiredFields: function ($form) {
 
             let missing = [];
+            let firstInvalid = null;
 
             $form.find('[required]').each(function () {
 
                 const $field = $(this);
 
-                // ignore hidden fields
-                if (!$field.is(':visible')) {
+                if (
+                    !$field.is(':visible') ||
+                    $field.attr('type') === 'hidden'
+                ) {
                     return;
                 }
 
                 const val = ($field.val() || '').trim();
 
+                const $wrapper = $field.closest(
+                    '.form-row, .wc-block-components-text-input, .wc-block-components-combobox'
+                );
+
                 if (!val) {
 
-                    const label =
-                        $field.closest('.form-row, .wc-block-components-text-input')
-                            .find('label')
-                            .first()
-                            .text()
-                            .replace('*', '')
-                            .trim();
+                    $wrapper.addClass(
+                        'woocommerce-invalid woocommerce-invalid-required-field'
+                    );
 
-                    missing.push(label || 'Required field');
+                    let label =
+                        $wrapper.find('label').first().text().trim()
+                        || $field.attr('aria-label')
+                        || $field.attr('placeholder')
+                        || $field.attr('name');
 
-                    $field.addClass('woocommerce-invalid');
+                    label = label
+                        .replace('*', '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+
+                    if (label && !missing.includes(label)) {
+                        missing.push(label);
+                    }
+
+                    if (!firstInvalid) {
+                        firstInvalid = $field;
+                    }
+
                 } else {
-                    $field.removeClass('woocommerce-invalid');
+
+                    $wrapper.removeClass(
+                        'woocommerce-invalid woocommerce-invalid-required-field'
+                    );
                 }
             });
 
+            // Focus first invalid field
+            if (firstInvalid) {
+                setTimeout(() => {
+                    firstInvalid.trigger('focus');
+                }, 100);
+            }
+
             if (missing.length) {
-                return 'Please fill in all required fields.';
+
+                return {
+                    message: 'Some required information is missing.',
+                    fields: missing
+                };
             }
 
             return null;
@@ -366,33 +399,51 @@
             }, 500);
         },
 
-        showCheckoutError: function (message) {
+        showCheckoutError: function (message, fields = []) {
 
-            // Clear previous notices first
             $('.woocommerce-notices-wrapper').remove();
+
+            let fieldsHtml = '';
+
+            if (fields.length) {
+
+                fieldsHtml = `
+                    <ul class="bytenft-error-fields">
+                        ${fields.map(field => `<li>${field}</li>`).join('')}
+                    </ul>
+                `;
+            }
 
             const html = `
                 <div class="woocommerce-notices-wrapper">
-                    <ul class="woocommerce-error" role="alert">
-                        <li>${message}</li>
-                    </ul>
+                    <div class="woocommerce-error bytenft-main-error" role="alert">
+
+                        <div class="bytenft-error-header">
+                            <strong>Please review the highlighted fields</strong>
+                        </div>
+
+                        <div class="bytenft-error-message">
+                            ${message}
+                        </div>
+
+                        ${fieldsHtml}
+
+                    </div>
                 </div>
             `;
 
-            // Block checkout
             const blockTarget = $('.wc-block-checkout__form');
 
             if (blockTarget.length) {
                 blockTarget.prepend(html);
-                return;
+            } else {
+                $('form.checkout').prepend(html);
             }
 
-            // Classic checkout fallback
-            const classicTarget = $('form.checkout');
-
-            if (classicTarget.length) {
-                classicTarget.prepend(html);
-            }
+            // Scroll to top notice
+            $('html, body').animate({
+                scrollTop: $('.woocommerce-notices-wrapper').offset().top - 80
+            }, 300);
         },
 
         /* =========================================================
@@ -413,20 +464,34 @@
             if (self.state.submitting) return;
 
             // Required fields validation first
+            // const requiredError = self.validateRequiredFields($form);
+
+            // if (requiredError) {
+
+            //     self.showCheckoutError(requiredError);
+
+            //     // close popup
+            //     if (self.state.popup && !self.state.popup.closed) {
+            //         try {
+            //             self.state.popup.close();
+            //         } catch (e) {}
+            //     }
+
+            //     self.state.popup = null;
+            //     self.reset();
+
+            //     return;
+            // }
             const requiredError = self.validateRequiredFields($form);
 
             if (requiredError) {
 
-                self.showCheckoutError(requiredError);
+                self.showCheckoutError(
+                    requiredError.message,
+                    requiredError.fields
+                );
 
-                // close popup
-                if (self.state.popup && !self.state.popup.closed) {
-                    try {
-                        self.state.popup.close();
-                    } catch (e) {}
-                }
-
-                self.state.popup = null;
+                self.cleanupPopup();
                 self.reset();
 
                 return;
