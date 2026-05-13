@@ -771,6 +771,43 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// -------------------------------------------------
+		// 3.1 PHONE VALIDATION (FIX)
+		// -------------------------------------------------
+		$billing_phone = $order->get_billing_phone();
+
+		if (!empty($billing_phone)) {
+
+			$cleaned = preg_replace('/[\s\-().]/', '', $billing_phone);
+
+			$usPattern     = '/^(\+1|1)?\d{10}$/';
+			$euPattern     = '/^(\+|00)[1-9]\d{6,14}$/';
+			$generalPattern = '/^\+?\d{10,15}$/';
+
+			$valid = preg_match($usPattern, $cleaned)
+				|| preg_match($euPattern, $cleaned)
+				|| preg_match($generalPattern, $cleaned);
+
+			// ❌ INVALID PHONE → STOP FLOW HERE
+			if (!$valid) {
+
+				if (is_checkout()) {
+					wc_add_notice(
+						__('Please enter a valid phone number or leave it blank.', 'bytenft-payment-gateway'),
+						'error'
+					);
+				}
+
+				return $this->build_response(
+					'fail',
+					'Invalid phone number',
+					[],
+					400,
+					$order_id
+				);
+			}
+		}
+
+		// -------------------------------------------------
 		// 4. RATE LIMITING (UNCHANGED)
 		// -------------------------------------------------
 		$ip_address  = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP) ?: 'invalid';
