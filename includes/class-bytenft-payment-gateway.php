@@ -771,7 +771,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// -------------------------------------------------
-		// 3.1 PHONE VALIDATION (FIX)
+		// 3.1 PHONE VALIDATION
 		// -------------------------------------------------
 		$billing_phone = $order->get_billing_phone();
 
@@ -800,6 +800,53 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				return $this->build_response(
 					'fail',
 					'Invalid phone number',
+					[],
+					400,
+					$order_id
+				);
+			}
+		}
+
+		// -------------------------------------------------
+		// 3.2 ZIP Code VALIDATION
+		// -------------------------------------------------
+		$billing_postcode = $order->get_billing_postcode();
+		$country          = $order->get_billing_country();
+
+		if (!empty($billing_postcode)) {
+
+			$clean = trim($billing_postcode);
+
+			switch ($country) {
+
+				case 'US':
+					$valid = preg_match('/^\d{5}(-\d{4})?$/', $clean);
+					break;
+
+				case 'CA': // Canada
+					$valid = preg_match('/^[A-Za-z]\d[A-Za-z] ?\d[A-Za-z]\d$/', $clean);
+					break;
+
+				case 'GB': // UK
+					$valid = preg_match('/^([A-Za-z]{1,2}\d[A-Za-z\d]? \d[A-Za-z]{2})$/', $clean);
+					break;
+
+				default:
+					// fallback generic safe check
+					$valid = preg_match('/^[A-Za-z0-9\- ]{3,12}$/', $clean);
+					break;
+			}
+
+			if (!$valid) {
+
+				wc_get_logger()->warning(
+					"Invalid postcode for {$country}: {$billing_postcode}",
+					$logger_context
+				);
+
+				return $this->build_response(
+					'fail',
+					'Invalid postal/ZIP code',
 					[],
 					400,
 					$order_id
