@@ -625,16 +625,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$new_status = match ($payment_status) {
 			'success', 'paid' => $configured_status ?: 'processing',
 			'failed' => 'failed',
-			'canceled' => 'cancelled',
-			default => null
+			'canceled' => 'cancelled'
 		};
-
-		if (!$new_status) {
-
-			wc_add_notice('Unknown status', 'error');
-			wp_send_json_error(['reload' => true]);
-			wp_die();
-		}
 
 		// -------------------------
 		// 🔥 FIXED RULE ENGINE (IMPORTANT)
