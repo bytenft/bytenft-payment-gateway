@@ -560,7 +560,27 @@
         },
 
         clearCheckoutErrors: function () {
+
+            // Classic notices
             $('.woocommerce-notices-wrapper').remove();
+
+            // WooCommerce error blocks
+            $('.woocommerce-error').remove();
+
+            // Block checkout notices
+            $('.wc-block-components-notice-banner').remove();
+
+            // Store API validation errors
+            $('.wc-block-store-notice').remove();
+
+            // Generic notices
+            $('.woocommerce-message').remove();
+            $('.woocommerce-info').remove();
+
+            // Remove field validation classes
+            $('.woocommerce-invalid').removeClass(
+                'woocommerce-invalid woocommerce-invalid-required-field woocommerce-invalid-email'
+            );
         },
 
         /* =========================================================
