@@ -225,7 +225,7 @@
             if (missing.length) {
 
                 return {
-                    message: 'Some required information is missing.',
+                    message: 'Please review the highlighted fields.',
                     fields: missing
                 };
             }
@@ -422,7 +422,6 @@
                     <div class="woocommerce-error bytenft-error-box" role="alert">
 
                         <div class="bytenft-error-header">
-                            <span class="bytenft-error-icon">⚠</span>
                             <strong>${message}</strong>
                         </div>
 
