@@ -89,45 +89,144 @@ function bytenft_register_block_ajax_handlers() {
 add_action('init', 'bytenft_register_block_ajax_handlers');
 
 function handle_bytenft_gateway_ajax() {
-	// ── Nonce verification ────────────────────────────────────────────────────
-	$nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
+
+	// ─────────────────────────────────────────────
+	// CONTEXT + LOG PREFIX (ADDED FOR DEBUGGING)
+	// ─────────────────────────────────────────────
+	$orderID = WC()->session ? WC()->session->get('store_api_draft_order') : null;
+
+	$log_prefix = "[Order #{$orderID}]";
+	$log_ctx    = ['order_id' => $orderID];
+
+	// ─────────────────────────────────────────────
+	// NONCE CHECK (WITH LOGGING)
+	// ─────────────────────────────────────────────
+	$nonce = isset($_POST['nonce'])
+		? sanitize_text_field(wp_unslash($_POST['nonce']))
+		: '';
+
 	if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
-		wp_send_json(['result' => 'fail', 'error' => 'Security check failed.']);
+
+		wc_get_logger()->error($log_prefix . ' AJAX | Invalid nonce', $log_ctx);
+
+		if (function_exists('bytenft_log')) {
+			$this->bytenft_log($log_prefix . ' AJAX | Invalid nonce', $log_ctx);
+		}
+
+		wp_send_json([
+			'success' => false,
+			'message' => 'Security check failed.',
+			'data'    => [
+				'reload'   => true,
+				'order_id' => $orderID
+			]
+		]);
+
 		die;
 	}
 
-	// ── Get the already-initialised gateway instance from WooCommerce ─────────
-	// This is the critical fix. WC()->payment_gateways()->payment_gateways()
-	// returns instances that have already been through init_settings(), so
-	// sandbox mode, enabled state, and all options are correctly loaded.
+	// ─────────────────────────────────────────────
+	// GET GATEWAY INSTANCE (UNCHANGED LOGIC)
+	// ─────────────────────────────────────────────
 	$gateways       = WC()->payment_gateways()->payment_gateways();
 	$bytenftPayment = $gateways['bytenft'] ?? null;
 
 	if (!$bytenftPayment) {
-		// Fallback: if for any reason the registry doesn't have it yet,
-		// instantiate manually and force-reload settings from the DB.
+
 		$bytenftPayment = new BYTENFT_PAYMENT_GATEWAY();
 		$bytenftPayment->init_settings();
 		$bytenftPayment->load_gateway_settings();
 
 		wc_get_logger()->warning(
-			'ByteNFT: gateway not found in WC registry during AJAX — fell back to manual instantiation.',
-			['source' => 'bytenft-payment-gateway']
+			$log_prefix . ' AJAX | Gateway fallback used (not found in registry)',
+			$log_ctx + ['event' => 'gateway_fallback']
 		);
 	}
 
-	// ── Resolve the draft order ID from the block checkout session ────────────
-	$orderID = WC()->session ? WC()->session->get('store_api_draft_order') : null;
+	// ─────────────────────────────────────────────
+	// ORDER VALIDATION LOG
+	// ─────────────────────────────────────────────
+	if (!$orderID) {
 
-	$status = [];
+		wc_get_logger()->error($log_prefix . ' AJAX | Missing order ID from session', $log_ctx);
 
-	if ($orderID) {
-		$status = $bytenftPayment->process_payment($orderID);
-	} else {
-		wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
-		$status = ['result' => 'fail', 'error' => 'Invalid order.'];
+		if (function_exists('bytenft_log')) {
+			$this->bytenft_log($log_prefix . ' AJAX | Missing order ID', $log_ctx);
+		}
+
+		wp_send_json([
+			'success' => false,
+			'message' => 'Invalid order.',
+			'data'    => [
+				'order_id' => null
+			]
+		]);
+
+		die;
 	}
 
-	wp_send_json($status);
+	// ─────────────────────────────────────────────
+	// PAYMENT PROCESS FLOW (UNCHANGED LOGIC)
+	// ─────────────────────────────────────────────
+	$status = $bytenftPayment->process_payment($orderID);
+
+	// ─────────────────────────────────────────────
+	// LOG PROCESS RESULT
+	// ─────────────────────────────────────────────
+	wc_get_logger()->info(
+		$log_prefix . ' AJAX | process_payment executed',
+		$log_ctx + ['status' => $status]
+	);
+
+	if (function_exists('bytenft_log')) {
+		$this->bytenft_log($log_prefix . ' AJAX | process_payment executed', $log_ctx);
+	}
+
+	// ─────────────────────────────────────────────
+	// NORMALIZE RESPONSE (SAFE FIX LAYER)
+	// ─────────────────────────────────────────────
+	$is_success = false;
+
+	if (is_array($status)) {
+		$is_success =
+			($status['success'] ?? false) === true ||
+			($status['result'] ?? '') === 'success';
+	}
+
+	$message =
+		$status['message']
+		?? $status['error']
+		?? ($is_success ? 'Payment initiated' : 'Payment failed');
+
+	$redirect =
+		$status['data']['redirect']
+		?? $status['redirect']
+		?? null;
+
+	// ─────────────────────────────────────────────
+	// FINAL RESPONSE LOG
+	// ─────────────────────────────────────────────
+	wc_get_logger()->info(
+		$log_prefix . ' AJAX | Final response prepared',
+		$log_ctx + [
+			'success'  => $is_success,
+			'message'  => $message,
+			'redirect' => $redirect
+		]
+	);
+
+	// ─────────────────────────────────────────────
+	// RESPONSE (UNIFIED CONTRACT)
+	// ─────────────────────────────────────────────
+	wp_send_json([
+		'success' => $is_success,
+		'message' => $message,
+		'data'    => [
+			'order_id' => $orderID,
+			'redirect' => $redirect,
+			'raw'      => $status // optional debugging (safe for dev)
+		]
+	]);
+
 	die;
 }
