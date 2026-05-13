@@ -86,7 +86,9 @@
         },
 
         isValidEmail: function (email) {
-            return email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+            if (!email) return false;
+            email = email.trim();
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
         },
 
         containsPOBox: function (v) {
@@ -132,13 +134,28 @@
         validateAll: function ($form) {
 
             let email = this.getBillingEmail($form);
-            if (email && !this.isValidEmail(email)) return 'Invalid email address';
+
+            // ✅ Required email check
+            if (!email || !email.trim()) {
+                return 'Please enter your email address.';
+            }
+
+            // ✅ Format validation
+            if (!this.isValidEmail(email)) {
+                return 'Please enter a valid email address.';
+            }
 
             let phone = this.getPhoneNumber($form);
-            if (phone && !this.isValidPhoneNumber(phone)) return 'Invalid phone number';
+
+            if (phone && !this.isValidPhoneNumber(phone)) {
+                return 'Please enter a valid phone number.';
+            }
 
             let po = this.validatePOBox($form);
-            if (po) return po;
+
+            if (po) {
+                return po;
+            }
 
             return null;
         },
