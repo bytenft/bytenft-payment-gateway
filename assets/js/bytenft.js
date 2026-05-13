@@ -160,6 +160,46 @@
             return null;
         },
 
+        validateRequiredFields: function ($form) {
+
+            let missing = [];
+
+            $form.find('[required]').each(function () {
+
+                const $field = $(this);
+
+                // ignore hidden fields
+                if (!$field.is(':visible')) {
+                    return;
+                }
+
+                const val = ($field.val() || '').trim();
+
+                if (!val) {
+
+                    const label =
+                        $field.closest('.form-row, .wc-block-components-text-input')
+                            .find('label')
+                            .first()
+                            .text()
+                            .replace('*', '')
+                            .trim();
+
+                    missing.push(label || 'Required field');
+
+                    $field.addClass('woocommerce-invalid');
+                } else {
+                    $field.removeClass('woocommerce-invalid');
+                }
+            });
+
+            if (missing.length) {
+                return 'Please fill in all required fields.';
+            }
+
+            return null;
+        },
+
         /* =========================================================
          * EVENTS (FIXED STABLE HANDLING)
          * ========================================================= */
@@ -372,6 +412,27 @@
 
             if (self.state.submitting) return;
 
+            // Required fields validation first
+            const requiredError = self.validateRequiredFields($form);
+
+            if (requiredError) {
+
+                self.showCheckoutError(requiredError);
+
+                // close popup
+                if (self.state.popup && !self.state.popup.closed) {
+                    try {
+                        self.state.popup.close();
+                    } catch (e) {}
+                }
+
+                self.state.popup = null;
+                self.reset();
+
+                return;
+            }
+
+            // Custom validations
             const error = self.validateAll($form);
             if (error) {
                 self.showCheckoutError(error);
