@@ -637,11 +637,6 @@
             // Generic notices
             $('.woocommerce-message').remove();
             $('.woocommerce-info').remove();
-
-            // Remove field validation classes
-            $('.woocommerce-invalid').removeClass(
-                'woocommerce-invalid woocommerce-invalid-required-field woocommerce-invalid-email'
-            );
         },
 
         /* =========================================================
