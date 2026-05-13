@@ -363,6 +363,9 @@
 
             const self = this;
 
+            // ✅ CLEAR OLD ERRORS FIRST
+            self.clearCheckoutErrors();
+
             const isBlock = !!$form.find(
                 'input[name="radio-control-wc-payment-method-options"]:checked'
             ).val();
@@ -554,6 +557,10 @@
                 } catch (e) {}
             }
             this.state.popup = null;
+        },
+
+        clearCheckoutErrors: function () {
+            $('.woocommerce-notices-wrapper').remove();
         },
 
         /* =========================================================

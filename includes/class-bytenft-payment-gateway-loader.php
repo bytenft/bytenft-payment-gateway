@@ -625,7 +625,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$new_status = match ($payment_status) {
 			'success', 'paid' => $configured_status ?: 'processing',
 			'failed' => 'failed',
-			'canceled' => 'cancelled'
+			'canceled' => 'cancelled',
+			default => null
 		};
 
 		// -------------------------
