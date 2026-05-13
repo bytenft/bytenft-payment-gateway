@@ -808,32 +808,44 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// -------------------------------------------------
-		// 3.2 ZIP Code VALIDATION
+		// 3.2 ZIP Code VALIDATION (FIXED)
 		// -------------------------------------------------
+
 		$billing_postcode = $order->get_billing_postcode();
-		$country          = $order->get_billing_country();
+
+		// 🔥 fallback to raw POST (important for block + safari)
+		if (empty($billing_postcode) && !empty($_POST['billing_postcode'])) {
+			$billing_postcode = sanitize_text_field(wp_unslash($_POST['billing_postcode']));
+		}
+
+		$country = $order->get_billing_country();
 
 		if (!empty($billing_postcode)) {
 
-			$clean = trim($billing_postcode);
+			$clean = strtoupper(trim($billing_postcode));
+			$clean = preg_replace('/\s+/', '', $clean); // normalize spaces
+
+			$valid = false;
 
 			switch ($country) {
 
 				case 'US':
+					// 12345 or 12345-6789
 					$valid = preg_match('/^\d{5}(-\d{4})?$/', $clean);
 					break;
 
-				case 'CA': // Canada
-					$valid = preg_match('/^[A-Za-z]\d[A-Za-z] ?\d[A-Za-z]\d$/', $clean);
+				case 'CA':
+					// A1A1A1 or A1A 1A1
+					$valid = preg_match('/^[A-Z]\d[A-Z]\d[A-Z]\d$/', str_replace(' ', '', $clean));
 					break;
 
-				case 'GB': // UK
-					$valid = preg_match('/^([A-Za-z]{1,2}\d[A-Za-z\d]? \d[A-Za-z]{2})$/', $clean);
+				case 'GB':
+					$valid = preg_match('/^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/', $clean);
 					break;
 
 				default:
-					// fallback generic safe check
-					$valid = preg_match('/^[A-Za-z0-9\- ]{3,12}$/', $clean);
+					// safer global fallback
+					$valid = preg_match('/^[A-Z0-9\-]{3,10}$/', $clean);
 					break;
 			}
 
