@@ -455,7 +455,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// REFRESH ORDER
 		// -------------------------
 		$order = wc_get_order($order_id);
-		$state = $order->get_meta('_bytenft_state');
+		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order, $payment_status);
 
 		$payment_return_url = $order->get_checkout_order_received_url();
 
@@ -690,9 +690,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$order = wc_get_order($order_id);
 
 		$wc_status = $order->get_status();
-		$state = $order->get_meta('_bytenft_state');
+		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order, $payment_status);
 
-		$is_success = $order->has_status(['processing', 'completed']);
+		$is_success = ($state === 'success');
 
 		// -------------------------
 		// RESPONSE MESSAGE (UI ONLY)

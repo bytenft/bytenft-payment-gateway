@@ -133,6 +133,34 @@ class BYTENFT_PAYMENT_ENGINE
         return in_array($to, $map[$from] ?? [], true);
     }
 
+    private static function resolve_final_state($order, $api_status = null)
+    {
+        // 1. PRIMARY: engine state
+        $state = $order->get_meta('_bytenft_state');
+
+        if (!empty($state)) {
+            return $state;
+        }
+
+        // 2. SAFETY: API status (current response)
+        if (!empty($api_status)) {
+            return match ($api_status) {
+                'success', 'paid', 'completed' => 'success',
+                'failed' => 'failed',
+                'cancelled', 'canceled' => 'cancelled',
+                'processing', 'pending' => 'processing',
+                default => null
+            };
+        }
+
+        // 3. BACKUP: WooCommerce status
+        if ($order->has_status(['processing', 'completed'])) {
+            return 'success';
+        }
+
+        return null;
+    }
+
     private static function get_success_wc_status()
     {
         $settings = get_option('woocommerce_bytenft_settings', []);
