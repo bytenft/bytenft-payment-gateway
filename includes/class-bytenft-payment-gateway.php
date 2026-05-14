@@ -1054,7 +1054,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ($this->sandbox) {
 				if (!$order->get_meta('_is_test_order')) {
 					$order->update_meta_data('_is_test_order', true);
-					$order->add_order_note(__('This is a test order processed in sandbox mode.', 'bytenft-payment-gateway'));
+					bytenft_add_unique_order_note(
+						$order,
+						'sandbox_mode',
+						__('This is a test order processed in sandbox mode.', 'bytenft-payment-gateway')
+					);
 				}
 			}
 
@@ -1325,10 +1329,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$order->update_status('pending', __('Payment pending.', 'bytenft-payment-gateway'));
 
-			$order->add_order_note(sprintf(
-				__('Payment initiated via ByteNFT (%s)', 'bytenft-payment-gateway'),
-				$account['title']
-			));
+			bytenft_add_unique_order_note(
+				$order,
+				'payment_initiated',
+				sprintf(
+					__('Payment initiated via ByteNFT (%s)', 'bytenft-payment-gateway'),
+					$account['title']
+				)
+			);
 
 			$this->bytenft_log(
 				$log_prefix . ' Order status updated to pending',

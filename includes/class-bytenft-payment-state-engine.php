@@ -219,25 +219,44 @@ class BYTENFT_PAYMENT_ENGINE
     private static function build_note($state, $event_type, $payload)
     {
         $map = [
-            'success'    => '✅ Payment Successfully Completed',
-            'failed'     => '❌ Payment Failed',
-            'cancelled'  => '⚠️ Payment Cancelled',
-            'processing' => '⏳ Payment Processing'
+            'success'    => '✅ Payment completed successfully',
+            'failed'     => '❌ Payment failed',
+            'cancelled'  => '⚠️ Payment was cancelled by the user',
+            'processing' => '⏳ Payment is being processed'
         ];
 
         $source_label = self::get_friendly_source($event_type);
 
-        $note  = ($map[$state] ?? 'Payment Update') . "\n";
-        $note .= "State: " . strtoupper($state) . "\n";
-        $note .= "Update via: {$source_label}\n";
+        // Safe transaction ID decoding
+        $transaction_id = 'N/A';
 
         if (!empty($payload['payment_token'])) {
-            $note .= "Transaction ID: {$payload['payment_token']}\n";
+            $decoded = base64_decode($payload['payment_token'], true);
+            if (!empty($decoded)) {
+                $transaction_id = $decoded;
+            }
         }
 
-        $note .= "Timestamp: " . current_time('mysql') . "\n";
+        $lines = [];
 
-        return $note;
+        // Header (human friendly)
+        $lines[] = $map[$state] ?? 'Payment Update';
+
+        // Only show state if needed (less technical noise)
+        $lines[] = "Status: " . ucfirst($state);
+
+        // Source (keep simple)
+        $lines[] = "Updated via: " . $source_label;
+
+        // Transaction ID (only if valid)
+        if ($transaction_id !== 'N/A') {
+            $lines[] = "Transaction ID: " . $transaction_id;
+        }
+
+        // Timestamp (formatted nicely)
+        $lines[] = "Date: " . date_i18n('M j, Y \a\t g:i A');
+
+        return implode("\n", $lines);
     }
 
     /**

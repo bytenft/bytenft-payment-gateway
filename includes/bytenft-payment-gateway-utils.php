@@ -64,3 +64,27 @@ function bytenft_activation_check()
 		wp_die(esc_html($environment_warning)); // Escape the output before calling wp_die
 	}
 }
+
+if (!function_exists('bytenft_add_unique_order_note')) {
+
+    function bytenft_add_unique_order_note($order, $key, $message)
+    {
+        if (!$order) {
+            return false;
+        }
+
+        $meta_key = '_bytenft_order_note_' . $key;
+
+        $existing = $order->get_meta($meta_key, true);
+
+        if (!empty($existing)) {
+            return false;
+        }
+
+        $order->add_order_note($message);
+        $order->update_meta_data($meta_key, wc_current_time('timestamp'));
+        $order->save();
+
+        return true;
+    }
+}
