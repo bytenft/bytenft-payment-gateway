@@ -219,16 +219,16 @@ class BYTENFT_PAYMENT_ENGINE
     private static function build_note($state, $event_type, $payload)
     {
         $map = [
-            'success'    => '✅ Payment completed successfully',
-            'failed'     => '❌ Payment failed',
-            'cancelled'  => '⚠️ Payment was cancelled by the user',
-            'processing' => '⏳ Payment is being processed'
+            'success'    => 'Payment completed successfully',
+            'failed'     => 'Payment failed',
+            'cancelled'  => 'Payment was cancelled',
+            'processing' => 'Payment is being processed'
         ];
 
         $source_label = self::get_friendly_source($event_type);
 
-        // Safe transaction ID decoding
-        $transaction_id = 'N/A';
+        // Safe transaction ID decode
+        $transaction_id = null;
 
         if (!empty($payload['payment_token'])) {
             $decoded = base64_decode($payload['payment_token'], true);
@@ -239,22 +239,26 @@ class BYTENFT_PAYMENT_ENGINE
 
         $lines = [];
 
-        // Header (human friendly)
-        $lines[] = $map[$state] ?? 'Payment Update';
+        // Header
+        $lines[] = $map[$state] ?? 'Payment update';
 
-        // Only show state if needed (less technical noise)
-        $lines[] = "Status: " . ucfirst($state);
-
-        // Source (keep simple)
-        $lines[] = "Updated via: " . $source_label;
-
-        // Transaction ID (only if valid)
-        if ($transaction_id !== 'N/A') {
-            $lines[] = "Transaction ID: " . $transaction_id;
+        // Optional short context (only if useful)
+        if ($state === 'processing') {
+            $lines[] = 'Your payment is currently being verified.';
         }
 
-        // Timestamp (formatted nicely)
-        $lines[] = "Date: " . date_i18n('M j, Y \a\t g:i A');
+        // Transaction reference (only show if exists)
+        if (!empty($transaction_id)) {
+            $lines[] = 'Transaction ID: ' . $transaction_id;
+        }
+
+        // Source (keep subtle, not technical)
+        if (!empty($source_label)) {
+            $lines[] = 'Updated: ' . $source_label;
+        }
+
+        // Timestamp (friendly format)
+        $lines[] = 'Date: ' . date_i18n('M j, Y \a\t g:i A');
 
         return implode("\n", $lines);
     }
