@@ -133,7 +133,7 @@ class BYTENFT_PAYMENT_ENGINE
         return in_array($to, $map[$from] ?? [], true);
     }
 
-    private static function resolve_final_state($order, $api_status = null)
+    public static function resolve_final_state($order, $api_status = null)
     {
         // 1. PRIMARY: engine state
         $state = $order->get_meta('_bytenft_state');
