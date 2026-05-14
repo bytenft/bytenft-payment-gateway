@@ -243,21 +243,19 @@
 
             console.log('[Bytenft] bindEvents initialized');
 
-            // Classic checkout (keep as-is if working)
-            $('form.checkout')
-                .off('submit.bytenft')
-                .on('submit.bytenft', function (e) {
+            $(document).on('submit checkout_place_order', 'form.checkout', function (e) {
 
-                    const selected = $(this)
-                        .find('input[name="payment_method"]:checked')
-                        .val();
+                const selected = $(this)
+                    .find('input[name="payment_method"]:checked')
+                    .val();
 
-                    if (selected !== self.PAYMENT_METHOD) return true;
+                if (selected !== BytenftCheckout.PAYMENT_METHOD) return;
 
-                    e.preventDefault();
-                    self.handleFlow($(this), e);
-                    return false;
-                });
+                e.preventDefault();
+                e.stopImmediatePropagation();
+
+                BytenftCheckout.handleFlow($(this), e);
+            });
 
             /* =========================================================
             * BLOCK CHECKOUT FIX (CAPTURE PHASE - IMPORTANT)
@@ -334,7 +332,30 @@
                 self.handleFlow($form, e);
             },
             true
-        );
+            );
+
+             /* =========================================================
+            * (IMPORTANT SAFARI + BLOCK CHECKOUT FIX)
+            * ========================================================= */
+            document.addEventListener('submit', function (e) {
+
+                const form = e.target;
+
+                if (!form || !form.classList) return;
+
+                if (!form.classList.contains('wc-block-checkout__form')) return;
+
+                const selected = form.querySelector(
+                    'input[name*="payment_method"]:checked'
+                )?.value;
+
+                if (selected !== self.PAYMENT_METHOD) return;
+
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                e.stopPropagation();
+
+            }, true);
         },
 
         trackPopupClose: function () {
@@ -465,34 +486,20 @@
 
             const self = this;
 
+            // ❌ HARD STOP DEFAULT FLOW IMMEDIATELY
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+            }
+
             // ✅ CLEAR OLD ERRORS FIRST
             self.clearCheckoutErrors();
 
-            const isBlock = !!$form.find(
-                'input[name="radio-control-wc-payment-method-options"]:checked'
-            ).val();
+            const isBlock = $form.hasClass('wc-block-checkout__form');
 
             if (self.state.submitting) return;
 
-            // Required fields validation first
-            // const requiredError = self.validateRequiredFields($form);
-
-            // if (requiredError) {
-
-            //     self.showCheckoutError(requiredError);
-
-            //     // close popup
-            //     if (self.state.popup && !self.state.popup.closed) {
-            //         try {
-            //             self.state.popup.close();
-            //         } catch (e) {}
-            //     }
-
-            //     self.state.popup = null;
-            //     self.reset();
-
-            //     return;
-            // }
             const requiredError = self.validateRequiredFields($form);
 
             if (requiredError) {
@@ -667,7 +674,9 @@
 
                     if (redirectUrl) {
                         try {
-                            popup.location.href = redirectUrl;
+                            if (popup && !popup.closed) {
+                                popup.location.href = redirectUrl;
+                            }
                         } catch (e) {
                             window.open(redirectUrl, '_blank');
                         }
