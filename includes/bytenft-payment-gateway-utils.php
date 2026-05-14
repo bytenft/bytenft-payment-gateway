@@ -97,7 +97,7 @@ if (!function_exists('bytenft_add_unique_order_note')) {
         $order->add_order_note($final_message);
 
         // Store timestamp using WooCommerce timezone-aware time
-        $order->update_meta_data($meta_key, wc_current_time('timestamp'));
+        $order->update_meta_data($meta_key, current_time('timestamp'));
 
         $order->save();
 
