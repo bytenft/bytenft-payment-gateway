@@ -176,7 +176,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$event_source = ($method === 'POST') ? 'Webhook' : 'Redirect';
 		$event_type = ($method === 'POST')
 			? 'webhook_update'
-			: 'redirect_update';
+			: 'redirect';
 
 		// -------------------------
 		// 4. ENGINE CALL (SINGLE SOURCE OF TRUTH)
