@@ -936,12 +936,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				switch ($country) {
 
 					case 'US':
-					// 12345 or 12345-6789
-						$valid = preg_match('/^\d{5}(-\d{4})?$/', $billing_postcode);
+						// 12345 or 12345-6789
+						$valid = preg_match('/^\d{5}(-\d{4})?$/', $clean);
 						break;
 
 					case 'CA':
-					// A1A1A1 or A1A 1A1
+						// A1A1A1 or A1A 1A1
 						$valid = preg_match('/^[A-Z]\d[A-Z]\d[A-Z]\d$/', $clean);
 						break;
 
@@ -950,7 +950,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						break;
 
 					default:
-						$valid = preg_match('/^[A-Z0-9\- ]{3,10}$/', $billing_postcode);
+						$valid = preg_match('/^[A-Z0-9\- ]{3,10}$/', $clean);
 						break;
 				}
 
