@@ -692,7 +692,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$wc_status = $order->get_status();
 		$state = $order->get_meta('_bytenft_state');
 
-		$is_success = ($state === 'success');
+		$is_success = $order->has_status(['processing', 'completed']);
 
 		// -------------------------
 		// RESPONSE MESSAGE (UI ONLY)
@@ -708,12 +708,18 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				=> 'Your payment is still being processed.'
 		};
 
+		$redirect = null;
+
+		if ($order->has_status(['processing', 'completed'])) {
+			$redirect = $order->get_checkout_order_received_url();
+		}
+
 		wp_send_json([
 			'success' => $is_success,
 			'message' => $message,
 			'data' => [
 				'payment_status' => $payment_status,
-				'redirect'       => $is_success ? $order->get_checkout_order_received_url() : null,
+				'redirect'       => $redirect,
 				'order_id'       => $order_id,
 				'order_status'   => $wc_status,
 				'state'          => $state,

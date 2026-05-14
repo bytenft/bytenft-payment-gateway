@@ -78,7 +78,7 @@ if (!function_exists('bytenft_add_unique_order_note')) {
         }
 
         // Plugin identifier (IMPORTANT for tracking in WP admin)
-        $plugin_prefix = 'ByteNFT Gateway';
+        $plugin_prefix = '<strong>ByteNFT Gateway</strong>';
 
         // Unique meta key per note type (scoped to plugin)
         $meta_key = '_bytenft_order_note_' . sanitize_key($key);

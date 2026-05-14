@@ -607,8 +607,10 @@
                 // NORMALIZE
                 // -----------------------------
                 const isSuccess =
+                    res?.success === true ||
                     res?.result === 'success' ||
-                    res?.success === true;
+                    res?.data?.payment_status === 'success' ||
+                    res?.data?.payment_status === 'paid';
 
                 const message =
                     res?.message ||
