@@ -219,10 +219,10 @@ class BYTENFT_PAYMENT_ENGINE
     private static function build_note($state, $event_type, $payload)
     {
         $map = [
-            'success'    => '🎉 Payment completed successfully',
-            'failed'     => '❌ Payment failed',
-            'cancelled'  => '⚠️ Payment was cancelled',
-            'processing' => '⏳ Payment is being processed'
+            'success'    => 'Payment completed successfully',
+            'failed'     => 'Payment failed',
+            'cancelled'  => 'Payment was cancelled',
+            'processing' => 'Payment is being processed'
         ];
 
         $source_label = self::get_friendly_source($event_type);
@@ -240,7 +240,7 @@ class BYTENFT_PAYMENT_ENGINE
         $lines = [];
 
         //Plugin identifier (IMPORTANT for tracking in WP admin)
-        $lines[] = 'ByteNFT Gateway';
+        $lines[] = '<strong> ByteNFT Gateway </strong>';
         $lines[] = '';
 
         // Header
@@ -253,17 +253,22 @@ class BYTENFT_PAYMENT_ENGINE
 
         // Transaction reference
         if (!empty($transaction_id)) {
-            $lines[] = 'Transaction ID: ' . $transaction_id;
+            $lines[] = '<strong>Transaction ID:</strong> ' . $transaction_id;
         }
 
         // Source (light + non-technical)
         if (!empty($source_label)) {
-            $lines[] = 'Updated via: ' . $source_label;
+            $lines[] = '<strong>Updated via:</strong> ' . $source_label;
         }
 
         // Timestamp
         $lines[] = '';
-        $lines[] = 'Date: ' . date_i18n('M j, Y \a\t g:i A');
+        $lines[] = '<strong>Date:</strong> ' . date_i18n('M j, Y \a\t g:i A');
+
+         // IMPORTANT:
+        // Extra blank lines so WooCommerce status note starts separately
+        $lines[] = '';
+        $lines[] = '';
 
         return implode("\n", $lines);
     }
