@@ -219,10 +219,10 @@ class BYTENFT_PAYMENT_ENGINE
     private static function build_note($state, $event_type, $payload)
     {
         $map = [
-            'success'    => 'Payment completed successfully',
-            'failed'     => 'Payment failed',
-            'cancelled'  => 'Payment was cancelled',
-            'processing' => 'Payment is being processed'
+            'success'    => '🎉 Payment completed successfully',
+            'failed'     => '❌ Payment failed',
+            'cancelled'  => '⚠️ Payment was cancelled',
+            'processing' => '⏳ Payment is being processed'
         ];
 
         $source_label = self::get_friendly_source($event_type);
@@ -239,25 +239,30 @@ class BYTENFT_PAYMENT_ENGINE
 
         $lines = [];
 
+        //Plugin identifier (IMPORTANT for tracking in WP admin)
+        $lines[] = 'ByteNFT Gateway';
+        $lines[] = '';
+
         // Header
         $lines[] = $map[$state] ?? 'Payment update';
 
-        // Optional short context (only if useful)
+        // Optional context
         if ($state === 'processing') {
             $lines[] = 'Your payment is currently being verified.';
         }
 
-        // Transaction reference (only show if exists)
+        // Transaction reference
         if (!empty($transaction_id)) {
             $lines[] = 'Transaction ID: ' . $transaction_id;
         }
 
-        // Source (keep subtle, not technical)
+        // Source (light + non-technical)
         if (!empty($source_label)) {
-            $lines[] = 'Updated: ' . $source_label;
+            $lines[] = 'Updated via: ' . $source_label;
         }
 
-        // Timestamp (friendly format)
+        // Timestamp
+        $lines[] = '';
         $lines[] = 'Date: ' . date_i18n('M j, Y \a\t g:i A');
 
         return implode("\n", $lines);
