@@ -607,10 +607,8 @@
                 // NORMALIZE
                 // -----------------------------
                 const isSuccess =
-                    res?.success === true ||
-                    res?.success === 'true' ||
-                    res?.success === 1 ||
-                    res?.result === 'success';
+                    res?.result === 'success' ||
+                    res?.success === true;
 
                 const message =
                     res?.message ||
