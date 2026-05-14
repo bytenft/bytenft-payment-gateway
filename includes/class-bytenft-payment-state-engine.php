@@ -88,8 +88,6 @@ class BYTENFT_PAYMENT_ENGINE
              */
             self::apply($order, $new_state, $event_type, $payload);
 
-            $order->save();
-
             return self::safe_response($order, 'updated',$new_state);
 
         } finally {
@@ -151,7 +149,9 @@ class BYTENFT_PAYMENT_ENGINE
      */
     private static function apply($order, $state, $event_type, $payload)
     {
-        if ($order->has_status('processing') && $state === 'processing') {
+        $current_state = $order->get_meta('_bytenft_state');
+
+        if ($current_state === $state) {
             return;
         }
     
@@ -160,7 +160,7 @@ class BYTENFT_PAYMENT_ENGINE
             'failed'     => 'failed',
             'cancelled'  => 'cancelled',
             'expired'    => 'failed',
-            'processing' => 'processing',
+            'processing' => 'pending',
             default      => null
         };
 
@@ -194,7 +194,14 @@ class BYTENFT_PAYMENT_ENGINE
      */
     private static function generate_event_id($type, $payload)
     {
-        return hash('sha256', $type . '|' . wp_json_encode($payload));
+        $status = $payload['status'] ?? '';
+        $token  = $payload['payment_token'] ?? '';
+
+        return hash('sha256', implode('|', [
+            $type,
+            $status,
+            $token
+        ]));
     }
 
     private static function is_duplicate_event($order_id, $event_id)
