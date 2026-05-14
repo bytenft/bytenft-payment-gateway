@@ -85,58 +85,58 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_filter('woocommerce_admin_order_preview_line_items', [$this, 'bytenft_add_custom_label_to_order_row'], 10, 2);
 		add_filter('woocommerce_available_payment_gateways', [$this, 'bytenft_hide_custom_payment_gateway_conditionally']);
 
-		add_action('woocommerce_after_checkout_validation', [$this, 'bytenft_validate_checkout_fields'], 10, 2);
+		// add_action('woocommerce_after_checkout_validation', [$this, 'bytenft_validate_checkout_fields'], 10, 2);
 
 		add_action('wp_ajax_bytenft_log_event', [$this, 'handle_log_event']);
 		add_action('wp_ajax_nopriv_bytenft_log_event', [$this, 'handle_log_event']);
 	}
 
-	/**
-	 * Strict validation for Phone and Zip Code.
-	 * Runs before process_payment to ensure only clean data reaches your API.
-	 */
-	public function bytenft_validate_checkout_fields($data, $errors) {
+	// /**
+	//  * Strict validation for Phone and Zip Code.
+	//  * Runs before process_payment to ensure only clean data reaches your API.
+	//  */
+	// public function bytenft_validate_checkout_fields($data, $errors) {
 		
-		// 1. PHONE VALIDATION
-		$phone = isset($data['billing_phone']) ? $data['billing_phone'] : '';
-		if (!empty($phone)) {
-			// Remove common formatting characters
-			$digits_only = preg_replace('/[^\d]/', '', $phone);
+	// 	// 1. PHONE VALIDATION
+	// 	$phone = isset($data['billing_phone']) ? $data['billing_phone'] : '';
+	// 	if (!empty($phone)) {
+	// 		// Remove common formatting characters
+	// 		$digits_only = preg_replace('/[^\d]/', '', $phone);
 			
-			// Fail if not a valid format or too short (less than 10 digits)
-			if (!preg_match('/^[0-9\-\+\(\)\s]+$/', $phone) || strlen($digits_only) < 10) {
-				$errors->add(
-					'billing_phone_error', 
-					'<strong>' . __('Phone', 'bytenft-payment-gateway') . '</strong> ' . __('is invalid. Please enter a valid phone number with at least 10 digits.', 'bytenft-payment-gateway')
-				);
-			}
-		}
+	// 		// Fail if not a valid format or too short (less than 10 digits)
+	// 		if (!preg_match('/^[0-9\-\+\(\)\s]+$/', $phone) || strlen($digits_only) < 10) {
+	// 			$errors->add(
+	// 				'billing_phone_error', 
+	// 				'<strong>' . __('Phone', 'bytenft-payment-gateway') . '</strong> ' . __('is invalid. Please enter a valid phone number with at least 10 digits.', 'bytenft-payment-gateway')
+	// 			);
+	// 		}
+	// 	}
 
-		// 2. ZIP CODE VALIDATION
-		$postcode = isset($data['billing_postcode']) ? trim($data['billing_postcode']) : '';
-		$country  = isset($data['billing_country']) ? $data['billing_country'] : '';
+	// 	// 2. ZIP CODE VALIDATION
+	// 	$postcode = isset($data['billing_postcode']) ? trim($data['billing_postcode']) : '';
+	// 	$country  = isset($data['billing_country']) ? $data['billing_country'] : '';
 
-		if (!empty($postcode)) {
-			// Strict US Zip Code check
-			if ($country === 'US') {
-				if (!preg_match('/^\d{5}(-\d{4})?$/', $postcode)) {
-					$errors->add(
-						'billing_postcode_error', 
-						'<strong>' . __('Zip Code', 'bytenft-payment-gateway') . '</strong> ' . __('is invalid for the United States (e.g., 90210).', 'bytenft-payment-gateway')
-					);
-				}
-			} 
-			// General Postcode check (Alphanumeric, 3-10 chars)
-			else {
-				if (strlen($postcode) < 3 || !preg_match('/^[a-zA-Z0-9\s\-]+$/', $postcode)) {
-					$errors->add(
-						'billing_postcode_error', 
-						'<strong>' . __('Postcode / ZIP', 'bytenft-payment-gateway') . '</strong> ' . __('format is invalid.', 'bytenft-payment-gateway')
-					);
-				}
-			}
-		}
-	}
+	// 	if (!empty($postcode)) {
+	// 		// Strict US Zip Code check
+	// 		if ($country === 'US') {
+	// 			if (!preg_match('/^\d{5}(-\d{4})?$/', $postcode)) {
+	// 				$errors->add(
+	// 					'billing_postcode_error', 
+	// 					'<strong>' . __('Zip Code', 'bytenft-payment-gateway') . '</strong> ' . __('is invalid for the United States (e.g., 90210).', 'bytenft-payment-gateway')
+	// 				);
+	// 			}
+	// 		} 
+	// 		// General Postcode check (Alphanumeric, 3-10 chars)
+	// 		else {
+	// 			if (strlen($postcode) < 3 || !preg_match('/^[a-zA-Z0-9\s\-]+$/', $postcode)) {
+	// 				$errors->add(
+	// 					'billing_postcode_error', 
+	// 					'<strong>' . __('Postcode / ZIP', 'bytenft-payment-gateway') . '</strong> ' . __('format is invalid.', 'bytenft-payment-gateway')
+	// 				);
+	// 			}
+	// 		}
+	// 	}
+	// }
 
 	private function get_api_url($endpoint) {
 		return $this->base_url . $endpoint;
