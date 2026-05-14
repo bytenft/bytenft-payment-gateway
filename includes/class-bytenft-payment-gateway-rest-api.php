@@ -159,7 +159,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		}
 
 		// -------------------------
-		// 2. SECURITY CHECK
+		// 2. SECURITY CHECK (POST ONLY)
 		// -------------------------
 		if ($method === 'POST') {
 			$decoded_nonce = base64_decode($api_key_raw);
@@ -174,13 +174,16 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		// 3. EVENT SOURCE
 		// -------------------------
 		$event_source = ($method === 'POST') ? 'Webhook' : 'Redirect';
+		$event_type = ($method === 'POST')
+			? 'webhook_update'
+			: 'redirect_update';
 
 		// -------------------------
-		// 4. ENGINE CALL
+		// 4. ENGINE CALL (SINGLE SOURCE OF TRUTH)
 		// -------------------------
 		$result = BYTENFT_PAYMENT_ENGINE::handle_event(
 			$order_id,
-			'api_update',
+			$event_type,
 			[
 				'status'        => $api_order_status,
 				'payment_token' => $pay_id,
@@ -194,11 +197,11 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		);
 
 		// -------------------------
-		// 5. REFRESH ORDER + FINAL STATE
+		// 5. REFRESH ORDER (AFTER ENGINE)
 		// -------------------------
 		$order = wc_get_order($order_id);
 
-		// ✅ THIS IS THE IMPORTANT FIX
+		// 🔥 PRIMARY SOURCE = ENGINE STATE
 		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order, $api_order_status);
 
 		$wc_status = $order->get_status();
@@ -206,7 +209,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$is_success = ($state === 'success');
 
 		// -------------------------
-		// 6. MESSAGE (based on FINAL STATE, NOT RAW API)
+		// 6. MESSAGE (STATE BASED ONLY)
 		// -------------------------
 		$message = match ($state) {
 			'success'    => 'Payment confirmed successfully.',
@@ -217,20 +220,18 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		};
 
 		// -------------------------
-		// 7. REDIRECT LOGIC (CRITICAL FIX)
+		// 7. REDIRECT LOGIC (SAFARI SAFE + WEB SAFE)
 		// -------------------------
 		$redirect = null;
 
 		if ($state === 'success') {
 			$redirect = $order->get_checkout_order_received_url();
-		}
-
-		if (in_array($state, ['failed', 'cancelled'], true)) {
+		} elseif (in_array($state, ['failed', 'cancelled'], true)) {
 			$redirect = wc_get_checkout_url();
 		}
 
 		// -------------------------
-		// 8. FINAL RESPONSE
+		// 8. RESPONSE HANDLING (IMPORTANT FIX)
 		// -------------------------
 		return $this->bytenft_finalize_response(
 			$method,
