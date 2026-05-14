@@ -911,14 +911,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$country = $order->get_billing_country();
 
-			$this->bytenft_log(
-					$log_prefix . ' Validating postcode',
-					array_merge($log_ctx, [
-						'country'  => $country,
-						'postcode' => $billing_postcode,
-					])
-				);
-
 			if (!empty($billing_postcode)) {
 
 				$clean = strtoupper(trim($billing_postcode));
