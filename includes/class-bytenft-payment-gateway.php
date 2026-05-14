@@ -925,28 +925,17 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					])
 				);
 
-				$valid = false;
-
-				switch ($country) {
-
-					case 'US':
-					// 12345 or 12345-6789
-						$valid = preg_match('/^\d{5}(-\d{4})?$/', $clean);
-						break;
-
-					case 'CA':
-					// A1A1A1 or A1A 1A1
-						$valid = preg_match('/^[A-Z]\d[A-Z]\d[A-Z]\d$/', str_replace(' ', '', $clean));
-						break;
-
-					case 'GB':
-						$valid = preg_match('/^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/', $clean);
-						break;
-
-					default:
-					// safer global fallback
-						$valid = preg_match('/^[A-Z0-9\-]{3,10}$/', $clean);
-						break;
+				$valid = true;
+				if ($country === 'US') {
+					if (!preg_match('/^\d{5}(-\d{4})?$/', $billing_postcode)) {
+						$valid = false;
+					}
+				} 
+				// General Postcode check (Alphanumeric, 3-10 chars)
+				else {
+					if (strlen($billing_postcode) < 3 || !preg_match('/^[a-zA-Z0-9\s\-]+$/', $billing_postcode)) {
+						$valid = false;
+					}
 				}
 
 				if (!$valid) {
