@@ -903,13 +903,19 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// -------------------------------------------------
 
 			$billing_postcode = $order->get_billing_postcode();
-
-			// 🔥 fallback to raw POST (important for block + safari)
+			
+			// Classic checkout fallback
 			if (empty($billing_postcode) && !empty($_POST['billing_postcode'])) {
 				$billing_postcode = sanitize_text_field(wp_unslash($_POST['billing_postcode']));
 			}
-
+				
 			$country = $order->get_billing_country();
+			// WooCommerce Blocks fallback
+			if (empty($billing_postcode) && !empty($_POST['billing_address']['postcode'])) {
+				$billing_postcode = sanitize_text_field(
+					wp_unslash($_POST['billing_address']['postcode'])
+				);
+			}
 
 			if (!empty($billing_postcode)) {
 
@@ -931,21 +937,20 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 					case 'US':
 					// 12345 or 12345-6789
-						$valid = preg_match('/^\d{5}(-\d{4})?$/', $clean);
+						$valid = preg_match('/^\d{5}(-\d{4})?$/', $billing_postcode);
 						break;
 
 					case 'CA':
 					// A1A1A1 or A1A 1A1
-						$valid = preg_match('/^[A-Z]\d[A-Z]\d[A-Z]\d$/', str_replace(' ', '', $clean));
+						$valid = preg_match('/^[A-Z]\d[A-Z]\d[A-Z]\d$/', $clean);
 						break;
 
 					case 'GB':
-						$valid = preg_match('/^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/', $clean);
+						$valid = preg_match('/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/', $clean);
 						break;
 
 					default:
-					// safer global fallback
-						$valid = preg_match('/^[A-Z0-9\-]{3,10}$/', $clean);
+						$valid = preg_match('/^[A-Z0-9\- ]{3,10}$/', $billing_postcode);
 						break;
 				}
 
