@@ -71,14 +71,8 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	    $accounts_data = get_option('woocommerce_bytenft_payment_gateway_accounts');
 	    $general_settings = get_option('woocommerce_bytenft_settings');
 
-	    // $this->logger->info('Raw settings loaded', [
-	    //     'source' => 'bytenft-payment-gateway',
-	    //     'accounts_data' => $accounts_data,
-	    //     'general_settings' => $general_settings,
-	    // ]);
-
 	    if (empty($accounts_data)) {
-	        $this->logger->warning('No account data found', ['source' => 'bytenft-payment-gateway']);
+	        ByteNFT_Payment_Gateway_Logger::warning('No account data found', ['source' => 'bytenft-payment-gateway']);
 	        return false;
 	    }
 
@@ -92,7 +86,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	    foreach ($accounts_data as $account_id => $account) {
 	        // Ensure valid array
 	        if (!is_array($account)) {
-	            $this->logger->warning('Skipping invalid account entry', [
+	            ByteNFT_Payment_Gateway_Logger::warning('Skipping invalid account entry', [
 	                'source' => 'bytenft-payment-gateway',
 	                'account_id' => $account_id,
 	                'account_value' => $account
@@ -104,13 +98,13 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	            ? sanitize_text_field($account['sandbox_public_key'] ?? '')
 	            : sanitize_text_field($account['live_public_key'] ?? '');
 
-	        $this->logger->info('Checking public key :: ' . $public_key, [
+	        ByteNFT_Payment_Gateway_Logger::info('Checking public key :: ' . $public_key, [
 	            'source' => 'bytenft-payment-gateway',
 	            'sandbox' => $sandbox,
 	        ]);
 
 	        if (!empty($public_key) && hash_equals($public_key, $api_key)) {
-	            $this->logger->info('Keys matched successfully', [
+	            ByteNFT_Payment_Gateway_Logger::info('Keys matched successfully', [
 	                'source' => 'bytenft-payment-gateway',
 	                'account_id' => $account_id,
 	            ]);
@@ -140,7 +134,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$pay_id           = sanitize_text_field($data['pay_id'] ?? '');
 		$api_key_raw      = $data['nonce'] ?? '';
 
-		$this->logger->info(
+		ByteNFT_Payment_Gateway_Logger::info(
 			"ByteNFT API HIT | Order #{$order_id} | Status: {$api_order_status} | Pay ID: {$pay_id}",
 			$log_context
 		);
@@ -165,7 +159,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			$decoded_nonce = base64_decode($api_key_raw);
 
 			if (empty($api_key_raw) || !$this->bytenft_verify_api_key($decoded_nonce)) {
-				$this->logger->error("ByteNFT SECURITY FAIL #{$order_id}", $log_context);
+				ByteNFT_Payment_Gateway_Logger::error("ByteNFT SECURITY FAIL #{$order_id}", $log_context);
 				return new WP_REST_Response(['success' => false, 'error_code' => 'INVALID_API_KEY'], 401);
 			}
 		}
@@ -191,7 +185,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			]
 		);
 
-		$this->logger->info(
+		ByteNFT_Payment_Gateway_Logger::info(
 			"ByteNFT ENGINE RESULT | Order #{$order_id} | " . json_encode($result),
 			$log_context
 		);
@@ -246,7 +240,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	/**
 	 * HELPER: Handles API responses and Safari-safe redirects
 	 */
-	private function bytenft_finalize_response($method, $order, $success, $message, $target_status = '') 
+	private function bytenft_finalize_response($method, $order, $success, $message, $target_status = '', $redirect_url = '') 
 	{
 		// If it's a server-to-server Webhook, just return JSON
 		if ($method === 'POST') {
