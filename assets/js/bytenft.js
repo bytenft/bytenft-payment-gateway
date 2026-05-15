@@ -1,168 +1,588 @@
 (function ($, window, document) {
     'use strict';
 
-    if (window.BytenftCheckoutInitialized) return;
+    if (window.BytenftCheckoutInitialized) {
+        return;
+    }
+
     window.BytenftCheckoutInitialized = true;
 
     const BytenftCheckout = {
 
+        PAYMENT_METHOD: bytenft_params.payment_method,
+
         state: {
             submitting: false,
             popup: null,
+            popupInterval: null,
             orderId: null,
             button: null,
-            buttonText: '',
-            currentRequest: null,
-            popupInterval: null
+            buttonText: ''
         },
-
-        PAYMENT_METHOD: bytenft_params.payment_method,
 
         /* =========================================================
          * INIT
          * ========================================================= */
+
         init: function () {
-            this.bindEvents();
+
+            this.bindClassicCheckout();
+
+            this.bindBlockCheckout();
+
+            this.bindInputSanitization();
+
+            console.log('[Bytenft] initialized');
         },
 
         /* =========================================================
-         * POPUP (CRITICAL FIXED FLOW)
+         * CLASSIC CHECKOUT
          * ========================================================= */
-        openPopupImmediately: function () {
+
+        bindClassicCheckout: function () {
+
+            const self = this;
+
+            $('form.checkout')
+                .off('checkout_place_order_' + self.PAYMENT_METHOD)
+                .on(
+                    'checkout_place_order_' + self.PAYMENT_METHOD,
+                    function () {
+
+                        console.log('[Bytenft] classic checkout');
+
+                        const $form = $(this);
+
+                        if (self.state.submitting) {
+                            return false;
+                        }
+
+                        self.clearCheckoutErrors();
+
+                        const requiredError = self.validateRequiredFields($form);
+
+                        if (requiredError) {
+
+                            self.showCheckoutError(
+                                requiredError.message,
+                                requiredError.fields
+                            );
+
+                            return false;
+                        }
+
+                        const validationError = self.validateAll($form);
+
+                        if (validationError) {
+
+                            self.showCheckoutError(validationError);
+
+                            return false;
+                        }
+
+                        // Safari popup fix
+                        self.openPopupImmediately();
+
+                        // Start custom flow
+                        self.handleClassicCheckout($form);
+
+                        // STOP WooCommerce default flow
+                        return false;
+                    }
+                );
+        },
+
+        handleClassicCheckout: function ($form) {
+
+            const self = this;
+
+            self.state.submitting = true;
+
+            self.state.button = $form
+                .find('button[name="woocommerce_checkout_place_order"]');
+
+            self.state.buttonText = self.state.button.text();
+
+            self.state.button
+                .prop('disabled', true)
+                .addClass('loading')
+                .text('Processing...');
+
+            $.ajax({
+
+                type: 'POST',
+
+                url: wc_checkout_params.checkout_url,
+
+                data: $form.serialize(),
+
+                dataType: 'json',
+
+                success: function (response) {
+
+                    console.log('[Bytenft] classic response', response);
+
+                    self.handleResponse(response);
+                },
+
+                error: function (xhr, status, error) {
+
+                    console.log('[Bytenft] classic ajax error');
+                    console.log(xhr.responseText);
+
+                    self.showCheckoutError(
+                        'There was an error processing your order.'
+                    );
+
+                    self.cleanupPopup();
+
+                    self.reset();
+                }
+            });
+        },
+
+        /* =========================================================
+         * BLOCK CHECKOUT
+         * ========================================================= */
+
+        bindBlockCheckout: function () {
+
+            const self = this;
+
+            document.addEventListener(
+                'click',
+                function (e) {
+
+                    const btn = e.target.closest(
+                        '.wc-block-components-checkout-place-order-button'
+                    );
+
+                    if (!btn) {
+                        return;
+                    }
+
+                    const $form = $('form.wc-block-checkout__form');
+
+                    if (!$form.length) {
+                        return;
+                    }
+
+                    const selected = $form
+                        .find(
+                            'input[name="radio-control-wc-payment-method-options"]:checked'
+                        )
+                        .val();
+
+                    if (selected !== self.PAYMENT_METHOD) {
+                        return;
+                    }
+
+                    console.log('[Bytenft] block checkout');
+
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+
+                    if (self.state.submitting) {
+                        return;
+                    }
+
+                    self.clearCheckoutErrors();
+
+                    const requiredError = self.validateRequiredFields($form);
+
+                    if (requiredError) {
+
+                        self.showCheckoutError(
+                            requiredError.message,
+                            requiredError.fields
+                        );
+
+                        return;
+                    }
+
+                    const validationError = self.validateAll($form);
+
+                    if (validationError) {
+
+                        self.showCheckoutError(validationError);
+
+                        return;
+                    }
+
+                    // Safari popup fix
+                    self.openPopupImmediately();
+
+                    // Start block flow
+                    self.handleBlockCheckout($form);
+
+                },
+                true
+            );
+
+            // Prevent Woo block native submit
+            document.addEventListener(
+                'submit',
+                function (e) {
+
+                    const form = e.target;
+
+                    if (!form.classList.contains('wc-block-checkout__form')) {
+                        return;
+                    }
+
+                    const selected = form.querySelector(
+                        'input[name="radio-control-wc-payment-method-options"]:checked'
+                    )?.value;
+
+                    if (selected !== self.PAYMENT_METHOD) {
+                        return;
+                    }
+
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+
+                },
+                true
+            );
+        },
+
+        handleBlockCheckout: function ($form) {
+
+            const self = this;
+
+            self.state.submitting = true;
+
+            self.state.button = $(
+                '.wc-block-components-checkout-place-order-button'
+            );
+
+            self.state.buttonText = self.state.button.text();
+
+            self.state.button
+                .prop('disabled', true)
+                .addClass('loading')
+                .text('Processing...');
+
+            let data = $form.serialize();
+
+            data += '&action=bytenft_block_gateway_process';
+            data += '&nonce=' + encodeURIComponent(bytenft_params.bytenft_nonce);
+
+            $.ajax({
+
+                type: 'POST',
+
+                url: bytenft_params.ajax_url,
+
+                data: data,
+
+                success: function (response) {
+
+                    console.log('[Bytenft] block response', response);
+
+                    self.handleResponse(response);
+                },
+
+                error: function (xhr, status, error) {
+
+                    console.log('[Bytenft] block ajax error');
+                    console.log(xhr.responseText);
+
+                    self.showCheckoutError(
+                        'There was an error processing your order.'
+                    );
+
+                    self.cleanupPopup();
+
+                    self.reset();
+                }
+            });
+        },
+
+        /* =========================================================
+         * RESPONSE HANDLER
+         * ========================================================= */
+
+        handleResponse: function (response) {
+
+            const self = this;
+
             try {
-                if (this.state.popup && !this.state.popup.closed) {
-                    return this.state.popup;
+
+                if (typeof response === 'string') {
+
+                    try {
+                        response = JSON.parse(response);
+                    } catch (e) {
+
+                        console.log('[Bytenft] invalid json');
+
+                        self.showCheckoutError(
+                            'Invalid server response.'
+                        );
+
+                        self.cleanupPopup();
+
+                        self.reset();
+
+                        return;
+                    }
                 }
 
-                this.state.popup = window.open('', '_blank', 'width=700,height=700');
+                console.log('[Bytenft] parsed response', response);
 
-                if (!this.state.popup) {
-                    alert("Popup blocked. Please allow popups.");
-                    return null;
+                const success =
+                    response.result === 'success'
+                    || response.success === true;
+
+                const redirect =
+                    response.redirect
+                    || response.data?.redirect
+                    || null;
+
+                const orderId =
+                    response.order_id
+                    || response.data?.order_id
+                    || null;
+
+                const errorMessage =
+                    response.messages
+                    || response.message
+                    || response.data?.message
+                    || 'Payment failed.';
+
+                self.state.orderId = orderId;
+
+                // FAILURE
+                if (!success) {
+
+                    self.cleanupPopup();
+
+                    self.showCheckoutError(errorMessage);
+
+                    self.reset();
+
+                    return;
                 }
 
-                this.state.popup.document.write(`
-                    <html>
-                        <head><title>Secure Payment</title></head>
-                        <body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
-                            <div>Connecting...</div>
-                        </body>
-                    </html>
-                `);
+                // SUCCESS
+                if (redirect) {
 
-                this.state.popup.document.close();
-                return this.state.popup;
+                    if (
+                        self.state.popup &&
+                        !self.state.popup.closed
+                    ) {
+
+                        self.state.popup.location.href = redirect;
+
+                        self.trackPopupClose();
+
+                    } else {
+
+                        window.location.href = redirect;
+                    }
+
+                    self.reset(true);
+
+                    return;
+                }
+
+                self.cleanupPopup();
+
+                self.showCheckoutError(
+                    'Missing redirect URL.'
+                );
+
+                self.reset();
 
             } catch (e) {
-                return null;
+
+                console.log('[Bytenft] handleResponse exception', e);
+
+                self.cleanupPopup();
+
+                self.showCheckoutError(
+                    'Unexpected checkout error.'
+                );
+
+                self.reset();
             }
         },
 
         /* =========================================================
-         * HELPERS (UNCHANGED BUSINESS LOGIC)
+         * POPUP
          * ========================================================= */
 
-        getPhoneNumber: function ($form) {
-            const selectors = [
-                'input[name="billing_phone"]',
-                'input[name="shipping_phone"]',
-                'input[autocomplete="tel"]',
-                'input[type="tel"]'
-            ];
+        openPopupImmediately: function () {
 
-            for (let s of selectors) {
-                const v = $form.find(s).first().val();
-                if (v && v.trim()) return v.trim();
+            if (
+                this.state.popup &&
+                !this.state.popup.closed
+            ) {
+                return;
             }
-            return '';
-        },
 
-        isValidPhoneNumber: function (phone) {
-            if (!phone) return true;
-            const cleaned = phone.replace(/[\s\-().]/g, '');
-            return /^(\+1|1)?\d{10}$/.test(cleaned)
-                || /^(\+|00)[1-9]\d{6,14}$/.test(cleaned)
-                || /^\+?\d{7,20}$/.test(cleaned);
-        },
+            this.state.popup = window.open(
+                '',
+                '_blank',
+                'width=700,height=700'
+            );
 
-        isValidEmail: function (email) {
-            if (!email) return false;
-            email = email.trim();
-            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-        },
+            if (!this.state.popup) {
 
-        containsPOBox: function (v) {
-            const c = v.replace(/[^a-z0-9]/gi, '').toLowerCase();
-            return /pob|postoffice/.test(c);
-        },
+                alert('Popup blocked. Please allow popups.');
 
-        getBillingEmail: function ($form) {
-            const selectors = [
-                '#billing_email',
-                '#email',
-                'input[type="email"]',
-                'input[autocomplete="email"]',
-                'input[name="billing_email"]'
-            ];
-
-            for (let s of selectors) {
-                const v = $form.find(s).first().val();
-                if (v && v.trim()) return v.trim();
+                return;
             }
-            return '';
+
+            const logoUrl = bytenft_params.bytenft_loader
+                ? encodeURI(bytenft_params.bytenft_loader)
+                : '';
+
+            this.state.popup.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Secure Payment</title>
+                </head>
+
+                <body style="
+                    margin:0;
+                    display:flex;
+                    justify-content:center;
+                    align-items:center;
+                    height:100vh;
+                    font-family:sans-serif;
+                    background:#fff;
+                    text-align:center;
+                ">
+
+                    <div>
+
+                        ${
+                            logoUrl
+                                ? `<img src="${logoUrl}" style="max-width:120px;margin-bottom:20px;" />`
+                                : ''
+                        }
+
+                        <h3>Connecting to secure payment...</h3>
+
+                        <p>Please do not close this window.</p>
+
+                    </div>
+
+                </body>
+                </html>
+            `);
+
+            this.state.popup.document.close();
         },
 
-        validatePOBox: function ($form) {
-            const fields = [
-                $form.find('#billing_address_1').val(),
-                $form.find('#billing_address_2').val(),
-                $form.find('#shipping_address_1').val(),
-                $form.find('#shipping_address_2').val(),
-                ...$form.find('input[name*="address"]').map(function () {
-                    return $(this).val();
-                }).get()
-            ];
+        cleanupPopup: function () {
 
-            for (let f of fields) {
-                if (f && this.containsPOBox(f)) {
-                    return 'PO Box addresses are not accepted.';
+            if (
+                this.state.popup &&
+                !this.state.popup.closed
+            ) {
+
+                try {
+                    this.state.popup.close();
+                } catch (e) {}
+            }
+
+            this.state.popup = null;
+        },
+
+        trackPopupClose: function () {
+
+            const self = this;
+
+            clearInterval(self.state.popupInterval);
+
+            self.state.popupInterval = setInterval(function () {
+
+                if (
+                    !self.state.popup ||
+                    self.state.popup.closed
+                ) {
+
+                    clearInterval(self.state.popupInterval);
+
+                    self.state.popup = null;
+
+                    $.post(
+                        bytenft_params.ajax_url,
+                        {
+                            action: 'bytenft_popup_closed_event',
+                            order_id: self.state.orderId,
+                            security: bytenft_params.bytenft_nonce
+                        },
+                        function (response) {
+
+                            console.log(
+                                '[Bytenft] popup close response',
+                                response
+                            );
+
+                            if (
+                                response?.success &&
+                                response?.data?.redirect
+                            ) {
+
+                                window.location.replace(
+                                    response.data.redirect
+                                );
+
+                                return;
+                            }
+
+                            self.reset();
+                        },
+                        'json'
+                    );
                 }
-            }
-            return null;
+
+            }, 500);
         },
+
+        /* =========================================================
+         * VALIDATIONS
+         * ========================================================= */
 
         validateAll: function ($form) {
 
-            let email = this.getBillingEmail($form);
+            const email = this.getBillingEmail($form);
 
-            // ✅ Required email check
-            if (!email || !email.trim()) {
+            if (!email) {
                 return 'Please enter your email address.';
             }
 
-            // ✅ Format validation
             if (!this.isValidEmail(email)) {
                 return 'Please enter a valid email address.';
             }
 
-            let phone = this.getPhoneNumber($form);
+            const phone = this.getPhoneNumber($form);
 
-            if (phone && !this.isValidPhoneNumber(phone)) {
+            if (
+                phone &&
+                !this.isValidPhoneNumber(phone)
+            ) {
                 return 'Please enter a valid phone number.';
             }
 
-            let po = this.validatePOBox($form);
+            const poBox = this.validatePOBox($form);
 
-            if (po) {
-                return po;
+            if (poBox) {
+                return poBox;
             }
 
             return null;
         },
 
-       validateRequiredFields: function ($form) {
+        validateRequiredFields: function ($form) {
 
             let missing = [];
+
             let firstInvalid = null;
 
             $form.find('[required]').each(function () {
@@ -179,7 +599,7 @@
                 const val = ($field.val() || '').trim();
 
                 const $wrapper = $field.closest(
-                    '.form-row, .wc-block-components-text-input, .wc-block-components-combobox'
+                    '.form-row, .wc-block-components-text-input'
                 );
 
                 if (!val) {
@@ -190,16 +610,17 @@
 
                     let label =
                         $wrapper.find('label').first().text().trim()
-                        || $field.attr('aria-label')
                         || $field.attr('placeholder')
                         || $field.attr('name');
 
                     label = label
                         .replace('*', '')
-                        .replace(/\s+/g, ' ')
                         .trim();
 
-                    if (label && !missing.includes(label)) {
+                    if (
+                        label &&
+                        !missing.includes(label)
+                    ) {
                         missing.push(label);
                     }
 
@@ -215,9 +636,9 @@
                 }
             });
 
-            // Focus first invalid field
             if (firstInvalid) {
-                setTimeout(() => {
+
+                setTimeout(function () {
                     firstInvalid.trigger('focus');
                 }, 100);
             }
@@ -225,7 +646,7 @@
             if (missing.length) {
 
                 return {
-                    message: 'Please review the highlighted fields.',
+                    message: 'Please fill required fields.',
                     fields: missing
                 };
             }
@@ -233,205 +654,128 @@
             return null;
         },
 
-        /* =========================================================
-         * EVENTS (FIXED STABLE HANDLING)
-         * ========================================================= */
+        validatePOBox: function ($form) {
 
-       bindEvents: function () {
+            const fields = [
 
-            const self = this;
+                $form.find('#billing_address_1').val(),
 
-            console.log('[Bytenft] bindEvents initialized');
+                $form.find('#billing_address_2').val(),
 
-            $(document).on('submit checkout_place_order', 'form.checkout', function (e) {
+                $form.find('#shipping_address_1').val(),
 
-                const selected = $(this)
-                    .find('input[name="payment_method"]:checked')
-                    .val();
+                $form.find('#shipping_address_2').val()
+            ];
 
-                if (selected !== BytenftCheckout.PAYMENT_METHOD) return;
+            for (let field of fields) {
 
-                e.preventDefault();
-                e.stopImmediatePropagation();
+                if (
+                    field &&
+                    this.containsPOBox(field)
+                ) {
 
-                BytenftCheckout.handleFlow($(this), e);
-            });
-
-            /* =========================================================
-            * BLOCK CHECKOUT FIX (CAPTURE PHASE - IMPORTANT)
-            * ========================================================= */
-
-           document.addEventListener(
-            'click',
-            function (e) {
-
-                const btn = e.target.closest('.wc-block-components-checkout-place-order-button');
-                if (!btn) return;
-
-                const $form = $('form.wc-block-checkout__form');
-
-                const selected = $form
-                    .find('input[name="radio-control-wc-payment-method-options"]:checked')
-                    .val();
-
-                if (selected !== self.PAYMENT_METHOD) return;
-
-                // ❗ FULL STOP WOOCOMMERCE
-                e.preventDefault();
-                e.stopImmediatePropagation();
-
-                console.log('[Bytenft] full override checkout');
-
-               const popup = window.open('about:blank', '_blank', 'width=700,height=700');
-
-                console.log('[Bytenft] popup created:', popup);
-
-                if (!popup) {
-                    alert('Popup blocked. Please enable popups.');
-                    return;
+                    return 'PO Box addresses are not allowed.';
                 }
+            }
 
-                self.state.popup = popup;
+            return null;
+        },
 
-                // 🚨 IMPORTANT: open document stream FIRST
-                popup.document.open();
+        containsPOBox: function (value) {
 
-                const logoUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
+            if (!value) {
+                return false;
+            }
 
-                // ✅ FULL STABLE HTML
-                popup.document.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <title>Secure Payment</title>
-                </head>
+            const cleaned = value
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '');
 
-                <body style="margin:0; display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; font-family:sans-serif; background:#ffffff; text-align:center;">
-                    <div style="padding:20px;">
+            return (
+                cleaned.includes('pobox')
+                || cleaned.includes('postofficebox')
+            );
+        },
 
-                        ${logoUrl ? `<img src="${logoUrl}" />` : ''}
+        getPhoneNumber: function ($form) {
 
-                        <h2>Secure Payment Processing</h2>
+            const selectors = [
+                'input[name="billing_phone"]',
+                'input[name="shipping_phone"]',
+                'input[type="tel"]',
+                'input[autocomplete="tel"]'
+            ];
 
-                        <p>Please do not close or refresh this window.</p>
+            for (let selector of selectors) {
 
-                        <div class="spinner"></div>
+                const val = $form.find(selector).first().val();
 
-                    </div>
-                </body>
-                </html>
-                `);
+                if (val && val.trim()) {
+                    return val.trim();
+                }
+            }
 
-                popup.document.close();
-                popup.focus();
+            return '';
+        },
 
-                console.log('[Bytenft] secure popup rendered successfully');
+        getBillingEmail: function ($form) {
 
-                // 🚀 YOU MUST HANDLE EVERYTHING YOURSELF
-                self.handleFlow($form, e);
-            },
-            true
+            const selectors = [
+                '#billing_email',
+                '#email',
+                'input[type="email"]',
+                'input[name="billing_email"]'
+            ];
+
+            for (let selector of selectors) {
+
+                const val = $form.find(selector).first().val();
+
+                if (val && val.trim()) {
+                    return val.trim();
+                }
+            }
+
+            return '';
+        },
+
+        isValidEmail: function (email) {
+
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+        },
+
+        isValidPhoneNumber: function (phone) {
+
+            if (!phone) {
+                return true;
+            }
+
+            const cleaned = phone.replace(
+                /[\s\-().]/g,
+                ''
             );
 
-             /* =========================================================
-            * (IMPORTANT SAFARI + BLOCK CHECKOUT FIX)
-            * ========================================================= */
-            document.addEventListener('submit', function (e) {
-
-                const form = e.target;
-
-                if (!form || !form.classList) return;
-
-                if (!form.classList.contains('wc-block-checkout__form')) return;
-
-                const selected = form.querySelector(
-                    'input[name*="payment_method"]:checked'
-                )?.value;
-
-                if (selected !== self.PAYMENT_METHOD) return;
-
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                e.stopPropagation();
-
-            }, true);
+            return (
+                /^(\+1|1)?\d{10}$/.test(cleaned)
+                || /^(\+|00)[1-9]\d{6,14}$/.test(cleaned)
+                || /^\+?\d{5,15}$/.test(cleaned)
+            );
         },
 
-        trackPopupClose: function () {
-
-            const self = this;
-
-            clearInterval(self.state.popupInterval);
-
-            self.state.popupInterval = setInterval(function () {
-
-                if (!self.state.popup || self.state.popup.closed) {
-
-                    clearInterval(self.state.popupInterval);
-
-                    self.state.popup = null;
-
-                    $.post(bytenft_params.ajax_url, {
-                        action: 'bytenft_popup_closed_event',
-                        order_id: self.state.orderId,
-                        security: bytenft_params.bytenft_nonce
-                    }, function (response) {
-
-                        // Optional Woo refresh (only for block checkout UX)
-                        const isBlockSelected =
-                            $('input[name="radio-control-wc-payment-method-options"]:checked').val()
-                            === bytenft_params.payment_method;
-
-                        if (!isBlockSelected) {
-                            $(document.body).trigger('update_checkout');
-                        }
-
-                        const $targetForm = isBlockSelected
-                            ? $('form.wc-block-checkout__form')
-                            : $('form.checkout');
-
-                        // ✅ SUCCESS → redirect WordPress page
-                        if (response?.success && response?.data?.redirect) {
-
-                            const url = response.data.redirect;
-
-                            // final redirect (WordPress context)
-                            window.location.replace(url);
-                            return;
-                        }
-
-                        // ❌ ERROR HANDLING
-                        if (response?.message) {
-                            self.showCheckoutError(response.message);
-                        } else if (response?.data?.message) {
-                            self.showCheckoutError(response.data.message);
-                        } else if (response?.data?.notices) {
-                            self.showCheckoutError(response.data.notices);
-                        } else {
-                            self.showCheckoutError('Payment failed.');
-                        }
-
-                        self.reset();
-
-                    }, 'json');
-                }
-
-            }, 500);
-        },
+        /* =========================================================
+         * UI
+         * ========================================================= */
 
         showCheckoutError: function (message, fields = []) {
 
-            // Clear previous notices first
-            $('.woocommerce-notices-wrapper').remove();
+            this.clearCheckoutErrors();
 
-            // Build fields list
             let fieldsHtml = '';
 
             if (fields.length) {
 
                 fieldsHtml = `
-                    <ul class="bytenft-error-fields">
+                    <ul style="margin-top:10px;">
                         ${fields.map(field => `<li>${field}</li>`).join('')}
                     </ul>
                 `;
@@ -440,340 +784,120 @@
             const html = `
                 <div class="woocommerce-notices-wrapper">
 
-                    <div class="woocommerce-error bytenft-error-box" role="alert">
+                    <ul class="woocommerce-error" role="alert">
 
-                        <div class="bytenft-error-header">
+                        <li>
                             <strong>${message}</strong>
-                        </div>
+                        </li>
 
                         ${fieldsHtml}
 
-                    </div>
+                    </ul>
 
                 </div>
             `;
 
-            // Block checkout
-            const blockTarget = $('.wc-block-checkout__form');
+            const $block = $('.wc-block-checkout__form');
 
-            if (blockTarget.length) {
-                blockTarget.prepend(html);
+            if ($block.length) {
+                $block.prepend(html);
             }
 
-            // Classic checkout fallback
-            const classicTarget = $('form.checkout');
+            const $classic = $('form.checkout');
 
-            if (classicTarget.length) {
-                classicTarget.prepend(html);
+            if ($classic.length) {
+                $classic.prepend(html);
             }
 
-            // Scroll to top notice
             const $notice = $('.woocommerce-notices-wrapper');
 
             if ($notice.length) {
 
                 $('html, body').animate({
-                    scrollTop: $notice.offset().top - 80
+                    scrollTop: $notice.offset().top - 100
                 }, 300);
             }
         },
 
-        /* =========================================================
-         * MAIN FLOW (SAFE ORDER)
-         * ========================================================= */
-
-        handleFlow: function ($form, e) {
-
-            const self = this;
-
-            // ❌ HARD STOP DEFAULT FLOW IMMEDIATELY
-            if (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-            }
-
-            // ✅ CLEAR OLD ERRORS FIRST
-            self.clearCheckoutErrors();
-
-            const isBlock = $form.hasClass('wc-block-checkout__form');
-
-            if (self.state.submitting) return;
-
-            const requiredError = self.validateRequiredFields($form);
-
-            if (requiredError) {
-
-                self.showCheckoutError(
-                    requiredError.message,
-                    requiredError.fields
-                );
-
-                self.cleanupPopup();
-                self.reset();
-
-                return;
-            }
-
-            // Custom validations
-            const error = self.validateAll($form);
-            if (error) {
-                self.showCheckoutError(error);
-
-                // 🔥 reset full flow state
-                self.state.submitting = false;
-
-                if (self.state.button) {
-                    self.state.button.prop('disabled', false).text(self.state.buttonText);
-                }
-
-                // 🚨 close popup if opened
-                if (self.state.popup && !self.state.popup.closed) {
-                    try {
-                        self.state.popup.close();
-                    } catch (e) {}
-                }
-
-                self.state.popup = null;
-
-                return;
-            }
-
-            self.state.submitting = true;
-
-            self.state.button = isBlock
-                ? $('.wc-block-components-checkout-place-order-button')
-                : $form.find('button[name="woocommerce_checkout_place_order"]').first();
-
-            self.state.buttonText = self.state.button.text();
-
-            self.state.button.prop('disabled', true).text('Processing...');
-
-            if (self.state.currentRequest) {
-                self.state.currentRequest.abort();
-            }
-
-            const ajaxUrl = isBlock ? bytenft_params.ajax_url : wc_checkout_params.checkout_url;
-
-            let ajaxData;
-
-            if (isBlock) {
-
-                ajaxData = $form.serialize();
-
-                ajaxData += '&action=bytenft_block_gateway_process';
-                ajaxData += '&nonce=' + encodeURIComponent(bytenft_params.bytenft_nonce);
-
-            } else {
-
-                ajaxData = $form.serialize();
-            }
-
-            self.state.currentRequest = $.ajax({
-                type: 'POST',
-                url: ajaxUrl,
-                data: ajaxData,
-
-                success: function (res) {
-                    self.handleResponse(res);
-                },
-
-                error: function () {
-                    self.reset();
-                }
-            });
-        },
-
-        /* =========================================================
-         * RESPONSE HANDLER
-         * ========================================================= */
-
-        handleResponse: function (res) {
-
-            const self = this;
-
-            try {
-
-                // -----------------------------
-                // SAFE PARSE
-                // -----------------------------
-                if (typeof res === 'string') {
-                    try {
-                        res = JSON.parse(res);
-                    } catch (e) {
-                        self.showCheckoutError('Invalid server response');
-                        self.cleanupPopup();
-                        self.reset();
-                        return;
-                    }
-                }
-
-                console.log('[Bytenft] Raw response:', res);
-
-                // -----------------------------
-                // NORMALIZE
-                // -----------------------------
-                const isSuccess =
-                    res?.success === true ||
-                    res?.result === 'success' ||
-                    res?.data?.payment_status === 'success' ||
-                    res?.data?.payment_status === 'paid';
-
-                const message =
-                    res?.message ||
-                    res?.data?.message ||
-                    'Payment failed';
-
-                const redirectUrl =
-                    res?.data?.redirect ||
-                    res?.redirect ||
-                    null;
-
-                const orderId =
-                    res?.data?.order_id ||
-                    res?.order_id ||
-                    null;
-
-                console.log('[Bytenft] Parsed:', {
-                    isSuccess,
-                    redirectUrl,
-                    orderId
-                });
-
-                // -----------------------------
-                // STORE ORDER ID
-                // -----------------------------
-                this.state.orderId = orderId;
-
-                // -----------------------------
-                // FAILURE CASE (IMPORTANT FIX)
-                // -----------------------------
-                if (!isSuccess) {
-
-                    // 🔥 CLOSE POPUP ON FAILURE
-                    self.cleanupPopup();
-
-                    self.showCheckoutError(message);
-                    self.reset();
-                    return;
-                }
-
-                // -----------------------------
-                // SUCCESS CASE
-                // -----------------------------
-
-                // 🔥 KEEP BUTTON LOCKED
-                self.reset(true);
-                
-                const popup = self.state.popup;
-
-                // -----------------------------
-                // POPUP FLOW
-                // -----------------------------
-                if (popup && !popup.closed) {
-
-                    if (redirectUrl) {
-                        try {
-                            if (popup && !popup.closed) {
-                                popup.location.href = redirectUrl;
-                            }
-                        } catch (e) {
-                            window.open(redirectUrl, '_blank');
-                        }
-                    }
-
-                    this.trackPopupClose();
-                    return;
-                }
-
-                // -----------------------------
-                // FALLBACK
-                // -----------------------------
-                if (redirectUrl) {
-                    window.location.href = redirectUrl;
-                    return;
-                }
-
-                self.showCheckoutError('Missing redirect URL');
-                self.cleanupPopup();
-                self.reset();
-
-            } catch (e) {
-                console.error('[Bytenft] handleResponse error:', e);
-                self.showCheckoutError('Unexpected error occurred.');
-                self.cleanupPopup();
-                self.reset();
-            }
-        },
-
-        cleanupPopup: function () {
-            if (this.state.popup && !this.state.popup.closed) {
-                try {
-                    this.state.popup.close();
-                } catch (e) {}
-            }
-            this.state.popup = null;
-        },
-
         clearCheckoutErrors: function () {
 
-            // Classic notices
             $('.woocommerce-notices-wrapper').remove();
 
-            // WooCommerce error blocks
             $('.woocommerce-error').remove();
 
-            // Block checkout notices
             $('.wc-block-components-notice-banner').remove();
 
-            // Store API validation errors
-            $('.wc-block-store-notice').remove();
-
-            // Generic notices
             $('.woocommerce-message').remove();
+
             $('.woocommerce-info').remove();
         },
 
-        /* =========================================================
-         * RESET
-         * ========================================================= */
-
-        reset: function (keepProcessing = false) {
+        reset: function (keepDisabled = false) {
 
             this.state.submitting = false;
 
-            // 🔥 Always re-fetch latest button from DOM
-            const $blockBtn = $('.wc-block-components-checkout-place-order-button');
-            const $classicBtn = $('button[name="woocommerce_checkout_place_order"]');
+            const $blockButton = $(
+                '.wc-block-components-checkout-place-order-button'
+            );
 
-            const $btn = $blockBtn.length ? $blockBtn : $classicBtn;
+            const $classicButton = $(
+                'button[name="woocommerce_checkout_place_order"]'
+            );
 
-            if (!$btn.length) {
+            const $button = $blockButton.length
+                ? $blockButton
+                : $classicButton;
+
+            if (!$button.length) {
                 return;
             }
 
-            // 🔥 KEEP PROCESSING STATE
-            if (keepProcessing) {
+            if (keepDisabled) {
 
-                $btn
+                $button
                     .prop('disabled', true)
-                    .attr('disabled', 'disabled')
                     .addClass('loading')
                     .text('Processing...');
 
                 return;
             }
 
-            // Normal reset
-            $btn
+            $button
                 .prop('disabled', false)
-                .removeAttr('disabled')
                 .removeClass('loading')
-                .text(this.state.buttonText || 'Place order');
+                .text(
+                    this.state.buttonText || 'Place order'
+                );
+        },
+
+        /* =========================================================
+         * SANITIZATION
+         * ========================================================= */
+
+        bindInputSanitization: function () {
+
+            $('#billing_first_name, #billing_last_name, #billing_city')
+                .on('input', function () {
+
+                    this.value = this.value.replace(
+                        /[^A-Za-z\s]/g,
+                        ''
+                    );
+                });
+
+            $('#billing_address_1')
+                .on('input', function () {
+
+                    this.value = this.value.replace(
+                        /[^A-Za-z0-9\s,.\-#]/g,
+                        ''
+                    );
+                });
         }
     };
 
     $(document).ready(function () {
+
         BytenftCheckout.init();
     });
 
