@@ -46,11 +46,6 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 				$info = $gateway->get_checkout_info_for_amount($amount);
 				if (!empty($info['title']))    $title       = $info['title'];
 				if (!empty($info['subtitle'])) $description = $info['subtitle'];
-				// Debug log for block checkout account info
-				if (function_exists('wc_get_logger')) {
-					$logger = wc_get_logger();
-					//$logger->info('Block checkout: get_payment_method_data - amount: ' . $amount . ' | title: ' . $title . ' | description: ' . $description, [ 'source' => 'bytenft-payment-gateway' ]);
-				}
 			}
 		}
 		return [
@@ -107,11 +102,8 @@ function handle_bytenft_gateway_ajax() {
 
 	if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
 
-		wc_get_logger()->error($log_prefix . ' AJAX | Invalid nonce', $log_ctx);
 
-		if (function_exists('bytenft_log')) {
-			$this->bytenft_log($log_prefix . ' AJAX | Invalid nonce', $log_ctx);
-		}
+		ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' AJAX | Invalid nonce');
 
 		wp_send_json([
 			'success' => false,
@@ -137,9 +129,9 @@ function handle_bytenft_gateway_ajax() {
 		$bytenftPayment->init_settings();
 		$bytenftPayment->load_gateway_settings();
 
-		wc_get_logger()->warning(
+		ByteNFT_Payment_Gateway_Logger::warning(
 			$log_prefix . ' AJAX | Gateway fallback used (not found in registry)',
-			$log_ctx + ['event' => 'gateway_fallback']
+			['event' => 'gateway_fallback']
 		);
 	}
 
@@ -148,11 +140,9 @@ function handle_bytenft_gateway_ajax() {
 	// ─────────────────────────────────────────────
 	if (!$orderID) {
 
-		wc_get_logger()->error($log_prefix . ' AJAX | Missing order ID from session', $log_ctx);
-
-		if (function_exists('bytenft_log')) {
-			$this->bytenft_log($log_prefix . ' AJAX | Missing order ID', $log_ctx);
-		}
+		ByteNFT_Payment_Gateway_Logger::error(
+			$log_prefix . ' AJAX | Missing order ID from session',
+		);
 
 		wp_send_json([
 			'success' => false,
@@ -173,14 +163,11 @@ function handle_bytenft_gateway_ajax() {
 	// ─────────────────────────────────────────────
 	// LOG PROCESS RESULT
 	// ─────────────────────────────────────────────
-	wc_get_logger()->info(
+	
+	ByteNFT_Payment_Gateway_Logger::info(
 		$log_prefix . ' AJAX | process_payment executed',
-		$log_ctx + ['status' => $status]
+		['status' => $status]
 	);
-
-	if (function_exists('bytenft_log')) {
-		$this->bytenft_log($log_prefix . ' AJAX | process_payment executed', $log_ctx);
-	}
 
 	// ─────────────────────────────────────────────
 	// NORMALIZE RESPONSE (SAFE FIX LAYER)
@@ -206,9 +193,9 @@ function handle_bytenft_gateway_ajax() {
 	// ─────────────────────────────────────────────
 	// FINAL RESPONSE LOG
 	// ─────────────────────────────────────────────
-	wc_get_logger()->info(
+	ByteNFT_Payment_Gateway_Logger::info(
 		$log_prefix . ' AJAX | Final response prepared',
-		$log_ctx + [
+		[
 			'success'  => $is_success,
 			'message'  => $message,
 			'redirect' => $redirect
