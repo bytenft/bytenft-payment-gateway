@@ -157,6 +157,31 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		/*
 		|--------------------------------------------------------------------------
+		| PO BOX VALIDATION
+		|--------------------------------------------------------------------------
+		*/
+		$billing_address_1 = trim($data['billing_address_1'] ?? '');
+
+		if (!empty($billing_address_1) && $this->is_po_box($billing_address_1)) {
+
+			ByteNFT_Payment_Gateway_Logger::warning(
+				'Classic checkout validation failed: PO Box detected',
+				[
+					'address' => $billing_address_1,
+					'country' => $country,
+				]
+			);
+
+			$errors->add(
+				'bytenft_po_box_error',
+				__('PO Box addresses are not accepted. Please enter a physical street address.', 'bytenft-payment-gateway')
+			);
+
+			return;
+		}
+
+		/*
+		|--------------------------------------------------------------------------
 		| ZIP / POSTCODE VALIDATION
 		|--------------------------------------------------------------------------
 		*/
@@ -267,6 +292,29 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'normalized' => $normalized,
 					'order_id'   => $order->get_id() ?? null,
 				]
+			);
+		}
+
+		/*
+		|--------------------------------------------------------------------------
+		| PO BOX VALIDATION
+		|--------------------------------------------------------------------------
+		*/
+		$billing_address_1 = trim($request['billing_address']['address_1'] ?? '');
+
+		if (!empty($billing_address_1) && $this->is_po_box($billing_address_1)) {
+
+			ByteNFT_Payment_Gateway_Logger::warning(
+				'Blocks checkout validation failed: PO Box detected',
+				[
+					'address'  => $billing_address_1,
+					'country'  => $country,
+					'order_id' => $order->get_id() ?? null,
+				]
+			);
+
+			throw new Exception(
+				'PO Box addresses are not accepted. Please enter a physical street address.'
 			);
 		}
 
@@ -934,45 +982,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		try {
-
-			// -------------------------------------------------
-			// 2. EMAIL VALIDATION
-			// -------------------------------------------------
-			$billing_email = $order->get_billing_email();
-
-			if (!filter_var($billing_email, FILTER_VALIDATE_EMAIL)) {
-				if (is_checkout()) {
-					wc_add_notice(__('Please enter a valid email address.', 'bytenft-payment-gateway'), 'error');
-				}
-
-				return $this->build_response(
-					'fail',
-					'Invalid email address',
-					[],
-					400,
-					$order_id
-				);
-			}
-
-			// -------------------------------------------------
-			// 3. PO BOX VALIDATION
-			// -------------------------------------------------
-			$billing = $order->get_billing_address_1();
-
-			if ($this->is_po_box($billing)) {
-
-				if (is_checkout()) {
-					wc_add_notice(__('PO Box addresses are not accepted. Please enter a physical street address.', 'bytenft-payment-gateway'), 'error');
-				}
-
-				return $this->build_response(
-					'fail',
-					'PO Box addresses are not accepted. Please enter a physical street address.',
-					[],
-					400,
-					$order_id
-				);
-			}
 
 			// -------------------------------------------------
 			// 4. RATE LIMITING (UNCHANGED)
