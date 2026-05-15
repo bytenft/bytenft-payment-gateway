@@ -852,7 +852,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	{
 		global $wpdb;
 
-		$logger_context = ['source' => 'bytenft-payment-gateway'];
 		$lock_name = '';
 
 		$log_prefix = "[Order #{$order_id}]";
@@ -889,7 +888,21 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 		}
 
-		$billing_phone = $order->get_billing_phone();
+		// -------------------------------------------------
+		// PHONE VALIDATION (LATEST CHECKOUT VALUE)
+		// -------------------------------------------------
+
+		$billing_phone = '';
+
+		// Classic Checkout
+		if (!empty($_POST['billing_phone'])) {
+			$billing_phone = wc_clean(wp_unslash($_POST['billing_phone']));
+		}
+
+		// Block Checkout fallback
+		if (empty($billing_phone)) {
+			$billing_phone = $order->get_billing_phone();
+		}
 
 		if (!empty($billing_phone)) {
 
@@ -901,7 +914,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				ByteNFT_Payment_Gateway_Logger::warning(
 					$log_prefix . ' Blocked invalid phone BEFORE account selection',
-					$log_ctx
+					[
+						'order_id' => $order_id,
+						'phone'    => $billing_phone,
+						'cleaned'  => $cleaned,
+					]
 				);
 
 				return $this->build_response(
@@ -912,6 +929,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$order_id
 				);
 			}
+
+			// Sync latest valid phone to order
+			$order->set_billing_phone($billing_phone);
+			$order->save();
 		}
 
 		ByteNFT_Payment_Gateway_Logger::info(
