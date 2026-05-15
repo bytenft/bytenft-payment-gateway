@@ -135,34 +135,36 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function can_transition($from, $to)
     {
+        // 🔒 HARD LOCK STATES
+        if (in_array($from, ['processing', 'completed'], true)) {
+            return false;
+        }
+
         $map = [
 
             'pending' => [
-                'processing','failed','cancelled','success'
+                'failed',
+                'cancelled',
+                'processing',
+                'success',
             ],
 
             'failed' => [
-                'success'
+                'success',
             ],
 
             'cancelled' => [
-                'success'
-            ],
-
-            /* -------------------------------------------------
-             * BLOCK RULES (YOUR REQUIREMENT)
-             * -------------------------------------------------
-             */
-            'processing' => [
-                // ❌ BLOCK failed/cancelled/success updates
+                'success',
             ],
 
             'success' => [
-                // ❌ FULL LOCK (processing OR completed)
+                // optional hard lock
             ],
 
             'expired' => [
-                'failed','cancelled'
+                'failed',
+                'cancelled',
+                'success',
             ],
         ];
 
