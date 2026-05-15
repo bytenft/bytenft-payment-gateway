@@ -765,7 +765,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			if (!$valid) {
 
-				$this->bytenft_log_warning(
+				ByteNFT_Payment_Gateway_Logger::warning(
 					$log_prefix . ' Blocked invalid phone BEFORE account selection',
 					$log_ctx
 				);
@@ -865,11 +865,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			if (count($timestamps) >= $max_requests) {
 
-				$this->bytenft_log_warning(
+				ByteNFT_Payment_Gateway_Logger::warning(
 					$log_prefix . ' Rate limit exceeded',
-					array_merge([
-						'ip_address' => $ip_address
-					])
+					[
+						'ip_address' => $ip_address,
+					]
 				);
 
 				if (is_checkout()) {
@@ -942,7 +942,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				if (!$account) {
 
-					$this->bytenft_log_warning(
+					ByteNFT_Payment_Gateway_Logger::warning(
 						$log_prefix . ' No eligible payment provider available for this order',
 						$log_ctx
 					);
