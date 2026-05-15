@@ -552,15 +552,8 @@
                                 );
 
                                 return;
-                            } else {
-                                self.cleanupPopup();
-
-                                self.showCheckoutError(
-                                    response?.message
-                                );
                             }
 
-                            // ❌ FAILED PAYMENT
                             const failedMessage =
                                 response?.message ||
                                 response?.data?.message ||
@@ -568,16 +561,11 @@
 
                             console.log('[Bytenft] popup failed:', failedMessage);
 
-                            // 🔥 wait for Woo rerender
-                            setTimeout(function () {
+                            self.cleanupPopup();
 
-                                self.showCheckoutError(failedMessage);
+                            self.showCheckoutError(failedMessage);
 
-                            }, 100);
-
-                            setTimeout(function () {
-                                self.reset();
-                            }, 400);
+                            self.reset();
                         },
                         'json'
                     );
@@ -809,11 +797,14 @@
 
         showCheckoutError: function (message, fields = []) {
 
-            this.clearCheckoutErrors();
+            // Clear previous notices first
+            $('.woocommerce-notices-wrapper').remove();
 
+            // Build fields list
             let fieldsHtml = '';
 
             if (fields.length) {
+
                 fieldsHtml = `
                     <ul class="bytenft-error-fields">
                         ${fields.map(field => `<li>${field}</li>`).join('')}
@@ -823,48 +814,48 @@
 
             const html = `
                 <div class="woocommerce-notices-wrapper bytenft-error-wrap">
+
                     <div class="woocommerce-error bytenft-error-box" role="alert">
-                        <strong>${message}</strong>
+
+                        <div class="bytenft-error-header">
+                            <strong>${message}</strong>
+                        </div>
+
                         ${fieldsHtml}
+
                     </div>
+
                 </div>
             `;
 
-            const inject = () => {
+            // Block checkout
+            const blockTarget = $('.wc-block-checkout__form');
 
-                const $block = $('.wc-block-checkout__form');
-                const $classic = $('form.checkout');
+            if (blockTarget.length) {
+                blockTarget.prepend(html);
+            }
 
-                if ($block.length) {
-                    $block.prepend(html);
-                }
+            // Classic checkout fallback
+            const classicTarget = $('form.checkout');
 
-                if ($classic.length) {
-                    $classic.prepend(html);
-                }
+            if (classicTarget.length) {
+                classicTarget.prepend(html);
+            }
 
-                // 🔥 fallback (VERY IMPORTANT for Woo re-render)
-                if (!$block.length && !$classic.length) {
-                    $('body').prepend(html);
-                }
-            };
+            // Fallback
+            if (!blockTarget.length && !classicTarget.length) {
+                $('body').prepend(html);
+            }
 
-            inject();
+            // Scroll to top notice
+            const $notice = $('.woocommerce-notices-wrapper');
 
-            // 🔥 CRITICAL FIX: Woo overrides DOM after AJAX → re-inject
-            setTimeout(inject, 50);
-            setTimeout(inject, 200);
-            setTimeout(inject, 500);
+            if ($notice.length) {
 
-            // scroll
-            setTimeout(() => {
-                const $notice = $('.woocommerce-notices-wrapper');
-                if ($notice.length) {
-                    $('html, body').animate({
-                        scrollTop: $notice.offset().top - 80
-                    }, 300);
-                }
-            }, 100);
+                $('html, body').animate({
+                    scrollTop: $notice.offset().top - 80
+                }, 300);
+            }
         },
 
         clearCheckoutErrors: function () {
