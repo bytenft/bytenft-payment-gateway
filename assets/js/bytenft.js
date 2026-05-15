@@ -361,17 +361,18 @@
                 // =====================================================
                 // ❌ FAILURE (FIXED - ERROR DISPLAY STABLE)
                 // =====================================================
-                if (!success) {
+                if (!success){
+
+                    const msg = message || 'Your payment could not be completed. Please try again.';
 
                     self.cleanupPopup();
 
-                    // 🔥 ensure DOM render BEFORE Woo refresh wipes it
-                    self.showCheckoutError(errorMessage);
+                    self.showCheckoutError(msg);
 
-                    // 🔥 FIX: delay reset so WooCommerce doesn't remove notice instantly
+                    // 🔥 IMPORTANT: delay reset so Woo doesn't wipe DOM instantly
                     setTimeout(function () {
                         self.reset();
-                    }, 300);
+                    }, 400);
 
                     return;
                 }
@@ -767,7 +768,7 @@
          * UI
          * ========================================================= */
 
-       showCheckoutError: function (message, fields = []) {
+        showCheckoutError: function (message, fields = []) {
 
             this.clearCheckoutErrors();
 
@@ -775,50 +776,56 @@
 
             if (fields.length) {
                 fieldsHtml = `
-                    <ul style="margin-top:10px;">
+                    <ul class="bytenft-error-fields">
                         ${fields.map(field => `<li>${field}</li>`).join('')}
                     </ul>
                 `;
             }
 
             const html = `
-                <div class="woocommerce-notices-wrapper">
-
-                    <ul class="woocommerce-error" role="alert">
-
-                        <li>
-                            <strong>${message}</strong>
-                        </li>
-
+                <div class="woocommerce-notices-wrapper bytenft-error-wrap">
+                    <div class="woocommerce-error bytenft-error-box" role="alert">
+                        <strong>${message}</strong>
                         ${fieldsHtml}
-
-                    </ul>
-
+                    </div>
                 </div>
             `;
 
-            const $block = $('.wc-block-checkout__form, .wc-block-checkout');
+            const inject = () => {
 
-            if ($block.length) {
-                $block.prepend(html);
-            }
+                const $block = $('.wc-block-checkout__form');
+                const $classic = $('form.checkout');
 
-            const $classic = $('form.checkout');
+                if ($block.length) {
+                    $block.prepend(html);
+                }
 
-            if ($classic.length) {
-                $classic.prepend(html);
-            }
+                if ($classic.length) {
+                    $classic.prepend(html);
+                }
 
-            // 🔥 FIX: ensure Woo doesn't immediately remove it
-            setTimeout(function () {
+                // 🔥 fallback (VERY IMPORTANT for Woo re-render)
+                if (!$block.length && !$classic.length) {
+                    $('body').prepend(html);
+                }
+            };
+
+            inject();
+
+            // 🔥 CRITICAL FIX: Woo overrides DOM after AJAX → re-inject
+            setTimeout(inject, 50);
+            setTimeout(inject, 200);
+            setTimeout(inject, 500);
+
+            // scroll
+            setTimeout(() => {
                 const $notice = $('.woocommerce-notices-wrapper');
-
                 if ($notice.length) {
                     $('html, body').animate({
-                        scrollTop: $notice.offset().top - 100
+                        scrollTop: $notice.offset().top - 80
                     }, 300);
                 }
-            }, 50);
+            }, 100);
         },
 
         clearCheckoutErrors: function () {
