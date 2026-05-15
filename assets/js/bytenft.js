@@ -361,15 +361,31 @@
                 // =====================================================
                 // ❌ FAILURE (FIXED - ERROR DISPLAY STABLE)
                 // =====================================================
-                if (!success){
+                if (!success) {
 
-                    const msg = message || 'Your payment could not be completed. Please try again.';
+                    const msg = errorMessage || 'Your payment could not be completed. Please try again.';
+
+                    console.log('[Bytenft] showing failed message:', msg);
 
                     self.cleanupPopup();
 
-                    self.showCheckoutError(msg);
+                    // 🔥 IMPORTANT
+                    setTimeout(function () {
 
-                    // 🔥 IMPORTANT: delay reset so Woo doesn't wipe DOM instantly
+                        self.showCheckoutError(msg);
+
+                        // force scroll after Woo rerender
+                        const $notice = $('.woocommerce-notices-wrapper');
+
+                        if ($notice.length) {
+                            $('html, body').animate({
+                                scrollTop: $notice.offset().top - 80
+                            }, 300);
+                        }
+
+                    }, 50);
+
+                    // 🔥 IMPORTANT
                     setTimeout(function () {
                         self.reset();
                     }, 400);
@@ -538,7 +554,24 @@
                                 return;
                             }
 
-                            self.reset();
+                            // ❌ FAILED PAYMENT
+                            const failedMessage =
+                                response?.message ||
+                                response?.data?.message ||
+                                'Your payment could not be completed. Please try again.';
+
+                            console.log('[Bytenft] popup failed:', failedMessage);
+
+                            // 🔥 wait for Woo rerender
+                            setTimeout(function () {
+
+                                self.showCheckoutError(failedMessage);
+
+                            }, 100);
+
+                            setTimeout(function () {
+                                self.reset();
+                            }, 400);
                         },
                         'json'
                     );
