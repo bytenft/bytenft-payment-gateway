@@ -208,7 +208,20 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					break;
 
 				default:
-					$valid = preg_match('/^[A-Z0-9\- ]{3,10}$/', $postcode);
+
+					$clean_postcode = preg_replace('/[^A-Z0-9]/', '', strtoupper($postcode));
+
+					// Reject purely numeric long values
+					if (preg_match('/^\d{8,}$/', $clean_postcode)) {
+						$valid = false;
+					} else {
+
+						$valid = preg_match(
+							'/^(?=.*[A-Z0-9])[A-Z0-9\- ]{3,12}$/i',
+							$postcode
+						);
+					}
+
 					break;
 			}
 
@@ -346,7 +359,20 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					break;
 
 				default:
-					$valid = preg_match('/^[A-Z0-9\- ]{3,10}$/', $postcode);
+
+					$clean_postcode = preg_replace('/[^A-Z0-9]/', '', strtoupper($postcode));
+
+					// Reject purely numeric long values
+					if (preg_match('/^\d{8,}$/', $clean_postcode)) {
+						$valid = false;
+					} else {
+
+						$valid = preg_match(
+							'/^(?=.*[A-Z0-9])[A-Z0-9\- ]{3,12}$/i',
+							$postcode
+						);
+					}
+
 					break;
 			}
 
@@ -1591,7 +1617,16 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => false, 'error' => "European number invalid: should be $min-$max digits"];
 			}
 		} else {
-			return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => false, 'error' => 'Only US and European numbers are allowed'];
+			// Default international validation
+			if ($localLength < 10 || $localLength > 15) {
+
+				return [
+					'phone'        => $normalizedPhone,
+					'country_code' => '+' . $countryCode,
+					'is_valid'     => false,
+					'error'        => 'Phone number must be between 10 and 15 digits.'
+				];
+			}
 		}
 
 		if ($totalLength > 15) {
