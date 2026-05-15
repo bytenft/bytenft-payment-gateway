@@ -123,7 +123,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$bytenftPayment->init_settings();
 			$bytenftPayment->load_gateway_settings();
 
-			wc_get_logger()->warning(
+			ByteNFT_Payment_Gateway_Logger::warning(
 				'ByteNFT: gateway not found in WC registry during AJAX — fell back to manual instantiation.',
 				['source' => 'bytenft-payment-gateway']
 			);
@@ -344,14 +344,13 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			: '';
 
 		$log_prefix = "[Order #{$order_id}]";
-		$log_ctx = ['order_id' => $order_id];
 
 		// -------------------------
 		// NONCE CHECK
 		// -------------------------
 		if (empty($security) || !wp_verify_nonce($security, 'bytenft_payment')) {
 
-			$this->bytenft_log($log_prefix . ' CheckStatus | Invalid nonce', $log_ctx);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' CheckStatus | Invalid nonce');
 
 			wp_send_json_error(['message' => 'Nonce verification failed.']);
 			wp_die();
@@ -364,10 +363,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if (in_array($current_status, ['completed', 'cancelled', 'refunded'], true)) {
 
-			$this->bytenft_log(
-				$log_prefix . " CheckStatus | Final state detected ({$current_status})",
-				$log_ctx
-			);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . " CheckStatus | Final state detected ({$current_status})");
 
 			wp_send_json_success([
 				'status'        => $current_status,
@@ -382,9 +378,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		$payment_token = $order->get_meta('_bytenft_pay_id');
 
-		$this->bytenft_log(
+		ByteNFT_Payment_Gateway_Logger::info(
 			$log_prefix . " CheckStatus | API request initiated",
-			array_merge($log_ctx, ['token' => $payment_token])
+			['token' => $payment_token]
 		);
 
 		$response = wp_remote_post(
@@ -405,7 +401,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (is_wp_error($response)) {
 
-			$this->bytenft_log($log_prefix . ' CheckStatus | API error', $log_ctx);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' CheckStatus | API error');
 
 			wp_send_json_error(['message' => 'API connection failed.']);
 			wp_die();
@@ -415,7 +411,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (!is_array($response_data)) {
 
-			$this->bytenft_log($log_prefix . ' CheckStatus | Invalid API response', $log_ctx);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' CheckStatus | Invalid API response');
 
 			wp_send_json_error(['message' => 'Invalid API response.']);
 			wp_die();
@@ -431,10 +427,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if ($payment_status) {
 
-			$this->bytenft_log(
-				$log_prefix . " CheckStatus | Engine trigger ({$payment_status})",
-				$log_ctx
-			);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . " CheckStatus | Engine trigger ({$payment_status})");
 
 			$result = BYTENFT_STRIPE_GRADE_PAYMENT_ENGINE::handle_event(
 				$order_id,
@@ -445,10 +438,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				]
 			);
 
-			$this->bytenft_log(
-				$log_prefix . " CheckStatus | Engine result: " . json_encode($result),
-				$log_ctx
-			);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . " CheckStatus | Engine result: " . json_encode($result));
 		}
 
 		// -------------------------
@@ -464,7 +454,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if (in_array($payment_status, ['success', 'paid'], true)) {
 
-			$this->bytenft_log($log_prefix . ' CheckStatus | Payment success', $log_ctx);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' CheckStatus | Payment success');
 
 			wp_send_json_success([
 				'status'       => 'success',
@@ -479,7 +469,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if ($payment_status === 'failed') {
 
-			$this->bytenft_log($log_prefix . ' CheckStatus | Payment failed', $log_ctx);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' CheckStatus | Payment failed');
 
 			wp_send_json_success([
 				'status'       => 'failed',
@@ -494,7 +484,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if (in_array($payment_status, ['cancelled', 'canceled'], true)) {
 
-			$this->bytenft_log($log_prefix . ' CheckStatus | Payment cancelled', $log_ctx);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' CheckStatus | Payment cancelled');
 
 			wp_send_json_success([
 				'status'       => 'cancelled',
@@ -509,7 +499,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if ($order->has_status(['pending', 'on-hold'])) {
 
-			$this->bytenft_log($log_prefix . ' CheckStatus | Payment pending', $log_ctx);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' CheckStatus | Payment pending');
 
 			wp_send_json_success([
 				'status'       => 'pending',
@@ -522,7 +512,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		// DEFAULT
 		// -------------------------
-		$this->bytenft_log($log_prefix . ' CheckStatus | Unknown state', $log_ctx);
+		ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' CheckStatus | Unknown state');
 
 		wp_send_json_success([
 			'status'       => 'unknown',
@@ -535,7 +525,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	private function bytenft_log($message, $context = [])
 	{
 		if (function_exists('wc_get_logger')) {
-			wc_get_logger()->info(
+			ByteNFT_Payment_Gateway_Logger::info(
 				$message,
 				array_merge([
 					'source' => 'bytenft-payment-gateway'
@@ -555,14 +545,13 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			: '';
 
 		$log_prefix = "[Order #{$order_id}]";
-		$log_ctx = ['order_id' => $order_id];
 
 		// -------------------------
 		// NONCE CHECK
 		// -------------------------
 		if (empty($security) || !wp_verify_nonce($security, 'bytenft_payment')) {
 
-			$this->bytenft_log($log_prefix . ' PopupClose | Invalid nonce', $log_ctx);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' PopupClose | Invalid nonce');
 
 			wc_add_notice('Nonce verification failed.', 'error');
 
@@ -575,7 +564,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if (!$order_id || $order_id === 'unknown') {
 
-			$this->bytenft_log($log_prefix . ' PopupClose | Missing order ID', $log_ctx);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' PopupClose | Missing order ID');
 
 			wc_add_notice('Order ID missing.', 'error');
 
@@ -587,7 +576,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (!$order) {
 
-			$this->bytenft_log($log_prefix . ' PopupClose | Order not found', $log_ctx);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' PopupClose | Order not found');
 
 			wc_add_notice('Order not found.', 'error');
 
@@ -595,7 +584,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			wp_die();
 		}
 
-		$this->bytenft_log($log_prefix . ' PopupClose | Start flow', $log_ctx);
+		ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' PopupClose | Start flow');
 
 		// -------------------------
 		// API CALL
@@ -620,7 +609,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (is_wp_error($response)) {
 
-			$this->bytenft_log($log_prefix . ' PopupClose | API error', $log_ctx);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' PopupClose | API error');
 
 			wc_add_notice('API connection failed.', 'error');
 
@@ -632,7 +621,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (!is_array($response_data)) {
 
-			$this->bytenft_log($log_prefix . ' PopupClose | Invalid API response', $log_ctx);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' PopupClose | Invalid API response');
 
 			wc_add_notice('Invalid API response.', 'error');
 
@@ -647,7 +636,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (!$payment_status) {
 
-			$this->bytenft_log($log_prefix . ' PopupClose | Payment still pending', $log_ctx);
+			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' PopupClose | Payment still pending');
 
 			wp_send_json([
 				'success' => false,
@@ -665,10 +654,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		// ENGINE CALL (ONLY LOG IMPORTANT EVENT HERE)
 		// -------------------------
-		$this->bytenft_log(
-			$log_prefix . " PopupClose | Engine trigger ({$payment_status})",
-			$log_ctx
-		);
+		ByteNFT_Payment_Gateway_Logger::info($log_prefix . " PopupClose | Engine trigger ({$payment_status})");
 
 		$result = BYTENFT_PAYMENT_ENGINE::handle_event(
 			$order_id,
@@ -679,10 +665,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			]
 		);
 
-		$this->bytenft_log(
-			$log_prefix . " PopupClose | Engine result: " . json_encode($result),
-			$log_ctx
-		);
+		ByteNFT_Payment_Gateway_Logger::info($log_prefix . " PopupClose | Engine result: " . json_encode($result));
 
 		// -------------------------
 		// REFRESH ORDER
@@ -743,7 +726,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 	function activate_cron_job()
 	{
-		wc_get_logger()->info('Automatic payment status checks have been enabled.', ['source' => 'bytenft-payment-gateway']);
+		ByteNFT_Payment_Gateway_Logger::info('Automatic payment status checks have been enabled.', ['source' => 'bytenft-payment-gateway']);
 
 		// Clear existing scheduled event if it exists
 		$timestamp = wp_next_scheduled('bytenft_cron_event');
@@ -757,7 +740,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 	function deactivate_cron_job()
 	{
-		wc_get_logger()->info('Automatic payment status checks have been disabled.', ['source' => 'bytenft-payment-gateway']);
+		ByteNFT_Payment_Gateway_Logger::info('Automatic payment status checks have been disabled.', ['source' => 'bytenft-payment-gateway']);
 		wp_clear_scheduled_hook('bytenft_cron_event');
 	}
 
@@ -773,7 +756,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		}
 
 		if (!$accounts || !is_array($accounts)) {
-			wc_get_logger()->warning('No payment accounts found or the account format is invalid. Sync aborted.', $logger_context);
+			ByteNFT_Payment_Gateway_Logger::warning('No payment accounts found or the account format is invalid. Sync aborted.', $logger_context);
 			return [];
 		}
 
@@ -803,7 +786,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		}
 
 		if (empty($accountsData)) {
-			wc_get_logger()->warning('No valid credentials found in any payment account. Sync skipped.', $logger_context);
+			ByteNFT_Payment_Gateway_Logger::warning('No valid credentials found in any payment account. Sync skipped.', $logger_context);
 			return [];
 		}
 
@@ -817,7 +800,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		]);
 
 		if (is_wp_error($response)) {
-			wc_get_logger()->error('Unable to connect to the sync service. Please check the server connection or endpoint.', $logger_context);
+			ByteNFT_Payment_Gateway_Logger::error('Unable to connect to the sync service. Please check the server connection or endpoint.', $logger_context);
 			return [];
 		}
 
@@ -868,18 +851,18 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			if ($updated) {
 				update_option('woocommerce_bytenft_payment_gateway_accounts', $accounts);
 
-				wc_get_logger()->info('Payment account statuses were successfully updated after syncing.', [
+				ByteNFT_Payment_Gateway_Logger::info('Payment account statuses were successfully updated after syncing.', [
 					'source'  => 'bytenft-payment-gateway',
 					'context' => ['updated_accounts' => $statusSummary],
 				]);
 			} else {
-				wc_get_logger()->info('Payment accounts were checked, but no updates were necessary.', [
+				ByteNFT_Payment_Gateway_Logger::info('Payment accounts were checked, but no updates were necessary.', [
 					'source'  => 'bytenft-payment-gateway',
 					'context' => ['checked_accounts' => $statusSummary],
 				]);
 			}
 		} else {
-			wc_get_logger()->info('Sync completed. No account status data was returned from the server.', $logger_context);
+			ByteNFT_Payment_Gateway_Logger::info('Sync completed. No account status data was returned from the server.', $logger_context);
 		}
 
 		return $statusSummary;
@@ -891,7 +874,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$logger_context = ['source' => 'bytenft-payment-gateway'];
 		// Verify nonce first
 		if (!check_ajax_referer('bytenft_sync_nonce', 'nonce', false)) {
-			wc_get_logger()->error('Security validation failed during manual sync.', $logger_context);
+			ByteNFT_Payment_Gateway_Logger::error('Security validation failed during manual sync.', $logger_context);
 			wp_send_json_error([
 				'message' => __('Security check failed. Please refresh the page and try again.', 'bytenft-payment-gateway')
 			], 400);
@@ -900,14 +883,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		// Check user capabilities
 		if (!current_user_can('manage_woocommerce')) {
-		wc_get_logger()->error('Unauthorized manual sync attempt by user ID: ' . get_current_user_id(), $logger_context);
+		ByteNFT_Payment_Gateway_Logger::error('Unauthorized manual sync attempt by user ID: ' . get_current_user_id(), $logger_context);
 			wp_send_json_error([
 				'message' => __('You do not have permission to perform this action.', 'bytenft-payment-gateway')
 			], 403);
 			wp_die();
 		}
 
-		wc_get_logger()->info("Payment accounts sync initiated", $logger_context);
+		ByteNFT_Payment_Gateway_Logger::info("Payment accounts sync initiated", $logger_context);
 
 		try {
 			ob_start();
@@ -916,10 +899,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$output = ob_get_clean();
 
 			if (!empty($output)) {
-				wc_get_logger()->warning('Unexpected output generated during sync: ' . $output, $logger_context);
+				ByteNFT_Payment_Gateway_Logger::warning('Unexpected output generated during sync: ' . $output, $logger_context);
 			}
 
-			wc_get_logger()->info('Payment accounts sync completed successfully.', $logger_context);
+			ByteNFT_Payment_Gateway_Logger::info('Payment accounts sync completed successfully.', $logger_context);
 
 			wp_send_json_success([
 				'message'  => __('Payment accounts synchronized successfully.', 'bytenft-payment-gateway'),
@@ -927,7 +910,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'statuses' => $statusSummary
 			]);
 		} catch (Exception $e) {
-			wc_get_logger()->error('Payment accounts sync failed: ' . $e->getMessage(), $logger_context);
+			ByteNFT_Payment_Gateway_Logger::error('Payment accounts sync failed: ' . $e->getMessage(), $logger_context);
 			wp_send_json_error([
 				'message' => __('Sync failed: ', 'bytenft-payment-gateway') . $e->getMessage(),
 				'code'    => $e->getCode()
