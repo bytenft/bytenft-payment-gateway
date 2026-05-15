@@ -922,14 +922,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$lock_result = $wpdb->get_var($wpdb->prepare("SELECT GET_LOCK(%s, 5)", $lock_name));
 
 		if ("1" !== (string)$lock_result) {
-			return $this->build_response('fail', 'Payment already in progress (DB Lock).', [], 409, $order_id);
+			return $this->build_response('fail', 'Payment already in progress.', [], 409, $order_id);
 		}
 
 		// Acquire Application Meta Lock (Atomic check)
 		$is_locked = $order->get_meta('_bytenft_lock');
 		if ('1' === (string)$is_locked) {
 			$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
-			return $this->build_response('fail', 'Payment already in progress (App Lock).', [], 409, $order_id);
+			return $this->build_response('fail', 'Payment already in progress.', [], 409, $order_id);
 		}
 
 		// Set the lock
