@@ -1425,26 +1425,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$phone       = sanitize_text_field($original_phone);
 		$country     = $order->get_billing_country();
 		$country_code = WC()->countries->get_country_calling_code($country);
-		$phone_for_normalization = $original_phone ?: $phone;
-		$normalized  = $this->bytenft_normalize_phone($phone_for_normalization, $country_code);
-
-		if (empty($normalized['is_valid'])) {
-			$error_message = $normalized['error'];
-			ByteNFT_Payment_Gateway_Logger::error(
-				'Phone number validation failed',
-				[
-					'order_id'       => $order->get_id(),
-					'original_phone' => $original_phone,
-					'error'          => $error_message,
-				]
-			);
-			wc_add_notice($error_message, 'error');
-			return ['result' => 'fail', 'error' => $error_message];
-		}
-
-		$phone        = $normalized['phone'];
-		$country_code = $normalized['country_code'];
-
+		
 		$billing_address_1 = sanitize_text_field($order->get_billing_address_1());
 		$billing_address_2 = sanitize_text_field($order->get_billing_address_2());
 		$billing_city      = sanitize_text_field($order->get_billing_city());
