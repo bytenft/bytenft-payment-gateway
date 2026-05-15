@@ -728,8 +728,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$start_time = microtime(true);
 
-		$this->bytenft_log(
+		ByteNFT_Payment_Gateway_Logger::info(
 			$log_prefix . ' Payment process started',
+			[
+				'order_id' => $order_id
+			]
 		);
 
 		wc_clear_notices();
@@ -780,13 +783,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 		}
 
-		$this->bytenft_log(
-			$log_prefix . ' Order loaded successfully',
-			array_merge($log_ctx, [
-				'status' => $order->get_status(),
-				'total'  => $order->get_total(),
-				'email'  => $order->get_billing_email(),
-			])
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Order loaded successfully',
+			[
+				'order_id' => $order_id,
+				'status'   => $order->get_status(),
+			]
 		);
 
 		// Acquire MySQL Named Lock
@@ -1071,11 +1073,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$resp_data = json_decode(wp_remote_retrieve_body($response), true);
 
-			$this->bytenft_log(
-				$log_prefix . ' Payment API response received',
-				array_merge([
-					'response' => $resp_data
-				])
+			ByteNFT_Payment_Gateway_Logger::info(
+				'Payment API response received',
+				[
+					'order_id' => $order_id,
+					'status'   => $resp_data['status'] ?? null,
+					'pay_id'   => $resp_data['data']['pay_id'] ?? null,
+				]
 			);
 
 			if (($resp_data['status'] ?? '') === 'error') {
@@ -1112,10 +1116,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				if ($existing) {
 
-					$this->bytenft_log(
-						$log_prefix . ' Updating existing payment link record'
-					);
-
 					$wpdb->update(
 						$table_name,
 						[
@@ -1128,14 +1128,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						['order_id' => $order_id]
 					);
 				} else {
-
-					$this->bytenft_log(
-						$log_prefix . ' Inserting new payment link record',
-						[
-							'pay_id' => $pay_id,
-							'payment_link' => $resp_data['data']['payment_link'] ?? null,
-						]
-					);
 
 					$wpdb->insert(
 						$table_name,
@@ -1182,8 +1174,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			if (empty($payment_link)) {
 
-				$this->bytenft_log_error(
-					$log_prefix . ' Missing payment link in response',
+				ByteNFT_Payment_Gateway_Logger::error(
+					'Missing payment link in response',
+					[
+						'order_id' => $order_id,
+						'pay_id'   => $pay_id ?? null,
+					]
 				);
 
 				return $this->build_response(
@@ -1195,12 +1191,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 			}
 
-			$this->bytenft_log(
+			ByteNFT_Payment_Gateway_Logger::info(
 				$log_prefix . ' Payment initiated successfully',
-				array_merge([
-					'payment_link' => $payment_link,
-					'pay_id' => $pay_id
-				])
+				[
+					'order_id'    => $order_id,
+					'pay_id'      => $pay_id,
+					'payment_link'=> $payment_link,
+				]
 			);
 
 			return $this->build_response(
@@ -1216,14 +1213,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		} catch (\Exception $e) {
 
-			$this->bytenft_log_error(
+			ByteNFT_Payment_Gateway_Logger::error(
 				$log_prefix . ' Exception occurred during payment processing',
-				array_merge([
-					'message' => $e->getMessage(),
-					'file'    => $e->getFile(),
-					'line'    => $e->getLine(),
-					'trace'   => $e->getTraceAsString(),
-				])
+				[
+					'order_id' => $order_id,
+					'message'  => $e->getMessage(),
+					'file'     => $e->getFile(),
+					'line'     => $e->getLine(),
+					'trace'    => $e->getTraceAsString(),
+				]
 			);
 
 			ByteNFT_Payment_Gateway_Logger::error(
