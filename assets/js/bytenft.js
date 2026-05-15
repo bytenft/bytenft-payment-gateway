@@ -534,6 +534,8 @@
                                 );
 
                                 return;
+                            } else {
+                                self.showCheckoutError(response.message);
                             }
 
                             self.reset();
