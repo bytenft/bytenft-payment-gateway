@@ -104,6 +104,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 */
 	public function bytenft_validate_checkout_fields($data, $errors)
 	{
+		/*
+		|--------------------------------------------------------------------------
+		| PHONE VALIDATION
+		|--------------------------------------------------------------------------
+		*/
 		$phone = $data['billing_phone'] ?? '';
 
 		if (!empty($phone)) {
@@ -136,10 +141,77 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				]
 			);
 		}
+
+		/*
+		|--------------------------------------------------------------------------
+		| ZIP / POSTCODE VALIDATION
+		|--------------------------------------------------------------------------
+		*/
+		$postcode = trim($data['billing_postcode'] ?? '');
+		$country  = strtoupper($data['billing_country'] ?? '');
+
+		if (!empty($postcode)) {
+
+			$clean = strtoupper(preg_replace('/\s+/', '', $postcode));
+
+			$valid = false;
+
+			switch ($country) {
+
+				case 'US':
+					// 12345 or 12345-6789
+					$valid = preg_match('/^\d{5}(-\d{4})?$/', $postcode);
+					break;
+
+				case 'CA':
+					// A1A1A1
+					$valid = preg_match('/^[A-Z]\d[A-Z]\d[A-Z]\d$/', $clean);
+					break;
+
+				case 'GB':
+					$valid = preg_match('/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/', $clean);
+					break;
+
+				default:
+					$valid = preg_match('/^[A-Z0-9\- ]{3,10}$/', $postcode);
+					break;
+			}
+
+			if (!$valid) {
+
+				ByteNFT_Payment_Gateway_Logger::warning(
+					'Classic checkout validation failed: invalid postcode',
+					[
+						'postcode' => $postcode,
+						'country'  => $country
+					]
+				);
+
+				$errors->add(
+					'bytenft_postcode_error',
+					__('Invalid ZIP / postal code.', 'bytenft-payment-gateway')
+				);
+
+				return;
+			}
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				'Classic checkout postcode validation passed',
+				[
+					'postcode' => $postcode,
+					'country'  => $country
+				]
+			);
+		}
 	}
 
 	public function bytenft_validate_blocks_checkout($order, $request)
 	{
+		/*
+		|--------------------------------------------------------------------------
+		| PHONE VALIDATION
+		|--------------------------------------------------------------------------
+		*/
 		$phone = $request['billing_address']['phone'] ?? '';
 
 		if (!empty($phone)) {
@@ -174,6 +246,65 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'Blocks checkout phone validation passed',
 				[
 					'phone'    => $phone,
+					'order_id' => $order->get_id() ?? null
+				]
+			);
+		}
+
+		/*
+		|--------------------------------------------------------------------------
+		| ZIP / POSTCODE VALIDATION
+		|--------------------------------------------------------------------------
+		*/
+		$postcode = trim($request['billing_address']['postcode'] ?? '');
+		$country  = strtoupper($request['billing_address']['country'] ?? '');
+
+		if (!empty($postcode)) {
+
+			$clean = strtoupper(preg_replace('/\s+/', '', $postcode));
+
+			$valid = false;
+
+			switch ($country) {
+
+				case 'US':
+					$valid = preg_match('/^\d{5}(-\d{4})?$/', $postcode);
+					break;
+
+				case 'CA':
+					$valid = preg_match('/^[A-Z]\d[A-Z]\d[A-Z]\d$/', $clean);
+					break;
+
+				case 'GB':
+					$valid = preg_match('/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/', $clean);
+					break;
+
+				default:
+					$valid = preg_match('/^[A-Z0-9\- ]{3,10}$/', $postcode);
+					break;
+			}
+
+			if (!$valid) {
+
+				ByteNFT_Payment_Gateway_Logger::warning(
+					'Blocks checkout validation failed: invalid postcode',
+					[
+						'postcode' => $postcode,
+						'country'  => $country,
+						'order_id' => $order->get_id() ?? null
+					]
+				);
+
+				throw new Exception(
+					'Invalid ZIP / postal code.'
+				);
+			}
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				'Blocks checkout postcode validation passed',
+				[
+					'postcode' => $postcode,
+					'country'  => $country,
 					'order_id' => $order->get_id() ?? null
 				]
 			);
