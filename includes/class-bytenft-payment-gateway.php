@@ -1706,51 +1706,52 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		]);
 	}
 
-	public function bytenft_hide_custom_payment_gateway_conditionally($available_gateways) {
-
+	public function bytenft_hide_custom_payment_gateway_conditionally($available_gateways)
+	{
 		$gateway_id = $this->id;
 		$this->selected_account_for_display = null;
 
 		// -----------------------------
-		// STEP 1: Gateway exists check
+		// STEP 1: Hard safety checks
 		// -----------------------------
-		if (!isset($available_gateways[$gateway_id])) {
-			return $available_gateways;
-		}
-
-		if (!WC()->cart) {
+		if (!isset($available_gateways[$gateway_id]) || !WC()->cart) {
 			return $available_gateways;
 		}
 
 		// -----------------------------
-		// STEP 2: Checkout flow validation
+		// STEP 2: Strict checkout context detection
+		// (FIX: prevents false "background" runs)
 		// -----------------------------
-		$is_checkout_flow =
-			is_checkout() ||
-			(defined('DOING_AJAX') && DOING_AJAX) ||
-			(defined('REST_REQUEST') && REST_REQUEST);
+		$is_rest_checkout = defined('REST_REQUEST') && REST_REQUEST && !is_admin();
+		$is_ajax_checkout = defined('DOING_AJAX') && DOING_AJAX && isset($_REQUEST['wc-ajax']);
 
-		if (!$is_checkout_flow) {
-			$this->log_info_once_per_session(
-				'gateway_skipped_not_checkout_flow',
-				'ByteNFT gateway skipped — not in checkout flow',
-				['reason' => 'non_checkout_page']
-			);
-
+		if (!is_checkout() && !$is_rest_checkout && !$is_ajax_checkout) {
 			return $available_gateways;
 		}
 
 		// -----------------------------
-		// STEP 3: Amount detection
+		// STEP 3: Human flow label
+		// -----------------------------
+		$flow = 'Checkout (Classic)';
+
+		if ($is_rest_checkout) {
+			$flow = 'Checkout (Blocks)';
+		} elseif ($is_ajax_checkout) {
+			$flow = 'Checkout (AJAX)';
+		}
+
+		// -----------------------------
+		// STEP 4: Cart info
 		// -----------------------------
 		$amount = (float) WC()->cart->get_total('raw');
-
 		if ($amount < 0.01) {
 			$amount = (float) (WC()->cart->get_totals()['total'] ?? 0);
 		}
 
+		$items = count(WC()->cart->get_cart());
+
 		// -----------------------------
-		// STEP 4: Load accounts
+		// STEP 5: Load accounts
 		// -----------------------------
 		if (!method_exists($this, 'get_all_accounts')) {
 			return $available_gateways;
@@ -1760,147 +1761,93 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		if (empty($accounts)) {
 
-			$this->log_info_once_per_session(
-				'gateway_hidden_no_accounts',
-				'ByteNFT gateway hidden — no merchant accounts configured',
-				['reason' => 'no_accounts']
+			$this->log_info(
+				"ByteNFT Gateway Decision: HIDDEN",
+				[
+					'reason'  => 'No merchant accounts configured',
+					'cart'    => "$items items | Total: $amount",
+					'context' => $flow
+				]
 			);
 
 			return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 
-		usort($accounts, fn($a, $b) => ($a['priority'] ?? 1) <=> ($b['priority'] ?? 1));
-
-		// -----------------------------
-		// STEP 5: START CHECK LOG
-		// -----------------------------
-		$this->log_info_once_per_session(
-			'gateway_check_started',
-			'ByteNFT gateway evaluation started',
-			[
-				'amount' => $amount,
-				'account_count' => count($accounts)
-			]
+		usort($accounts, fn($a, $b) =>
+			($a['priority'] ?? 1) <=> ($b['priority'] ?? 1)
 		);
 
 		// -----------------------------
-		// STEP 6: API endpoints (KEPT SAFE - NOT REMOVED)
+		// STEP 6: Evaluation
 		// -----------------------------
-		$status_api = $this->get_api_url('/api/check-merchant-status');
-		$limit_api  = $this->get_api_url('/api/dailylimit');
+		$selected = null;
+		$reason   = 'No eligible merchant account';
 
-		$selected_account = null;
-		$eligible_accounts = [];
-
-		// -----------------------------
-		// STEP 7: ACCOUNT LOOP
-		// -----------------------------
 		foreach ($accounts as $account) {
 
 			$title = $account['title'] ?? 'Unnamed account';
 
-			$public_key = $this->sandbox
+			$public = $this->sandbox
 				? ($account['sandbox_public_key'] ?? '')
 				: ($account['live_public_key'] ?? '');
 
-			$secret_key = $this->sandbox
+			$secret = $this->sandbox
 				? ($account['sandbox_secret_key'] ?? '')
 				: ($account['live_secret_key'] ?? '');
 
-			// ❌ Missing keys
-			if (empty($public_key) || empty($secret_key)) {
-
-				$this->log_info_once_per_session(
-					'account_skipped_missing_keys_' . sanitize_title($title),
-					"Account skipped — missing API keys",
-					['account' => $title]
-				);
-
+			if (empty($public) || empty($secret)) {
 				continue;
 			}
 
 			$data = [
 				'is_sandbox'     => $this->sandbox,
 				'amount'         => $amount,
-				'api_public_key' => $public_key,
-				'api_secret_key' => $secret_key,
+				'api_public_key' => $public,
+				'api_secret_key' => $secret,
 			];
 
-			$cache = 'bytenft_' . md5($public_key . $amount);
+			$cache = 'bytenft_' . md5($public . $amount);
 
-			// -----------------------------
 			// STATUS CHECK
-			// -----------------------------
 			$status = $this->get_cached_api_response(
-				$status_api,
+				$this->get_api_url('/api/check-merchant-status'),
 				$data,
 				$cache . '_status',
 				10
 			);
 
 			if (($status['status'] ?? '') !== 'success') {
-
-				$this->log_info_once_per_session(
-					'account_skipped_inactive_' . sanitize_title($title),
-					"Account skipped — merchant inactive",
-					[
-						'account' => $title,
-						'api_status' => $status['status'] ?? 'unknown'
-					]
-				);
-
 				continue;
 			}
 
-			// -----------------------------
 			// LIMIT CHECK
-			// -----------------------------
 			$limit = $this->get_cached_api_response(
-				$limit_api,
+				$this->get_api_url('/api/dailylimit'),
 				$data,
 				$cache . '_limit',
 				10
 			);
 
 			if (($limit['status'] ?? '') !== 'success') {
-
-				$this->log_info_once_per_session(
-					'account_skipped_limit_' . sanitize_title($title),
-					"Account skipped — daily limit reached",
-					[
-						'account' => $title,
-						'message' => $limit['message'] ?? ''
-					]
-				);
-
 				continue;
 			}
 
-			// -----------------------------
-			// ELIGIBLE ACCOUNT FOUND
-			// -----------------------------
-			$eligible_accounts[] = $account;
-			$selected_account = $account;
-
-			$this->log_info_once_per_session(
-				'account_selected_' . sanitize_title($title),
-				"Account selected for checkout",
-				['account' => $title]
-			);
-
+			$selected = $account;
+			$reason   = 'Valid merchant account found';
 			break;
 		}
 
 		// -----------------------------
-		// STEP 8: NO ELIGIBLE ACCOUNTS
+		// STEP 7: FINAL SINGLE LOG ONLY
 		// -----------------------------
-		if (empty($selected_account)) {
+		if (!$selected) {
 
-			$this->log_info_once_per_session(
-				'gateway_hidden_no_eligible_accounts',
-				'ByteNFT gateway hidden — no eligible merchant account found',
+			$this->log_info(
+				"ByteNFT Gateway Decision: HIDDEN",
 				[
-					'checked_accounts' => count($accounts)
+					'reason'  => $reason,
+					'cart'    => "$items items | Total: $amount",
+					'context' => $flow
 				]
 			);
 
@@ -1908,13 +1855,19 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// -----------------------------
-		// STEP 9: APPLY SELECTED ACCOUNT
+		// STEP 8: SHOW GATEWAY
 		// -----------------------------
-		$this->selected_account_for_display = $selected_account;
+		$this->selected_account_for_display = $selected;
 
-		if (!empty($selected_account['checkout_title'])) {
-			$this->title = sanitize_text_field($selected_account['checkout_title']);
-		}
+		$this->log_info(
+			"ByteNFT Gateway Decision: SHOWN",
+			[
+				'reason'  => $reason,
+				'account' => $selected['title'] ?? 'Unknown',
+				'cart'    => "$items items | Total: $amount",
+				'context' => $flow
+			]
+		);
 
 		return $available_gateways;
 	}
