@@ -742,15 +742,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$log_prefix = "[Order #{$order_id}]";
 
-		$log_ctx = [
-			'order_id' => $order_id,
-		];
-
 		$start_time = microtime(true);
 
 		$this->bytenft_log(
 			$log_prefix . ' Payment process started',
-			$log_ctx
 		);
 
 		wc_clear_notices();
@@ -761,11 +756,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$order = wc_get_order($order_id);
 
 		if (!$order) {
-
-			$this->bytenft_log_error(
-				$log_prefix . ' Invalid order',
-				$log_ctx
-			);
 
 
 			if (is_checkout()) {
@@ -781,15 +771,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 		}
 
-		$this->bytenft_log(
-			$log_prefix . ' Order loaded successfully',
-			array_merge($log_ctx, [
-				'status' => $order->get_status(),
-				'total'  => $order->get_total(),
-				'email'  => $order->get_billing_email(),
-			])
-		);
-
 		// Acquire MySQL Named Lock
 		$lock_name = 'bytenft_order_' . (int)$order_id;
 
@@ -802,12 +783,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// Acquire Application Meta Lock (Atomic check)
 		$is_locked = $order->get_meta('_bytenft_lock');
 		if ('1' === (string)$is_locked) {
-
-			$this->bytenft_log_warning(
-				$log_prefix . ' Application lock already exists',
-				$log_ctx
-			);
-
 			$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
 			return $this->build_response('fail', 'Payment already in progress (App Lock).', [], 409, $order_id);
 		}
@@ -844,13 +819,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			if ($this->is_po_box($billing)) {
 
-				$this->bytenft_log_warning(
-					$log_prefix . ' PO Box address detected',
-					array_merge($log_ctx, [
-						'address' => $billing
-					])
-				);
-
 				if (is_checkout()) {
 					wc_add_notice(__('PO Box addresses are not accepted. Please enter a physical street address.', 'bytenft-payment-gateway'), 'error');
 				}
@@ -883,14 +851,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				// ❌ INVALID PHONE → STOP FLOW HERE
 				if (!$valid) {
-
-					$this->bytenft_log_warning(
-						$log_prefix . ' Invalid billing phone',
-						array_merge($log_ctx, [
-							'phone' => $billing_phone,
-							'cleaned_phone' => $cleaned
-						])
-					);
 
 					if (is_checkout()) {
 						wc_add_notice(
@@ -933,15 +893,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$clean = strtoupper(trim($billing_postcode));
 				$clean = preg_replace('/\s+/', '', $clean);
 
-				$this->bytenft_log(
-					$log_prefix . ' Validating postcode',
-					array_merge($log_ctx, [
-						'country'  => $country,
-						'postcode' => $billing_postcode,
-						'cleaned'  => $clean
-					])
-				);
-
 				$valid = false;
 
 				switch ($country) {
@@ -966,14 +917,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				}
 
 				if (!$valid) {
-
-					$this->bytenft_log_warning(
-						$log_prefix . ' Invalid postcode',
-						array_merge($log_ctx, [
-							'country'  => $country,
-							'postcode' => $billing_postcode
-						])
-					);
 
 					return $this->build_response(
 						'fail',
@@ -1002,12 +945,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				$this->bytenft_log_warning(
 					$log_prefix . ' Rate limit exceeded',
-					array_merge($log_ctx, [
+					array_merge([
 						'ip_address' => $ip_address
 					])
 				);
-
-				wc_get_logger()->warning("Rate limit exceeded for IP: {$ip_address}", $logger_context);
 
 				if (is_checkout()) {
 					wc_add_notice(__('Too many requests. Please try again later.', 'bytenft-payment-gateway'), 'error');
@@ -1031,13 +972,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$status = $order->get_status();
 
 			if ($status === 'completed' || $status === 'processing') {
-
-				$this->bytenft_log_warning(
-					$log_prefix . ' Order already processed',
-					array_merge($log_ctx, [
-						'status' => $status
-					])
-				);
 
 				if (WC()->cart) {
 					WC()->cart->empty_cart();
@@ -1085,12 +1019,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$account = $this->get_next_available_account($used_accounts);
 
 				if (!$account) {
-
-					$this->bytenft_log_warning(
-						$log_prefix . ' No available payment accounts found',
-						$log_ctx
-					);
-
 					break;
 				}
 
@@ -1118,16 +1046,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				]);
 
 				if (is_wp_error($limit_resp)) {
-
-					$this->bytenft_log_error(
-						$log_prefix . ' Daily limit API WP Error',
-						array_merge($log_ctx, [
-							'account_title' => $account['title'],
-							'error' => $limit_resp->get_error_message()
-						])
-					);
-
-					wc_get_logger()->error("Daily limit API error for account '{$account['title']}': " . $limit_resp->get_error_message(), $logger_context);
 					$used_accounts[] = $public_key;
 					continue;
 				}
@@ -1135,15 +1053,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$limit_data = json_decode(wp_remote_retrieve_body($limit_resp), true);
 
 				if (($limit_data['status'] ?? '') === 'error') {
-
-					$this->bytenft_log_warning(
-						$log_prefix . ' Daily limit API returned error',
-						array_merge($log_ctx, [
-							'account_title' => $account['title'],
-							'response' => $limit_data
-						])
-					);
-
 					$last_error_data = $limit_data;
 
 					$used_accounts[] = $public_key;
@@ -1182,8 +1091,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$order_id
 				);
 			}
-
-			wc_get_logger()->error('No available payment accounts found.', $logger_context);
 
 			return $this->build_response(
 				'fail',
@@ -1231,7 +1138,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$this->bytenft_log(
 				$log_prefix . ' Payment API response received',
-				array_merge($log_ctx, [
+				array_merge([
 					'response' => $resp_data
 				])
 			);
@@ -1241,14 +1148,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$error_msg = sanitize_text_field(
 					$resp_data['message'] ?? $resp_data['context']['message'] ?? 'Payment failed.'
 				);
-
-				$this->bytenft_log_warning(
-					$log_prefix . ' Payment API returned error',
-					array_merge($log_ctx, [
-						'error_message' => $error_msg
-					])
-				);
-
 				if (!$this->is_block_checkout_request() && is_checkout()) {
 					wc_add_notice($error_msg, 'error');
 				}
@@ -1297,7 +1196,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 					$this->bytenft_log(
 						$log_prefix . ' Inserting new payment link record',
-						$log_ctx
+						[
+							'pay_id' => $pay_id,
+							'payment_link' => $resp_data['data']['payment_link'] ?? null,
+						]
 					);
 
 					$wpdb->insert(
@@ -1318,13 +1220,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// 10. PAY ID UPDATE (UNCHANGED)
 			// -------------------------------------------------
 			if (!empty($pay_id)) {
-
-				$this->bytenft_log(
-					$log_prefix . ' Updating order meta pay_id',
-					array_merge($log_ctx, [
-						'pay_id' => $pay_id
-					])
-				);
 
 				$order->update_meta_data('_bytenft_pay_id', $pay_id);
 				$order->update_meta_data('_bytenft_pay_id_updated_at', time());
@@ -1348,25 +1243,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				)
 			);
 
-			$this->bytenft_log(
-				$log_prefix . ' Order status updated to pending',
-				[
-					'account_title' => $account['title']
-				]
-			);
-
 			$payment_link = $resp_data['data']['payment_link'] ?? null;
 
 			if (empty($payment_link)) {
 
 				$this->bytenft_log_error(
 					$log_prefix . ' Missing payment link in response',
-					$log_ctx
-				);
-
-				wc_get_logger()->error(
-					"Missing payment link for order {$order_id}",
-					$logger_context
 				);
 
 				return $this->build_response(
@@ -1380,7 +1262,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$this->bytenft_log(
 				$log_prefix . ' Payment initiated successfully',
-				array_merge($log_ctx, [
+				array_merge([
 					'payment_link' => $payment_link,
 					'pay_id' => $pay_id
 				])
@@ -1401,7 +1283,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$this->bytenft_log_error(
 				$log_prefix . ' Exception occurred during payment processing',
-				array_merge($log_ctx, [
+				array_merge([
 					'message' => $e->getMessage(),
 					'file'    => $e->getFile(),
 					'line'    => $e->getLine(),
