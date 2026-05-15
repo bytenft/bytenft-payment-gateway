@@ -1969,42 +1969,59 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private function log_info_once_per_session($key, $message, $context = []) {
 
-		if (!WC()->session) {
+		if (!function_exists('WC') || !WC()) {
 			return;
 		}
 
 		// -----------------------------
-		// HUMAN FLOW ONLY (NO REST/AJAX SPLIT)
+		// SAFE SESSION ACCESS
 		// -----------------------------
-		$flow = is_checkout()
-			? 'Checkout'
-			: 'Background';
+		if (!WC()->session) {
+			return; // don't force init (prevents crashes in REST/AJAX)
+		}
 
 		// -----------------------------
-		// CLEAN CONTEXT ONLY
+		// HUMAN FLOW LABEL
+		// -----------------------------
+		$flow = 'background';
+
+		if (is_checkout()) {
+			$flow = 'checkout';
+		} elseif (defined('DOING_AJAX') && DOING_AJAX) {
+			$flow = 'ajax';
+		} elseif (defined('REST_REQUEST') && REST_REQUEST) {
+			$flow = 'rest';
+		}
+
+		// -----------------------------
+		// CLEAN OPERATIONAL CONTEXT
 		// -----------------------------
 		$clean_context = [
-			'Gateway' => $this->id,
-			'Flow'    => $flow,
+			'gateway' => $this->id,
+			'flow'    => $flow,
 		];
 
 		if (WC()->cart) {
-			$clean_context['Cart Items'] = count(WC()->cart->get_cart());
-			$clean_context['Cart Total'] = (float) WC()->cart->get_total('raw');
+			$clean_context['cart_items'] = count(WC()->cart->get_cart());
+			$clean_context['cart_total'] = (float) WC()->cart->get_total('raw');
 		}
 
-		if (isset($context['reason'])) {
-			$clean_context['Reason'] = $this->gateway_visibility_label($context['reason']);
+		if (!empty($context['reason'])) {
+			$clean_context['reason'] = $this->gateway_visibility_label($context['reason']);
 		}
 
-		if (isset($context['account'])) {
-			$clean_context['Account'] = $context['account'];
+		if (!empty($context['account'])) {
+			$clean_context['account'] = $context['account'];
 		}
 
-		// -----------------------------
-		// STABLE UNIQUE KEY (IMPORTANT FIX)
-		// -----------------------------
-		$log_key = 'bytenft_once_' . md5($key . $this->id . is_checkout());
+	// -----------------------------
+	// STABLE DEDUP KEY (IMPORTANT FIX)
+	// -----------------------------
+		$session_id = WC()->session->get_customer_id();
+
+		$dedupe_source = $key . '|' . $this->id . '|' . $session_id . '|' . $flow;
+
+		$log_key = 'bytenft_log_' . md5($dedupe_source);
 
 		if (WC()->session->get($log_key)) {
 			return;
@@ -2012,6 +2029,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		WC()->session->set($log_key, true);
 
+		// -----------------------------
+		// FINAL LOG
+		// -----------------------------
 		$this->log_info($message, $clean_context);
 	}
 
