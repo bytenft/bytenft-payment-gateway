@@ -916,25 +916,22 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			]
 		);
 
-		// Acquire MySQL Named Lock
-		$lock_name = 'bytenft_order_' . (int)$order_id;
+		$lock_name = 'bytenft_order_' . $order_id;
 
-		$lock_result = $wpdb->get_var($wpdb->prepare("SELECT GET_LOCK(%s, 5)", $lock_name));
+		// Try lock
+		$lock_result = $wpdb->get_var(
+			$wpdb->prepare("SELECT GET_LOCK(%s, 3)", $lock_name)
+		);
 
-		if ("1" !== (string)$lock_result) {
-			return $this->build_response('fail', 'Payment already in progress.', [], 409, $order_id);
+		if ((string)$lock_result !== '1') {
+			return $this->build_response(
+				'fail',
+				'Payment already in progress. Please wait a few seconds and try again.',
+				[],
+				409,
+				$order_id
+			);
 		}
-
-		// Acquire Application Meta Lock (Atomic check)
-		$is_locked = $order->get_meta('_bytenft_lock');
-		if ('1' === (string)$is_locked) {
-			$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
-			return $this->build_response('fail', 'Payment already in progress.', [], 409, $order_id);
-		}
-
-		// Set the lock
-		$order->update_meta_data('_bytenft_lock', '1');
-		$order->save();
 
 		try {
 
@@ -1436,12 +1433,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				return $this->build_response('fail', 'An internal error occurred.', [], 500, $order_id);
 
 			} finally {
-
-				if ($order instanceof WC_Order) {
-
-					$order->update_meta_data('_bytenft_lock', '0');
-					$order->save();
-				}
 
 				$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
 			}
