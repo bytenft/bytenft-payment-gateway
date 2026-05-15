@@ -109,26 +109,37 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		| PHONE VALIDATION
 		|--------------------------------------------------------------------------
 		*/
-		$phone = $data['billing_phone'] ?? '';
+		$phone   = trim($data['billing_phone'] ?? '');
+		$country = strtoupper($data['billing_country'] ?? '');
 
 		if (!empty($phone)) {
 
-			$digits_only = preg_replace('/[^\d]/', '', $phone);
+			$country_calling_code = WC()->countries->get_country_calling_code($country);
 
-			if (strlen($digits_only) < 10) {
+			if (is_array($country_calling_code)) {
+				$country_calling_code = reset($country_calling_code);
+			}
+
+			$normalized = $this->bytenft_normalize_phone(
+				$phone,
+				$country_calling_code
+			);
+
+			if (empty($normalized['is_valid'])) {
 
 				ByteNFT_Payment_Gateway_Logger::warning(
 					'Classic checkout validation failed: invalid phone number',
 					[
 						'phone'      => $phone,
-						'digits'     => $digits_only,
-						'min_length' => 10
+						'country'    => $country,
+						'normalized' => $normalized,
+						'error'      => $normalized['error'] ?? null,
 					]
 				);
 
 				$errors->add(
 					'bytenft_phone_error',
-					__('Invalid phone number. Please enter a valid phone number.', 'bytenft-payment-gateway')
+					$normalized['error'] ?? __('Invalid phone number.', 'bytenft-payment-gateway')
 				);
 
 				return;
@@ -137,7 +148,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			ByteNFT_Payment_Gateway_Logger::info(
 				'Classic checkout phone validation passed',
 				[
-					'phone' => $phone
+					'phone'      => $phone,
+					'country'    => $country,
+					'normalized' => $normalized,
 				]
 			);
 		}
@@ -148,7 +161,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		|--------------------------------------------------------------------------
 		*/
 		$postcode = trim($data['billing_postcode'] ?? '');
-		$country  = strtoupper($data['billing_country'] ?? '');
 
 		if (!empty($postcode)) {
 
@@ -159,12 +171,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			switch ($country) {
 
 				case 'US':
-					// 12345 or 12345-6789
 					$valid = preg_match('/^\d{5}(-\d{4})?$/', $postcode);
 					break;
 
 				case 'CA':
-					// A1A1A1
 					$valid = preg_match('/^[A-Z]\d[A-Z]\d[A-Z]\d$/', $clean);
 					break;
 
@@ -212,41 +222,50 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		| PHONE VALIDATION
 		|--------------------------------------------------------------------------
 		*/
-		$phone = $request['billing_address']['phone'] ?? '';
+		$phone   = trim($request['billing_address']['phone'] ?? '');
+		$country = strtoupper($request['billing_address']['country'] ?? '');
 
 		if (!empty($phone)) {
 
-			$cleaned = preg_replace('/[\s\-().]/', '', $phone);
+			$country_calling_code = WC()->countries->get_country_calling_code($country);
 
-			$usPattern      = '/^(\+1|1)?\d{10}$/';
-			$euPattern      = '/^(\+|00)[1-9]\d{6,14}$/';
-			$generalPattern = '/^\+?\d{10,15}$/';
+			if (is_array($country_calling_code)) {
+				$country_calling_code = reset($country_calling_code);
+			}
 
-			$valid = preg_match($usPattern, $cleaned)
-				|| preg_match($euPattern, $cleaned)
-				|| preg_match($generalPattern, $cleaned);
+			$normalized = $this->bytenft_normalize_phone(
+				$phone,
+				$country_calling_code
+			);
 
-			if (!$valid) {
+			if (empty($normalized['is_valid'])) {
 
 				ByteNFT_Payment_Gateway_Logger::warning(
 					'Blocks checkout validation failed: invalid phone number',
 					[
-						'raw_phone' => $phone,
-						'cleaned'   => $cleaned,
-						'order_id'  => $order->get_id() ?? null
+						'phone'      => $phone,
+						'country'    => $country,
+						'normalized' => $normalized,
+						'order_id'   => $order->get_id() ?? null,
+						'error'      => $normalized['error'] ?? null,
 					]
 				);
 
 				throw new Exception(
-					'Invalid phone number. Please enter a valid phone number or leave it blank.'
+					$normalized['error'] ?? 'Invalid phone number.'
 				);
 			}
+
+			// Sync latest validated value to order
+			$order->set_billing_phone($phone);
 
 			ByteNFT_Payment_Gateway_Logger::info(
 				'Blocks checkout phone validation passed',
 				[
-					'phone'    => $phone,
-					'order_id' => $order->get_id() ?? null
+					'phone'      => $phone,
+					'country'    => $country,
+					'normalized' => $normalized,
+					'order_id'   => $order->get_id() ?? null,
 				]
 			);
 		}
@@ -257,7 +276,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		|--------------------------------------------------------------------------
 		*/
 		$postcode = trim($request['billing_address']['postcode'] ?? '');
-		$country  = strtoupper($request['billing_address']['country'] ?? '');
 
 		if (!empty($postcode)) {
 
@@ -299,6 +317,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'Invalid ZIP / postal code.'
 				);
 			}
+
+			$order->set_billing_postcode($postcode);
 
 			ByteNFT_Payment_Gateway_Logger::info(
 				'Blocks checkout postcode validation passed',
@@ -886,53 +906,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				400,
 				$order_id
 			);
-		}
-
-		// -------------------------------------------------
-		// PHONE VALIDATION (LATEST CHECKOUT VALUE)
-		// -------------------------------------------------
-
-		$billing_phone = '';
-
-		// Classic Checkout
-		if (!empty($_POST['billing_phone'])) {
-			$billing_phone = wc_clean(wp_unslash($_POST['billing_phone']));
-		}
-
-		// Block Checkout fallback
-		if (empty($billing_phone)) {
-			$billing_phone = $order->get_billing_phone();
-		}
-
-		if (!empty($billing_phone)) {
-
-			$cleaned = preg_replace('/[\s\-().]/', '', $billing_phone);
-
-			$valid = preg_match('/^\+?\d{10,15}$/', $cleaned);
-
-			if (!$valid) {
-
-				ByteNFT_Payment_Gateway_Logger::warning(
-					$log_prefix . ' Blocked invalid phone BEFORE account selection',
-					[
-						'order_id' => $order_id,
-						'phone'    => $billing_phone,
-						'cleaned'  => $cleaned,
-					]
-				);
-
-				return $this->build_response(
-					'fail',
-					'Invalid phone number',
-					[],
-					400,
-					$order_id
-				);
-			}
-
-			// Sync latest valid phone to order
-			$order->set_billing_phone($billing_phone);
-			$order->save();
 		}
 
 		ByteNFT_Payment_Gateway_Logger::info(
