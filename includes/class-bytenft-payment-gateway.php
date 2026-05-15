@@ -1978,42 +1978,35 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// -----------------------------
-		// STABLE FLOW (IMPORTANT FIX)
+		// 🔥 FIXED FLOW DETECTION (REAL WOOCOMMERCE SAFE)
 		// -----------------------------
 		$flow = 'background';
 
+		$is_ajax = defined('DOING_AJAX') && DOING_AJAX;
+		$is_rest = defined('REST_REQUEST') && REST_REQUEST;
+
+		$wc_ajax = $_REQUEST['wc-ajax'] ?? '';
+
 		if (is_checkout()) {
-			$flow = 'checkout';
-		}
-
-		if (defined('DOING_AJAX') && DOING_AJAX && isset($_REQUEST['wc-ajax'])) {
-			$flow = 'checkout_ajax';
-		}
-
-		if (defined('REST_REQUEST') && REST_REQUEST) {
-			$flow = 'checkout_rest';
+			$flow = 'checkout_page';
+		} elseif ($is_rest) {
+			$flow = 'checkout_block';
+		} elseif ($is_ajax && $wc_ajax === 'update_order_review') {
+			$flow = 'checkout_refresh';
 		}
 
 		// -----------------------------
-		// SAFE CART INFO (NO HASH)
-		// -----------------------------
-		$cart_items = 0;
-		$cart_total = 0;
-
-		if (WC()->cart) {
-			$cart_items = count(WC()->cart->get_cart());
-			$cart_total = (float) WC()->cart->get_total('raw');
-		}
-
-		// -----------------------------
-		// HUMAN CONTEXT ONLY
+		// SAFE CONTEXT
 		// -----------------------------
 		$clean_context = [
-			'Gateway'    => $this->id,
-			'Flow'       => $flow,
-			'Items'      => $cart_items,
-			'Total'      => $cart_total,
+			'Gateway' => $this->id,
+			'Flow'    => $flow,
 		];
+
+		if (WC()->cart) {
+			$clean_context['Items'] = count(WC()->cart->get_cart());
+			$clean_context['Total'] = (float) WC()->cart->get_total('raw');
+		}
 
 		if (isset($context['reason'])) {
 			$clean_context['Reason'] = $this->gateway_visibility_label($context['reason']);
@@ -2024,15 +2017,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// -----------------------------
-		// 🔥 FIX: STABLE KEY (NO FLOW SPLIT)
+		// 🔥 FIX: STABLE SESSION KEY
 		// -----------------------------
-		$session_scope = 'bytenft_' . md5($key . $this->id);
+		$session_key = 'bytenft_log_' . md5($key . $this->id);
 
-		if (WC()->session->get($session_scope)) {
+		if (WC()->session->get($session_key)) {
 			return;
 		}
 
-		WC()->session->set($session_scope, true);
+		WC()->session->set($session_key, true);
 
 		$this->log_info($message, $clean_context);
 	}
