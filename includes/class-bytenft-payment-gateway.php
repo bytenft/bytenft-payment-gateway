@@ -4,6 +4,7 @@ if (!defined('ABSPATH')) {
 }
 
 require_once plugin_dir_path(__FILE__) . 'config.php';
+require_once plugin_dir_path(__FILE__) . 'class-bytenft-payment-logger.php';
 
 class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 {
@@ -142,28 +143,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return $this->base_url . $endpoint;
 	}
 
-	protected function log_info($message, $context = [])
-	{
-		if (!function_exists('wc_get_logger')) {
-			return;
-		}
-
-		$logger = wc_get_logger();
-
-		$entry = [
-			'source' => 'bytenft-payment-gateway'
-		];
-
-		// Flatten context (VERY IMPORTANT FIX)
-		if (!empty($context)) {
-			foreach ($context as $key => $value) {
-				$entry[$key] = is_scalar($value) ? $value : wp_json_encode($value);
-			}
-		}
-
-		$logger->info($message, $entry);
-	}
-
 	public function bytenft_process_admin_options() {
 		$enabled     = isset($_POST['woocommerce_' . $this->id . '_enabled']) ? 'yes' : 'no';
 		$accounts    = isset($_POST['accounts']) ? $_POST['accounts'] : [];
@@ -186,7 +165,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		parent::process_admin_options();
 
 		if (!isset($_POST['bytenft_accounts_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['bytenft_accounts_nonce'])), 'bytenft_accounts_nonce_action')) {
-			$this->log_info('CSRF check failed during admin options update.');
+			ByteNFT_Payment_Gateway_Logger::log('CSRF check failed during admin options update.');
 			wp_die(esc_html__('Security check failed!', 'bytenft-payment-gateway'));
 		}
 
@@ -212,7 +191,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		if (!is_array($raw_accounts) || empty($raw_accounts)) {
 			$errors[] = __('You cannot delete all accounts. At least one valid payment account must be configured.', 'bytenft-payment-gateway');
-			$this->log_info('No accounts submitted in admin options.');
+			ByteNFT_Payment_Gateway_Logger::log('No accounts submitted in admin options.');
 		}
 
 		foreach ((array) $raw_accounts as $account) {
@@ -239,20 +218,20 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			if (empty($account_title) || empty($live_public_key) || empty($live_secret_key)) {
 				$errors[] = sprintf(__('Account "%s": Title, Live Public Key, and Live Secret Key are required.', 'bytenft-payment-gateway'), $account_title);
-				$this->log_info("Validation failed: missing required fields for account '{$account_title}'");
+				ByteNFT_Payment_Gateway_Logger::log("Validation failed: missing required fields for account '{$account_title}'");
 				continue;
 			}
 
 			$live_combined = $live_public_key . '|' . $live_secret_key;
 			if (in_array($live_combined, $unique_live_keys, true)) {
 				$errors[] = sprintf(__('Account "%s": Live Public Key and Live Secret Key must be unique.', 'bytenft-payment-gateway'), $account_title);
-				$this->log_info("Validation failed: duplicate live keys for account '{$account_title}'");
+				ByteNFT_Payment_Gateway_Logger::log("Validation failed: duplicate live keys for account '{$account_title}'");
 				continue;
 			}
 
 			if ($live_public_key === $live_secret_key) {
 				$errors[] = sprintf(__('Account "%s": Live Public Key and Live Secret Key must be different.', 'bytenft-payment-gateway'), $account_title);
-				$this->log_info("Validation warning: live keys are identical for account '{$account_title}'");
+				ByteNFT_Payment_Gateway_Logger::log("Validation warning: live keys are identical for account '{$account_title}'");
 			}
 
 			$unique_live_keys[] = $live_combined;
@@ -261,12 +240,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$sandbox_combined = $sandbox_public_key . '|' . $sandbox_secret_key;
 				if (in_array($sandbox_combined, $unique_sandbox_keys, true)) {
 					$errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key must be unique.', 'bytenft-payment-gateway'), $account_title);
-					$this->log_info("Validation failed: duplicate sandbox keys for account '{$account_title}'");
+					ByteNFT_Payment_Gateway_Logger::log("Validation failed: duplicate sandbox keys for account '{$account_title}'");
 					continue;
 				}
 				if ($sandbox_public_key === $sandbox_secret_key) {
 					$errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key must be different.', 'bytenft-payment-gateway'), $account_title);
-					$this->log_info("Validation warning: sandbox keys are identical for account '{$account_title}'");
+					ByteNFT_Payment_Gateway_Logger::log("Validation warning: sandbox keys are identical for account '{$account_title}'");
 				}
 				$unique_sandbox_keys[] = $sandbox_combined;
 			}
@@ -286,12 +265,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	            'checkout_subtitle'  => $checkout_subtitle,
 			];
 
-			$this->log_info("Validated and added account '{$account_title}' to saved list.");
+			ByteNFT_Payment_Gateway_Logger::log("Validated and added account '{$account_title}' to saved list.");
 		}
 
 		if (empty($valid_accounts) && empty($errors)) {
 			$errors[] = __('You cannot delete all accounts. At least one valid payment account must be configured.', 'bytenft-payment-gateway');
-			$this->log_info('All submitted accounts failed validation. No accounts will be saved.');
+			ByteNFT_Payment_Gateway_Logger::log('All submitted accounts failed validation. No accounts will be saved.');
 		}
 
 		if (empty($errors)) {
@@ -322,19 +301,19 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			]);
 
 			$this->admin_notices->bytenft_add_notice('settings_success', 'notice notice-success', __('Settings saved successfully.', 'bytenft-payment-gateway'));
-			$this->log_info('Account settings updated successfully.', ['count' => count($valid_accounts)]);
+			ByteNFT_Payment_Gateway_Logger::log('Account settings updated successfully.', ['count' => count($valid_accounts)]);
 
 			if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
 				$loader = BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
 				if (method_exists($loader, 'handle_cron_event')) {
 					$loader->handle_cron_event();
-					$this->log_info('Triggered BYTENFT_PAYMENT_GATEWAY_Loader::handle_cron_event() after settings save.');
+					ByteNFT_Payment_Gateway_Logger::log('Triggered BYTENFT_PAYMENT_GATEWAY_Loader::handle_cron_event() after settings save.');
 				}
 			}
 		} else {
 			foreach ($errors as $error) {
 				$this->admin_notices->bytenft_add_notice('settings_error', 'notice notice-error', $error);
-				$this->log_info("Admin settings error: {$error}");
+				ByteNFT_Payment_Gateway_Logger::log("Admin settings error: {$error}");
 			}
 		}
 
@@ -350,7 +329,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$secretKey  = $useSandbox ? $account['sandbox_secret_key'] : $account['live_secret_key'];
 			$publicKey  = $useSandbox ? $account['sandbox_public_key'] : $account['live_public_key'];
 
-			$this->log_info("Checking merchant status for account '{$account['title']}'", [
+			ByteNFT_Payment_Gateway_Logger::log("Checking merchant status for account '{$account['title']}'", [
 				'useSandbox' => $useSandbox,
 				'publicKey'  => $publicKey,
 			]);
@@ -386,9 +365,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			];
 
 			if ($isError) {
-				$this->log_info("Account '{$account['title']}' is inactive", ['response' => $body]);
+				ByteNFT_Payment_Gateway_Logger::log("Account '{$account['title']}' is inactive", ['response' => $body]);
 			} else {
-				$this->log_info("Account '{$account['title']}' is active");
+				ByteNFT_Payment_Gateway_Logger::log("Account '{$account['title']}' is active");
 			}
 		}
 
@@ -397,7 +376,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return true;
 		}
 
-		$this->log_info('No active account. Removing bytenft gateway.');
+		ByteNFT_Payment_Gateway_Logger::log('No active account. Removing bytenft gateway.');
 		return false;
 	}
 
@@ -830,102 +809,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					400,
 					$order_id
 				);
-			}
-
-			// -------------------------------------------------
-			// 3.1 PHONE VALIDATION
-			// -------------------------------------------------
-			$billing_phone = $order->get_billing_phone();
-
-			if (!empty($billing_phone)) {
-
-				$cleaned = preg_replace('/[\s\-().]/', '', $billing_phone);
-
-				$usPattern     = '/^(\+1|1)?\d{10}$/';
-				$euPattern     = '/^(\+|00)[1-9]\d{6,14}$/';
-				$generalPattern = '/^\+?\d{10,15}$/';
-
-				$valid = preg_match($usPattern, $cleaned)
-					|| preg_match($euPattern, $cleaned)
-					|| preg_match($generalPattern, $cleaned);
-
-				// ❌ INVALID PHONE → STOP FLOW HERE
-				if (!$valid) {
-
-					if (is_checkout()) {
-						wc_add_notice(
-							__('Please enter a valid phone number or leave it blank.', 'bytenft-payment-gateway'),
-							'error'
-						);
-					}
-
-					return $this->build_response(
-						'fail',
-						'Invalid phone number',
-						[],
-						400,
-						$order_id
-					);
-				}
-			}
-
-			// -------------------------------------------------
-			// 3.2 ZIP Code VALIDATION (FIXED)
-			// -------------------------------------------------
-
-			$billing_postcode = $order->get_billing_postcode();
-			
-			// Classic checkout fallback
-			if (empty($billing_postcode) && !empty($_POST['billing_postcode'])) {
-				$billing_postcode = sanitize_text_field(wp_unslash($_POST['billing_postcode']));
-			}
-				
-			$country = $order->get_billing_country();
-			// WooCommerce Blocks fallback
-			if (empty($billing_postcode) && !empty($_POST['billing_address']['postcode'])) {
-				$billing_postcode = sanitize_text_field(
-					wp_unslash($_POST['billing_address']['postcode'])
-				);
-			}
-
-			if (!empty($billing_postcode)) {
-
-				$clean = strtoupper(trim($billing_postcode));
-				$clean = preg_replace('/\s+/', '', $clean);
-
-				$valid = false;
-
-				switch ($country) {
-
-					case 'US':
-						// 12345 or 12345-6789
-						$valid = preg_match('/^\d{5}(-\d{4})?$/', $clean);
-						break;
-
-					case 'CA':
-						// A1A1A1 or A1A 1A1
-						$valid = preg_match('/^[A-Z]\d[A-Z]\d[A-Z]\d$/', $clean);
-						break;
-
-					case 'GB':
-						$valid = preg_match('/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/', $clean);
-						break;
-
-					default:
-						$valid = preg_match('/^[A-Z0-9\- ]{3,10}$/', $clean);
-						break;
-				}
-
-				if (!$valid) {
-
-					return $this->build_response(
-						'fail',
-						'Invalid postal/ZIP code',
-						[],
-						400,
-						$order_id
-					);
-				}
 			}
 
 			// -------------------------------------------------
@@ -1678,7 +1561,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// =====================================================
 		if (empty($accounts)) {
 
-			$this->log_info(
+			ByteNFT_Payment_Gateway_Logger::log(
 				"ByteNFT Gateway Decision",
 				[
 					'result' => 'HIDDEN',
@@ -1758,7 +1641,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// =====================================================
 		// STEP 10: SINGLE FINAL LOG ONLY
 		// =====================================================
-		$this->log_info(
+		ByteNFT_Payment_Gateway_Logger::log(
 			"ByteNFT Gateway Decision",
 			[
 				'result' => $selected ? 'SHOWN' : 'HIDDEN',
@@ -1889,7 +1772,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		WC()->session->set($session_key, true);
 
-		$this->log_info($message, $clean_context);
+		ByteNFT_Payment_Gateway_Logger::log($message, $clean_context);
 	}
 
 	protected function validate_account($account, $index) {
