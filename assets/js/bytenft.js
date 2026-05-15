@@ -303,13 +303,13 @@
          * RESPONSE HANDLER
          * ========================================================= */
 
-        handleResponse: function (response) {
+       handleResponse: function (response) {
 
-            const self = this;
+        const self = this;
 
-            try {
+        try {
 
-                if (typeof response === 'string') {
+            if (typeof response === 'string') {
 
                     try {
                         response = JSON.parse(response);
@@ -332,66 +332,70 @@
                 console.log('[Bytenft] parsed response', response);
 
                 const success =
-                    response.result === 'success'
-                    || response.success === true;
+                    response?.result === 'success' ||
+                    response?.success === true ||
+                    response?.data?.payment_status === 'success' ||
+                    response?.data?.payment_status === 'paid';
 
                 const redirect =
-                    response.redirect
-                    || response.data?.redirect
-                    || null;
+                    response.redirect ||
+                    response.data?.redirect ||
+                    null;
 
                 const orderId =
-                    response.order_id
-                    || response.data?.order_id
-                    || null;
+                    response.order_id ||
+                    response.data?.order_id ||
+                    null;
 
                 const errorMessage =
-                    response.messages
-                    || response.message
-                    || response.data?.message
-                    || 'Payment failed.';
+                    response?.message ||
+                    response?.messages ||
+                    response?.data?.message ||
+                    response?.data?.messages ||
+                    response?.data?.error ||
+                    response?.error ||
+                    'Your payment could not be completed. Please try again.';
 
                 self.state.orderId = orderId;
 
-                // FAILURE
-                if (!success) {
+                // =====================================================
+                // ❌ FAILURE (FIXED - ERROR DISPLAY STABLE)
+                // =====================================================
+                if (!success){
+
+                    const msg = message || 'Your payment could not be completed. Please try again.';
 
                     self.cleanupPopup();
 
-                    self.showCheckoutError(errorMessage);
+                    self.showCheckoutError(msg);
 
-                    self.reset();
+                    // 🔥 IMPORTANT: delay reset so Woo doesn't wipe DOM instantly
+                    setTimeout(function () {
+                        self.reset();
+                    }, 400);
 
                     return;
                 }
 
-                // SUCCESS
-                if (redirect) {
+                // =====================================================
+                // ✅ SUCCESS
+                // =====================================================
+                if (redirect && typeof redirect === 'string' && redirect.length > 5) {
 
-                    if (
-                        self.state.popup &&
-                        !self.state.popup.closed
-                    ) {
-
+                    if (self.state.popup && !self.state.popup.closed) {
                         self.state.popup.location.href = redirect;
-
                         self.trackPopupClose();
-
                     } else {
-
                         window.location.href = redirect;
                     }
 
                     self.reset(true);
-
                     return;
                 }
 
                 self.cleanupPopup();
 
-                self.showCheckoutError(
-                    'Missing redirect URL.'
-                );
+                self.showCheckoutError('Missing redirect URL.');
 
                 self.reset();
 
@@ -401,9 +405,7 @@
 
                 self.cleanupPopup();
 
-                self.showCheckoutError(
-                    'Unexpected checkout error.'
-                );
+                self.showCheckoutError('Unexpected checkout error.');
 
                 self.reset();
             }
@@ -775,50 +777,57 @@
             let fieldsHtml = '';
 
             if (fields.length) {
-
                 fieldsHtml = `
-                    <ul style="margin-top:10px;">
+                    <ul class="bytenft-error-fields">
                         ${fields.map(field => `<li>${field}</li>`).join('')}
                     </ul>
                 `;
             }
 
             const html = `
-                <div class="woocommerce-notices-wrapper">
-
-                    <ul class="woocommerce-error" role="alert">
-
-                        <li>
-                            <strong>${message}</strong>
-                        </li>
-
+                <div class="woocommerce-notices-wrapper bytenft-error-wrap">
+                    <div class="woocommerce-error bytenft-error-box" role="alert">
+                        <strong>${message}</strong>
                         ${fieldsHtml}
-
-                    </ul>
-
+                    </div>
                 </div>
             `;
 
-            const $block = $('.wc-block-checkout__form');
+            const inject = () => {
 
-            if ($block.length) {
-                $block.prepend(html);
-            }
+                const $block = $('.wc-block-checkout__form');
+                const $classic = $('form.checkout');
 
-            const $classic = $('form.checkout');
+                if ($block.length) {
+                    $block.prepend(html);
+                }
 
-            if ($classic.length) {
-                $classic.prepend(html);
-            }
+                if ($classic.length) {
+                    $classic.prepend(html);
+                }
 
-            const $notice = $('.woocommerce-notices-wrapper');
+                // 🔥 fallback (VERY IMPORTANT for Woo re-render)
+                if (!$block.length && !$classic.length) {
+                    $('body').prepend(html);
+                }
+            };
 
-            if ($notice.length) {
+            inject();
 
-                $('html, body').animate({
-                    scrollTop: $notice.offset().top - 100
-                }, 300);
-            }
+            // 🔥 CRITICAL FIX: Woo overrides DOM after AJAX → re-inject
+            setTimeout(inject, 50);
+            setTimeout(inject, 200);
+            setTimeout(inject, 500);
+
+            // scroll
+            setTimeout(() => {
+                const $notice = $('.woocommerce-notices-wrapper');
+                if ($notice.length) {
+                    $('html, body').animate({
+                        scrollTop: $notice.offset().top - 80
+                    }, 300);
+                }
+            }, 100);
         },
 
         clearCheckoutErrors: function () {
