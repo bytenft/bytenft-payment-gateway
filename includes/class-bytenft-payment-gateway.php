@@ -983,10 +983,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		ByteNFT_Payment_Gateway_Logger::info(
-			'Order loaded successfully',
+			"Payment initiated",
 			[
 				'order_id' => $order_id,
-				'status'   => $order->get_status(),
+				'status'   =>  $order->get_status()
 			]
 		);
 

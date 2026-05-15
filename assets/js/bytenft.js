@@ -332,8 +332,10 @@
                 console.log('[Bytenft] parsed response', response);
 
                 const success =
-                    response.result === 'success'
-                    || response.success === true;
+                    response?.result === 'success' ||
+                    response?.success === true ||
+                    response?.data?.payment_status === 'success' ||
+                    response?.data?.payment_status === 'paid';
 
                 const redirect =
                     response.redirect
@@ -346,10 +348,13 @@
                     || null;
 
                 const errorMessage =
-                    response.messages
-                    || response.message
-                    || response.data?.message
-                    || 'Payment failed.';
+                response?.message ||
+                response?.messages ||
+                response?.data?.message ||
+                response?.data?.messages ||
+                response?.data?.error ||
+                response?.error ||
+                'Your payment could not be completed. Please try again.';
 
                 self.state.orderId = orderId;
 
@@ -366,7 +371,7 @@
                 }
 
                 // SUCCESS
-                if (redirect) {
+                if (redirect && typeof redirect === 'string' && redirect.length > 5){
 
                     if (
                         self.state.popup &&
