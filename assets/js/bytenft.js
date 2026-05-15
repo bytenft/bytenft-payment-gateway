@@ -552,6 +552,12 @@
                                 );
 
                                 return;
+                            } else {
+                                self.cleanupPopup();
+
+                                self.showCheckoutError(
+                                    response?.message
+                                );
                             }
 
                             // ❌ FAILED PAYMENT
