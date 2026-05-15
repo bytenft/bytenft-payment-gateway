@@ -151,7 +151,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$logger = wc_get_logger();
 
 		$entry = [
-			'source' => 'bytenft-gateway'
+			'source' => 'bytenft-payment-gateway'
 		];
 
 		// Flatten context (VERY IMPORTANT FIX)
