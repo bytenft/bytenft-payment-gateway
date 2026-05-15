@@ -142,13 +142,26 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return $this->base_url . $endpoint;
 	}
 
-	protected function log_info($message, $context = []) {
-		$logger = wc_get_logger();
-		$data   = ['source' => 'bytenft-payment-gateway'];
-		if (!empty($context)) {
-			$data['context'] = $context;
+	protected function log_info($message, $context = [])
+	{
+		if (!function_exists('wc_get_logger')) {
+			return;
 		}
-		$logger->info($message, $data);
+
+		$logger = wc_get_logger();
+
+		$entry = [
+			'source' => 'bytenft-gateway'
+		];
+
+		// Flatten context (VERY IMPORTANT FIX)
+		if (!empty($context)) {
+			foreach ($context as $key => $value) {
+				$entry[$key] = is_scalar($value) ? $value : wp_json_encode($value);
+			}
+		}
+
+		$logger->info($message, $entry);
 	}
 
 	public function bytenft_process_admin_options() {
@@ -1712,29 +1725,41 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$this->selected_account_for_display = null;
 
 		// -----------------------------
-		// STEP 1: Hard safety checks
+		// STEP 1: Safety checks
 		// -----------------------------
 		if (!isset($available_gateways[$gateway_id]) || !WC()->cart) {
 			return $available_gateways;
 		}
 
 		// -----------------------------
-		// STEP 2: Strict checkout context detection
-		// (FIX: prevents false "background" runs)
+		// STEP 2: Checkout context detection (CLASSIC + BLOCKS + AJAX)
 		// -----------------------------
-		$is_rest_checkout = defined('REST_REQUEST') && REST_REQUEST && !is_admin();
-		$is_ajax_checkout = defined('DOING_AJAX') && DOING_AJAX && isset($_REQUEST['wc-ajax']);
+		$is_ajax_checkout =
+			defined('DOING_AJAX') &&
+			DOING_AJAX &&
+			isset($_REQUEST['wc-ajax']) &&
+			$_REQUEST['wc-ajax'] === 'update_order_review';
 
-		if (!is_checkout() && !$is_rest_checkout && !$is_ajax_checkout) {
+		$is_blocks_checkout =
+			defined('REST_REQUEST') &&
+			REST_REQUEST &&
+			!is_admin();
+
+		$is_checkout_context =
+			is_checkout() ||
+			$is_ajax_checkout ||
+			$is_blocks_checkout;
+
+		if (!$is_checkout_context) {
 			return $available_gateways;
 		}
 
 		// -----------------------------
-		// STEP 3: Human flow label
+		// STEP 3: Flow label (human readable)
 		// -----------------------------
 		$flow = 'Checkout (Classic)';
 
-		if ($is_rest_checkout) {
+		if ($is_blocks_checkout) {
 			$flow = 'Checkout (Blocks)';
 		} elseif ($is_ajax_checkout) {
 			$flow = 'Checkout (AJAX)';
@@ -1744,6 +1769,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// STEP 4: Cart info
 		// -----------------------------
 		$amount = (float) WC()->cart->get_total('raw');
+
 		if ($amount < 0.01) {
 			$amount = (float) (WC()->cart->get_totals()['total'] ?? 0);
 		}
@@ -1759,26 +1785,33 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$accounts = $this->get_all_accounts();
 
+		// -----------------------------
+		// DECISION LOG (NO ACCOUNTS)
+		// -----------------------------
 		if (empty($accounts)) {
 
 			$this->log_info(
 				"ByteNFT Gateway Decision: HIDDEN",
 				[
 					'reason'  => 'No merchant accounts configured',
-					'cart'    => "$items items | Total: $amount",
-					'context' => $flow
+					'items'   => $items,
+					'total'   => $amount,
+					'flow'    => $flow
 				]
 			);
 
 			return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 
+		// -----------------------------
+		// STEP 6: Sort accounts
+		// -----------------------------
 		usort($accounts, fn($a, $b) =>
 			($a['priority'] ?? 1) <=> ($b['priority'] ?? 1)
 		);
 
 		// -----------------------------
-		// STEP 6: Evaluation
+		// STEP 7: Evaluate accounts
 		// -----------------------------
 		$selected = null;
 		$reason   = 'No eligible merchant account';
@@ -1795,6 +1828,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				? ($account['sandbox_secret_key'] ?? '')
 				: ($account['live_secret_key'] ?? '');
 
+			// skip invalid config
 			if (empty($public) || empty($secret)) {
 				continue;
 			}
@@ -1808,7 +1842,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$cache = 'bytenft_' . md5($public . $amount);
 
+			// -----------------------------
 			// STATUS CHECK
+			// -----------------------------
 			$status = $this->get_cached_api_response(
 				$this->get_api_url('/api/check-merchant-status'),
 				$data,
@@ -1820,7 +1856,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				continue;
 			}
 
+			// -----------------------------
 			// LIMIT CHECK
+			// -----------------------------
 			$limit = $this->get_cached_api_response(
 				$this->get_api_url('/api/dailylimit'),
 				$data,
@@ -1832,22 +1870,26 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				continue;
 			}
 
+			// -----------------------------
+			// SELECT ACCOUNT
+			// -----------------------------
 			$selected = $account;
 			$reason   = 'Valid merchant account found';
 			break;
 		}
 
 		// -----------------------------
-		// STEP 7: FINAL SINGLE LOG ONLY
+		// STEP 8: FINAL DECISION LOG (SINGLE SOURCE OF TRUTH)
 		// -----------------------------
 		if (!$selected) {
 
 			$this->log_info(
 				"ByteNFT Gateway Decision: HIDDEN",
 				[
-					'reason'  => $reason,
-					'cart'    => "$items items | Total: $amount",
-					'context' => $flow
+					'reason' => $reason,
+					'items'  => $items,
+					'total'  => $amount,
+					'flow'   => $flow
 				]
 			);
 
@@ -1855,7 +1897,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// -----------------------------
-		// STEP 8: SHOW GATEWAY
+		// STEP 9: SHOW GATEWAY
 		// -----------------------------
 		$this->selected_account_for_display = $selected;
 
@@ -1864,8 +1906,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			[
 				'reason'  => $reason,
 				'account' => $selected['title'] ?? 'Unknown',
-				'cart'    => "$items items | Total: $amount",
-				'context' => $flow
+				'items'   => $items,
+				'total'   => $amount,
+				'flow'    => $flow
 			]
 		);
 
