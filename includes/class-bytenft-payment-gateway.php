@@ -1083,7 +1083,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$data = $this->bytenft_prepare_payment_data($order, $public_key, $secret_key);
 
 				if (is_array($data) && ($data['result'] ?? '') === 'fail') {
-					$used_accounts[] = $public_key;
+					$used_accounts[] = trim($account[$mode . '_public_key'] ?? '');
 					continue;
 				}
 
@@ -1101,7 +1101,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				]);
 
 				if (is_wp_error($limit_resp)) {
-					$used_accounts[] = $public_key;
+					$used_accounts[] = trim($account[$mode . '_public_key'] ?? '');
 					continue;
 				}
 
@@ -1110,7 +1110,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				if (($limit_data['status'] ?? '') === 'error') {
 					$last_error_data = $limit_data;
 
-					$used_accounts[] = $public_key;
+					$used_accounts[] = trim($account[$mode . '_public_key'] ?? '');
 
 					continue;
 				}
@@ -2197,42 +2197,66 @@ private function get_routing_sorted_accounts(array $accounts): array {
 	 * Get the next available payment account.
 	 * Uses the already-loaded $this->sandbox value — no re-instantiation needed.
 	 */
-	private function get_next_available_account($used_accounts = []){
-		
+	private function get_next_available_account($used_accounts = [])
+	{
 		$settings = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
-		if (is_string($settings)) $settings = maybe_unserialize($settings);
-		if (!is_array($settings)) return false;
 
-		$mode       = $this->sandbox ? 'sandbox' : 'live';
-		$status_key = $mode . '_status';
-		$public_key = $mode . '_public_key';
-		$secret_key = $mode . '_secret_key';
-	
+		if (is_string($settings)) {
+			$settings = maybe_unserialize($settings);
+		}
 
-		$available_accounts = array_filter($settings, function ($account) use ($used_accounts, $status_key, $public_key, $secret_key) {
-			if (in_array($account[$public_key] ?? '', $used_accounts, true)) {
-				return false;
-			}
-			if (!isset($account[$status_key]) || !in_array(strtolower($account[$status_key]), ['active'], true)) {
-				return false;
-			}
-			if (empty($account[$public_key]) || empty($account[$secret_key])) {
-				return false;
-			}
-			return true;
-		});
-
-		if (empty($available_accounts)) return false;
-
-		$available_accounts = $this->get_routing_sorted_accounts(array_values($available_accounts));
-
-		if (empty($available_accounts)) {
+		if (!is_array($settings)) {
 			return false;
 		}
-		$account = $available_accounts[0];
-		$sanitized_title = preg_replace('/\s+/', '_', $account['title'] ?? 'account');
+
+		$mode = $this->sandbox ? 'sandbox' : 'live';
+
+		$status_key = $mode . '_status';
+		$public_key_key = $mode . '_public_key';
+		$secret_key_key = $mode . '_secret_key';
+
+		$available = [];
+
+		foreach ($settings as $account) {
+
+			$public_key = trim($account[$public_key_key] ?? '');
+
+			// normalize used accounts too
+			$normalized_used = array_map('trim', $used_accounts);
+
+			if (in_array($public_key, $normalized_used, true)) {
+				continue;
+			}
+
+			$status = strtolower(trim($account[$status_key] ?? ''));
+
+			if ($status !== 'active') {
+				continue;
+			}
+
+			if (empty($public_key) || empty($account[$secret_key_key])) {
+				continue;
+			}
+
+			$available[] = $account;
+		}
+
+		if (empty($available)) {
+			return false;
+		}
+
+		$available = $this->get_routing_sorted_accounts($available);
+
+		if (empty($available)) {
+			return false;
+		}
+
+		$account = $available[0];
+
+		$sanitized_title = sanitize_title($account['title'] ?? 'account');
+
 		$account['lock_key'] = "bytenft_lock_{$sanitized_title}";
-		
+
 		return $account;
 	}
 
