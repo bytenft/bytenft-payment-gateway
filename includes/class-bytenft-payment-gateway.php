@@ -1725,27 +1725,25 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$this->selected_account_for_display = null;
 
 		// =====================================================
-		// STEP 1: CART SAFETY (DO NOT BLOCK TOO EARLY)
+		// STEP 1: SAFE CART CHECK
 		// =====================================================
 		if (!WC()->cart) {
 			return $available_gateways;
 		}
 
 		// =====================================================
-		// STEP 2: CHECKOUT CONTEXT (FIXED FOR BLOCKS + AJAX)
+		// STEP 2: CHECKOUT CONTEXT (STRICT)
 		// =====================================================
 		$is_ajax = function_exists('wp_doing_ajax') && wp_doing_ajax();
 		$is_blocks = defined('REST_REQUEST') && REST_REQUEST && !is_admin();
 		$is_checkout_page = function_exists('is_checkout') && is_checkout();
 
-		$is_checkout_context = $is_checkout_page || $is_ajax || $is_blocks;
-
-		if (!$is_checkout_context) {
+		if (!$is_checkout_page && !$is_ajax && !$is_blocks) {
 			return $available_gateways;
 		}
 
 		// =====================================================
-		// STEP 3: FLOW LABEL (HUMAN READABLE)
+		// STEP 3: FLOW LABEL
 		// =====================================================
 		$flow = 'Checkout (Classic)';
 
@@ -1766,7 +1764,26 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$items = count(WC()->cart->get_cart());
 
 		// =====================================================
-		// STEP 5: ACCOUNTS
+		// STEP 5: REQUEST FINGERPRINT (REAL FIX)
+		// =====================================================
+		static $executed = false;
+
+		$fingerprint = md5(json_encode([
+			'flow'   => $flow,
+			'items'  => $items,
+			'total'  => $amount,
+			'ajax'   => $is_ajax,
+			'blocks' => $is_blocks
+		]));
+
+		if ($executed === $fingerprint) {
+			return $available_gateways;
+		}
+
+		$executed = $fingerprint;
+
+		// =====================================================
+		// STEP 6: LOAD ACCOUNTS
 		// =====================================================
 		if (!method_exists($this, 'get_all_accounts')) {
 			return $available_gateways;
@@ -1775,13 +1792,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$accounts = $this->get_all_accounts();
 
 		// =====================================================
-		// STEP 6: NO ACCOUNTS → SINGLE LOG
+		// STEP 7: NO ACCOUNTS
 		// =====================================================
 		if (empty($accounts)) {
 
 			$this->log_info(
-				"ByteNFT Gateway Decision: HIDDEN",
+				"ByteNFT Gateway Decision",
 				[
+					'result' => 'HIDDEN',
 					'reason' => 'No merchant accounts configured',
 					'items'  => $items,
 					'total'  => $amount,
@@ -1793,14 +1811,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// =====================================================
-		// STEP 7: SORT
+		// STEP 8: SORT
 		// =====================================================
 		usort($accounts, fn($a, $b) =>
 			($a['priority'] ?? 1) <=> ($b['priority'] ?? 1)
 		);
 
 		// =====================================================
-		// STEP 8: EVALUATION
+		// STEP 9: EVALUATION
 		// =====================================================
 		$selected = null;
 		$reason   = 'No eligible merchant account';
@@ -1856,42 +1874,31 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// =====================================================
-		// STEP 9: FINAL DECISION LOG (ONLY ONCE)
+		// STEP 10: SINGLE FINAL LOG ONLY
 		// =====================================================
-		if (!$selected) {
-
-			$this->log_info(
-				"ByteNFT Gateway Decision: HIDDEN",
-				[
-					'reason' => $reason,
-					'items'  => $items,
-					'total'  => $amount,
-					'flow'   => $flow
-				]
-			);
-
-			return $this->hide_gateway($available_gateways, $gateway_id);
-		}
-
-		// =====================================================
-		// STEP 10: SHOW
-		// =====================================================
-		$this->selected_account_for_display = $selected;
-
 		$this->log_info(
-			"ByteNFT Gateway Decision: SHOWN",
+			"ByteNFT Gateway Decision",
 			[
-				'reason'  => $reason,
-				'account' => $selected['title'] ?? 'Unknown',
-				'items'   => $items,
-				'total'   => $amount,
-				'flow'    => $flow
+				'result' => $selected ? 'SHOWN' : 'HIDDEN',
+				'reason' => $reason,
+				'items'  => $items,
+				'total'  => $amount,
+				'flow'   => $flow,
+				'account'=> $selected['title'] ?? null
 			]
 		);
 
+		// =====================================================
+		// STEP 11: RETURN RESULT
+		// =====================================================
+		$this->selected_account_for_display = $selected;
+
+		if (!$selected) {
+			return $this->hide_gateway($available_gateways, $gateway_id);
+		}
+
 		return $available_gateways;
 	}
-
 	private function send_plugin_logs($accounts, $public_key, $secret_key, $amount, $gateway_loaded, $pluginLogApiUrl, $force_refresh)
 	{
 		$plugin_version = BYTENFT_PLUGIN_VERSION;
