@@ -6,29 +6,55 @@ if (!defined('ABSPATH')) {
 
 class ByteNFT_Payment_Gateway_Logger {
 
-	/**
-	 * Central logging utility for ByteNFT Gateway
-	 */
-	public static function log($message, $context = [])
+	private static function get_logger()
 	{
 		if (!function_exists('wc_get_logger')) {
-			return;
+			return null;
 		}
 
-		$logger = wc_get_logger();
+		return wc_get_logger();
+	}
 
+	private static function format_context($context)
+	{
 		$entry = [
 			'source' => 'bytenft-payment-gateway'
 		];
 
-		if (!empty($context)) {
-			foreach ($context as $key => $value) {
-				$entry[$key] = is_scalar($value)
-					? $value
-					: wp_json_encode($value);
-			}
+		if (!is_array($context)) {
+			return $entry;
 		}
 
-		$logger->info($message, $entry);
+		foreach ($context as $key => $value) {
+			$entry[$key] = is_scalar($value)
+				? $value
+				: wp_json_encode($value);
+		}
+
+		return $entry;
+	}
+
+	public static function info($message, $context = [])
+	{
+		$logger = self::get_logger();
+		if (!$logger) return;
+
+		$logger->info($message, self::format_context($context));
+	}
+
+	public static function warning($message, $context = [])
+	{
+		$logger = self::get_logger();
+		if (!$logger) return;
+
+		$logger->warning($message, self::format_context($context));
+	}
+
+	public static function error($message, $context = [])
+	{
+		$logger = self::get_logger();
+		if (!$logger) return;
+
+		$logger->error($message, self::format_context($context));
 	}
 }
