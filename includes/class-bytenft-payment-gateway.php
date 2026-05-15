@@ -87,6 +87,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_filter('woocommerce_available_payment_gateways', [$this, 'bytenft_hide_custom_payment_gateway_conditionally']);
 
 		add_action('woocommerce_after_checkout_validation', [$this, 'bytenft_validate_checkout_fields'], 10, 2);
+		add_action(
+			'woocommerce_store_api_checkout_update_order_from_request',
+			[$this, 'bytenft_validate_blocks_checkout'],
+			10,
+			2
+		);
 
 		add_action('wp_ajax_bytenft_log_event', [$this, 'handle_log_event']);
 		add_action('wp_ajax_nopriv_bytenft_log_event', [$this, 'handle_log_event']);
@@ -96,47 +102,47 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * Strict validation for Phone and Zip Code.
 	 * Runs before process_payment to ensure only clean data reaches your API.
 	 */
-	public function bytenft_validate_checkout_fields($data, $errors) {
-		
-		// 1. PHONE VALIDATION
-		$phone = isset($data['billing_phone']) ? $data['billing_phone'] : '';
+	public function bytenft_validate_checkout_fields($data, $errors)
+	{
+		$phone = $data['billing_phone'] ?? '';
+
 		if (!empty($phone)) {
-			// Remove common formatting characters
+
 			$digits_only = preg_replace('/[^\d]/', '', $phone);
-			
-			// Fail if not a valid format or too short (less than 10 digits)
-			if (!preg_match('/^[0-9\-\+\(\)\s]+$/', $phone) || strlen($digits_only) < 10) {
+
+			if (strlen($digits_only) < 10) {
 				$errors->add(
-					'billing_phone_error', 
-					'<strong>' . __('Phone', 'bytenft-payment-gateway') . '</strong> ' . __('is invalid. Please enter a valid phone number with at least 10 digits.', 'bytenft-payment-gateway')
+					'bytenft_phone_error',
+					__('Invalid phone number. Please enter a valid phone number.', 'bytenft-payment-gateway')
+				);
+			}
+		}
+	}
+
+	public function bytenft_validate_blocks_checkout($order, $request)
+	{
+		$phone = $request['billing_address']['phone'] ?? '';
+
+		if (!empty($phone)) {
+
+			$cleaned = preg_replace('/[\s\-().]/', '', $phone);
+
+			$usPattern      = '/^(\+1|1)?\d{10}$/';
+			$euPattern      = '/^(\+|00)[1-9]\d{6,14}$/';
+			$generalPattern = '/^\+?\d{10,15}$/';
+
+			$valid = preg_match($usPattern, $cleaned)
+				|| preg_match($euPattern, $cleaned)
+				|| preg_match($generalPattern, $cleaned);
+
+			if (!$valid) {
+				throw new Exception(
+					'Invalid phone number. Please enter a valid phone number or leave it blank.'
 				);
 			}
 		}
 
-		// 2. ZIP CODE VALIDATION
-		$postcode = isset($data['billing_postcode']) ? trim($data['billing_postcode']) : '';
-		$country  = isset($data['billing_country']) ? $data['billing_country'] : '';
-
-		if (!empty($postcode)) {
-			// Strict US Zip Code check
-			if ($country === 'US') {
-				if (!preg_match('/^\d{5}(-\d{4})?$/', $postcode)) {
-					$errors->add(
-						'billing_postcode_error', 
-						'<strong>' . __('Zip Code', 'bytenft-payment-gateway') . '</strong> ' . __('is invalid for the United States (e.g., 90210).', 'bytenft-payment-gateway')
-					);
-				}
-			} 
-			// General Postcode check (Alphanumeric, 3-10 chars)
-			else {
-				if (strlen($postcode) < 3 || !preg_match('/^[a-zA-Z0-9\s\-]+$/', $postcode)) {
-					$errors->add(
-						'billing_postcode_error', 
-						'<strong>' . __('Postcode / ZIP', 'bytenft-payment-gateway') . '</strong> ' . __('format is invalid.', 'bytenft-payment-gateway')
-					);
-				}
-			}
-		}
+		return $order;
 	}
 
 	private function get_api_url($endpoint) {
@@ -760,6 +766,31 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 		}
 
+		$billing_phone = $order->get_billing_phone();
+
+		if (!empty($billing_phone)) {
+
+			$cleaned = preg_replace('/[\s\-().]/', '', $billing_phone);
+
+			$valid = preg_match('/^\+?\d{10,15}$/', $cleaned);
+
+			if (!$valid) {
+
+				$this->bytenft_log_warning(
+					$log_prefix . ' Blocked invalid phone BEFORE account selection',
+					$log_ctx
+				);
+
+				return $this->build_response(
+					'fail',
+					'Invalid phone number',
+					[],
+					400,
+					$order_id
+				);
+			}
+		}
+
 		$this->bytenft_log(
 			$log_prefix . ' Order loaded successfully',
 			array_merge($log_ctx, [
@@ -945,7 +976,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				if (!$account) {
 
 					$this->bytenft_log_warning(
-						$log_prefix . ' No available payment accounts found',
+						$log_prefix . ' No eligible payment provider available for this order',
 						$log_ctx
 					);
 
@@ -1041,11 +1072,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 			}
 
-			wc_get_logger()->error('No available payment accounts found.', $logger_context);
+			wc_get_logger()->error('No eligible payment provider available for this order.', $logger_context);
 
 			return $this->build_response(
 				'fail',
-				'No available payment accounts.',
+				'No eligible payment provider available for this order',
 				[],
 				400,
 				$order_id
