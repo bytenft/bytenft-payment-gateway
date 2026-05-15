@@ -1724,19 +1724,28 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$gateway_id = $this->id;
 		$this->selected_account_for_display = null;
 
-		// -----------------------------
+		// =====================================================
+		// STEP 0: GLOBAL REQUEST LOCK (FIX DUPLICATE EXECUTION)
+		// =====================================================
+		static $gateway_execution_lock = false;
+
+		if ($gateway_execution_lock) {
+			return $available_gateways;
+		}
+
+		// =====================================================
 		// STEP 1: Safety checks
-		// -----------------------------
+		// =====================================================
 		if (!isset($available_gateways[$gateway_id]) || !WC()->cart) {
 			return $available_gateways;
 		}
 
-		// -----------------------------
-		// STEP 2: Checkout context detection (CLASSIC + BLOCKS + AJAX)
-		// -----------------------------
+		// =====================================================
+		// STEP 2: Proper checkout context detection (FIXED)
+		// =====================================================
 		$is_ajax_checkout =
-			defined('DOING_AJAX') &&
-			DOING_AJAX &&
+			function_exists('wp_doing_ajax') &&
+			wp_doing_ajax() &&
 			isset($_REQUEST['wc-ajax']) &&
 			$_REQUEST['wc-ajax'] === 'update_order_review';
 
@@ -1754,9 +1763,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return $available_gateways;
 		}
 
-		// -----------------------------
-		// STEP 3: Flow label (human readable)
-		// -----------------------------
+		// =====================================================
+		// STEP 3: FLOW LABEL (HUMAN READABLE)
+		// =====================================================
 		$flow = 'Checkout (Classic)';
 
 		if ($is_blocks_checkout) {
@@ -1765,9 +1774,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$flow = 'Checkout (AJAX)';
 		}
 
-		// -----------------------------
-		// STEP 4: Cart info
-		// -----------------------------
+		// =====================================================
+		// STEP 4: CART INFO
+		// =====================================================
 		$amount = (float) WC()->cart->get_total('raw');
 
 		if ($amount < 0.01) {
@@ -1776,49 +1785,48 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$items = count(WC()->cart->get_cart());
 
-		// -----------------------------
-		// STEP 5: Load accounts
-		// -----------------------------
+		// =====================================================
+		// STEP 5: LOAD ACCOUNTS
+		// =====================================================
 		if (!method_exists($this, 'get_all_accounts')) {
 			return $available_gateways;
 		}
 
 		$accounts = $this->get_all_accounts();
 
-		// -----------------------------
-		// DECISION LOG (NO ACCOUNTS)
-		// -----------------------------
+		// =====================================================
+		// STEP 6: NO ACCOUNTS CASE (SINGLE LOG ONLY)
+		// =====================================================
 		if (empty($accounts)) {
 
 			$this->log_info(
 				"ByteNFT Gateway Decision: HIDDEN",
 				[
-					'reason'  => 'No merchant accounts configured',
-					'items'   => $items,
-					'total'   => $amount,
-					'flow'    => $flow
+					'reason' => 'No merchant accounts configured',
+					'items'  => $items,
+					'total'  => $amount,
+					'flow'   => $flow
 				]
 			);
 
+			$gateway_execution_lock = true;
 			return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 
-		// -----------------------------
-		// STEP 6: Sort accounts
-		// -----------------------------
+		// =====================================================
+		// STEP 7: SORT ACCOUNTS
+		// =====================================================
 		usort($accounts, fn($a, $b) =>
 			($a['priority'] ?? 1) <=> ($b['priority'] ?? 1)
 		);
 
-		// -----------------------------
-		// STEP 7: Evaluate accounts
-		// -----------------------------
+		// =====================================================
+		// STEP 8: ACCOUNT EVALUATION
+		// =====================================================
 		$selected = null;
 		$reason   = 'No eligible merchant account';
 
 		foreach ($accounts as $account) {
-
-			$title = $account['title'] ?? 'Unnamed account';
 
 			$public = $this->sandbox
 				? ($account['sandbox_public_key'] ?? '')
@@ -1828,7 +1836,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				? ($account['sandbox_secret_key'] ?? '')
 				: ($account['live_secret_key'] ?? '');
 
-			// skip invalid config
+			// skip invalid account
 			if (empty($public) || empty($secret)) {
 				continue;
 			}
@@ -1842,9 +1850,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$cache = 'bytenft_' . md5($public . $amount);
 
-			// -----------------------------
 			// STATUS CHECK
-			// -----------------------------
 			$status = $this->get_cached_api_response(
 				$this->get_api_url('/api/check-merchant-status'),
 				$data,
@@ -1856,9 +1862,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				continue;
 			}
 
-			// -----------------------------
 			// LIMIT CHECK
-			// -----------------------------
 			$limit = $this->get_cached_api_response(
 				$this->get_api_url('/api/dailylimit'),
 				$data,
@@ -1870,17 +1874,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				continue;
 			}
 
-			// -----------------------------
-			// SELECT ACCOUNT
-			// -----------------------------
 			$selected = $account;
 			$reason   = 'Valid merchant account found';
 			break;
 		}
 
-		// -----------------------------
-		// STEP 8: FINAL DECISION LOG (SINGLE SOURCE OF TRUTH)
-		// -----------------------------
+		// =====================================================
+		// STEP 9: FINAL DECISION (ONLY ONE LOG EVER)
+		// =====================================================
 		if (!$selected) {
 
 			$this->log_info(
@@ -1893,12 +1894,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				]
 			);
 
+			$gateway_execution_lock = true;
 			return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 
-		// -----------------------------
-		// STEP 9: SHOW GATEWAY
-		// -----------------------------
+		// =====================================================
+		// STEP 10: SHOW GATEWAY
+		// =====================================================
 		$this->selected_account_for_display = $selected;
 
 		$this->log_info(
@@ -1911,6 +1913,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'flow'    => $flow
 			]
 		);
+
+		$gateway_execution_lock = true;
 
 		return $available_gateways;
 	}
