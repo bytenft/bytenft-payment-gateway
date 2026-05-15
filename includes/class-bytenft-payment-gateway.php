@@ -1947,6 +1947,20 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		);
 	}
 
+	private function gateway_visibility_label($reason) {
+
+		return match ($reason) {
+
+			'no_accounts' => 'No payment accounts configured',
+			'merchant_inactive' => 'Payment provider unavailable',
+			'daily_limit_exceeded' => 'Daily limit reached for this account',
+			'no_eligible_accounts' => 'No valid payment account found',
+			'non_checkout_page' => 'Not on checkout page',
+
+			default => 'Payment validation step executed'
+		};
+	}
+
 	private function hide_gateway($available_gateways, $gateway_id) {
 		unset($available_gateways["bytenft"]);
 		$GLOBALS['bytenft_gateway_visibility_' . $this->id] = $available_gateways;
@@ -1959,16 +1973,38 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return;
 		}
 
-		// Build human-readable context key (NOT cart hash)
-		$flow_context = [
-			'checkout' => is_checkout() ? 'yes' : 'no',
-			'ajax'     => (defined('DOING_AJAX') && DOING_AJAX) ? 'yes' : 'no',
-			'rest'     => (defined('REST_REQUEST') && REST_REQUEST) ? 'yes' : 'no',
+		// -----------------------------
+		// HUMAN FLOW ONLY (NO REST/AJAX SPLIT)
+		// -----------------------------
+		$flow = is_checkout()
+			? 'Checkout'
+			: 'Background';
+
+		// -----------------------------
+		// CLEAN CONTEXT ONLY
+		// -----------------------------
+		$clean_context = [
+			'Gateway' => $this->id,
+			'Flow'    => $flow,
 		];
 
-		$context_signature = md5($key . $this->id . json_encode($flow_context));
+		if (WC()->cart) {
+			$clean_context['Cart Items'] = count(WC()->cart->get_cart());
+			$clean_context['Cart Total'] = (float) WC()->cart->get_total('raw');
+		}
 
-		$log_key = 'bytenft_once_' . $context_signature;
+		if (isset($context['reason'])) {
+			$clean_context['Reason'] = $this->gateway_visibility_label($context['reason']);
+		}
+
+		if (isset($context['account'])) {
+			$clean_context['Account'] = $context['account'];
+		}
+
+		// -----------------------------
+		// STABLE UNIQUE KEY (IMPORTANT FIX)
+		// -----------------------------
+		$log_key = 'bytenft_once_' . md5($key . $this->id . is_checkout());
 
 		if (WC()->session->get($log_key)) {
 			return;
@@ -1976,7 +2012,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		WC()->session->set($log_key, true);
 
-		$this->log_info($message, array_merge($context, $flow_context));
+		$this->log_info($message, $clean_context);
 	}
 
 	protected function validate_account($account, $index) {
