@@ -542,14 +542,24 @@
                                 response
                             );
 
+                            const paymentSuccess =
+                                response?.success === true ||
+                                response?.data?.payment_status === 'success' ||
+                                response?.data?.payment_status === 'paid';
+
+                            const redirectUrl =
+                                response?.data?.redirect ||
+                                response?.redirect ||
+                                null;
+
                             if (
-                                response?.success &&
-                                response?.data?.redirect
+                                paymentSuccess &&
+                                redirectUrl
                             ) {
 
-                                window.location.replace(
-                                    response.data.redirect
-                                );
+                                console.log('[Bytenft] redirecting to thank you page');
+
+                                window.location.replace(redirectUrl);
 
                                 return;
                             }
