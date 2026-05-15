@@ -1967,71 +1967,73 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return $available_gateways;
 	}
 
-	private function log_info_once_per_session($key, $message, $context = []) {
-
+	private function log_info_once_per_session($key, $message, $context = [])
+	{
 		if (!function_exists('WC') || !WC()) {
 			return;
 		}
 
-		// -----------------------------
-		// SAFE SESSION ACCESS
-		// -----------------------------
 		if (!WC()->session) {
-			return; // don't force init (prevents crashes in REST/AJAX)
+			WC()->initialize_session();
 		}
 
 		// -----------------------------
-		// HUMAN FLOW LABEL
+		// STABLE FLOW (IMPORTANT FIX)
 		// -----------------------------
 		$flow = 'background';
 
 		if (is_checkout()) {
 			$flow = 'checkout';
-		} elseif (defined('DOING_AJAX') && DOING_AJAX) {
-			$flow = 'ajax';
-		} elseif (defined('REST_REQUEST') && REST_REQUEST) {
-			$flow = 'rest';
+		}
+
+		if (defined('DOING_AJAX') && DOING_AJAX && isset($_REQUEST['wc-ajax'])) {
+			$flow = 'checkout_ajax';
+		}
+
+		if (defined('REST_REQUEST') && REST_REQUEST) {
+			$flow = 'checkout_rest';
 		}
 
 		// -----------------------------
-		// CLEAN OPERATIONAL CONTEXT
+		// SAFE CART INFO (NO HASH)
 		// -----------------------------
-		$clean_context = [
-			'gateway' => $this->id,
-			'flow'    => $flow,
-		];
+		$cart_items = 0;
+		$cart_total = 0;
 
 		if (WC()->cart) {
-			$clean_context['cart_items'] = count(WC()->cart->get_cart());
-			$clean_context['cart_total'] = (float) WC()->cart->get_total('raw');
+			$cart_items = count(WC()->cart->get_cart());
+			$cart_total = (float) WC()->cart->get_total('raw');
 		}
 
-		if (!empty($context['reason'])) {
-			$clean_context['reason'] = $this->gateway_visibility_label($context['reason']);
+		// -----------------------------
+		// HUMAN CONTEXT ONLY
+		// -----------------------------
+		$clean_context = [
+			'Gateway'    => $this->id,
+			'Flow'       => $flow,
+			'Items'      => $cart_items,
+			'Total'      => $cart_total,
+		];
+
+		if (isset($context['reason'])) {
+			$clean_context['Reason'] = $this->gateway_visibility_label($context['reason']);
 		}
 
-		if (!empty($context['account'])) {
-			$clean_context['account'] = $context['account'];
+		if (isset($context['account'])) {
+			$clean_context['Account'] = $context['account'];
 		}
 
-	// -----------------------------
-	// STABLE DEDUP KEY (IMPORTANT FIX)
-	// -----------------------------
-		$session_id = WC()->session->get_customer_id();
+		// -----------------------------
+		// 🔥 FIX: STABLE KEY (NO FLOW SPLIT)
+		// -----------------------------
+		$session_scope = 'bytenft_' . md5($key . $this->id);
 
-		$dedupe_source = $key . '|' . $this->id . '|' . $session_id . '|' . $flow;
-
-		$log_key = 'bytenft_log_' . md5($dedupe_source);
-
-		if (WC()->session->get($log_key)) {
+		if (WC()->session->get($session_scope)) {
 			return;
 		}
 
-		WC()->session->set($log_key, true);
+		WC()->session->set($session_scope, true);
 
-		// -----------------------------
-		// FINAL LOG
-		// -----------------------------
 		$this->log_info($message, $clean_context);
 	}
 
