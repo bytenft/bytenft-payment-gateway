@@ -26,54 +26,13 @@
 
         init: function () {
 
-            const self = this;
+            this.bindClassicCheckout();
 
-            self.bindClassicCheckout();
-            self.bindBlockCheckout();
-            self.bindInputSanitization();
+            this.bindBlockCheckout();
 
-            // 🔥 FunnelKit safety: rebind on DOM changes
-           const observer = new MutationObserver(function () {
+            this.bindInputSanitization();
 
-                self.bindInputSanitization();
-
-                // rebind checkout safely (FunnelKit replaces DOM)
-                $(document.body)
-                    .off('checkout_place_order_' + self.PAYMENT_METHOD);
-
-                self.bindClassicCheckout();
-
-            });
-
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true
-            });
-
-            console.log('[Bytenft] initialized (FunnelKit safe)');
-        },
-
-        getCheckoutForm: function () {
-
-            let $form = $(
-                'form.checkout, form.woocommerce-checkout, form.fkwc-checkout form'
-            );
-
-            if ($form.length) {
-                return $form.first();
-            }
-
-            return $('form').filter(function () {
-
-                const $f = $(this);
-
-                return (
-                    $f.find('#billing_email').length ||
-                    $f.find('[name="billing_email"]').length ||
-                    $f.find('button[name="woocommerce_checkout_place_order"]').length
-                );
-
-            }).first();
+            console.log('[Bytenft] initialized');
         },
 
         /* =========================================================
@@ -84,7 +43,7 @@
 
             const self = this;
 
-            $(document.body)
+            $('form.checkout')
                 .off('checkout_place_order_' + self.PAYMENT_METHOD)
                 .on(
                     'checkout_place_order_' + self.PAYMENT_METHOD,
@@ -92,7 +51,7 @@
 
                         console.log('[Bytenft] classic checkout');
 
-                        const $form = self.getCheckoutForm();
+                        const $form = $(this);
 
                         if (self.state.submitting) {
                             return false;
@@ -195,14 +154,14 @@
                 function (e) {
 
                     const btn = e.target.closest(
-                        '.wc-block-components-checkout-place-order-button, .fkwc-place-order, .place-order button'
+                        '.wc-block-components-checkout-place-order-button'
                     );
 
                     if (!btn) {
                         return;
                     }
 
-                    const $form = self.getCheckoutForm();
+                    const $form = $('form.wc-block-checkout__form');
 
                     if (!$form.length) {
                         return;
@@ -254,7 +213,7 @@
                     self.openPopupImmediately();
 
                     // Start block flow
-                    self.createBlockOrder($form);
+                    self.handleBlockCheckout($form);
 
                 },
                 true
@@ -287,61 +246,6 @@
             );
         },
 
-        createBlockOrder: function ($form) {
-
-            const self = this;
-
-            self.state.submitting = true;
-
-            $.ajax({
-
-                type: 'POST',
-
-                url: bytenft_params.ajax_url,
-
-                data: {
-                    action: 'bytenft_create_block_order',
-                    nonce: bytenft_params.bytenft_nonce,
-                    checkout_data: $form.serialize()
-                },
-
-                success: function (response) {
-
-                    console.log('[Bytenft] create order response', response);
-
-                    if (!response || !response.success || !response.data?.order_id) {
-
-                        self.showCheckoutError(
-                            response?.message || 'Unable to create order.'
-                        );
-
-                        self.cleanupPopup();
-                        self.reset();
-
-                        return;
-                    }
-
-                    self.state.orderId = response.data.order_id;
-
-                    // IMPORTANT FIX
-                    self.state.submitting = false;
-
-                    // Continue payment flow
-                    self.handleBlockCheckout($form);
-                },
-
-                error: function () {
-
-                    self.showCheckoutError(
-                        'Unable to initialize order.'
-                    );
-
-                    self.cleanupPopup();
-                    self.reset();
-                }
-            });
-        },
-
         handleBlockCheckout: function ($form) {
 
             const self = this;
@@ -364,31 +268,12 @@
             data += '&action=bytenft_block_gateway_process';
             data += '&nonce=' + encodeURIComponent(bytenft_params.bytenft_nonce);
 
-            const orderId = self.state.orderId;
-
-            // ✅ SAFE GUARD (improved UX + reset state)
-            if (!orderId) {
-
-                self.state.orderId = null;
-
-                console.error('[Bytenft] Missing order_id');
-
-                self.showCheckoutError(
-                    'Order could not be initialized. Please refresh and try again.'
-                );
-
-                self.cleanupPopup();
-                self.reset();
-
-                return;
-            }
-
-            data += '&order_id=' + encodeURIComponent(orderId);
-
             $.ajax({
 
                 type: 'POST',
+
                 url: bytenft_params.ajax_url,
+
                 data: data,
 
                 success: function (response) {
@@ -398,16 +283,17 @@
                     self.handleResponse(response);
                 },
 
-                error: function (xhr) {
+                error: function (xhr, status, error) {
 
                     console.log('[Bytenft] block ajax error');
                     console.log(xhr.responseText);
 
                     self.showCheckoutError(
-                        'There was an error processing your order. Please try again.'
+                        'There was an error processing your order.'
                     );
 
                     self.cleanupPopup();
+
                     self.reset();
                 }
             });
@@ -417,27 +303,27 @@
          * RESPONSE HANDLER
          * ========================================================= */
 
-        handleResponse: function (response) {
+       handleResponse: function (response) {
 
-            const self = this;
+        const self = this;
 
-            try {
+        try {
 
-                // =====================================================
-                // 1. SAFE JSON PARSE
-                // =====================================================
-                if (typeof response === 'string') {
+            if (typeof response === 'string') {
 
                     try {
                         response = JSON.parse(response);
                     } catch (e) {
 
-                        console.log('[Bytenft] invalid json response');
+                        console.log('[Bytenft] invalid json');
+
+                        self.showCheckoutError(
+                            'Invalid server response.'
+                        );
 
                         self.cleanupPopup();
-                        self.reset();
 
-                        self.showCheckoutError('Invalid server response.');
+                        self.reset();
 
                         return;
                     }
@@ -445,9 +331,6 @@
 
                 console.log('[Bytenft] parsed response', response);
 
-                // =====================================================
-                // 2. EXTRACT CORE DATA SAFELY
-                // =====================================================
                 const success =
                     response?.result === 'success' ||
                     response?.success === true ||
@@ -455,14 +338,13 @@
                     response?.data?.payment_status === 'paid';
 
                 const redirect =
-                    response?.redirect ||
-                    response?.data?.redirect ||
+                    response.redirect ||
+                    response.data?.redirect ||
                     null;
 
                 const orderId =
-                    response?.order_id ||
-                    response?.data?.order_id ||
-                    self.state.orderId ||
+                    response.order_id ||
+                    response.data?.order_id ||
                     null;
 
                 const errorMessage =
@@ -474,36 +356,36 @@
                     response?.error ||
                     'Your payment could not be completed. Please try again.';
 
-                // =====================================================
-                // 3. UPDATE STATE SAFELY
-                // =====================================================
-                if (orderId) {
-                    self.state.orderId = orderId;
-                }
+                self.state.orderId = orderId;
 
                 // =====================================================
-                // 4. FAILURE HANDLING (STABLE UI)
+                // ❌ FAILURE (FIXED - ERROR DISPLAY STABLE)
                 // =====================================================
                 if (!success) {
 
-                    console.log('[Bytenft] payment failed:', errorMessage);
+                    const msg = errorMessage || 'Your payment could not be completed. Please try again.';
+
+                    console.log('[Bytenft] showing failed message:', msg);
 
                     self.cleanupPopup();
 
+                    // 🔥 IMPORTANT
                     setTimeout(function () {
 
-                        self.showCheckoutError(errorMessage);
+                        self.showCheckoutError(msg);
 
+                        // force scroll after Woo rerender
                         const $notice = $('.woocommerce-notices-wrapper');
 
                         if ($notice.length) {
                             $('html, body').animate({
                                 scrollTop: $notice.offset().top - 80
-                            }, 250);
+                            }, 300);
                         }
 
                     }, 50);
 
+                    // 🔥 IMPORTANT
                     setTimeout(function () {
                         self.reset();
                     }, 400);
@@ -512,20 +394,13 @@
                 }
 
                 // =====================================================
-                // 5. SUCCESS HANDLING
+                // ✅ SUCCESS
                 // =====================================================
                 if (redirect && typeof redirect === 'string' && redirect.length > 5) {
 
                     if (self.state.popup && !self.state.popup.closed) {
-
-                        try {
-                            self.state.popup.location.href = redirect;
-                        } catch (e) {
-                            window.location.href = redirect;
-                        }
-
+                        self.state.popup.location.href = redirect;
                         self.trackPopupClose();
-
                     } else {
                         window.location.href = redirect;
                     }
@@ -534,14 +409,9 @@
                     return;
                 }
 
-                // =====================================================
-                // 6. EDGE CASE: NO REDIRECT
-                // =====================================================
-                console.warn('[Bytenft] Missing redirect URL');
-
                 self.cleanupPopup();
 
-                self.showCheckoutError('Payment completed but redirect missing.');
+                self.showCheckoutError('Missing redirect URL.');
 
                 self.reset();
 
@@ -823,23 +693,6 @@
             return null;
         },
 
-        getFieldValue: function ($form, selectors) {
-
-            for (let selector of selectors) {
-
-                const $field = $form.find(selector).first();
-
-                if ($field.length) {
-
-                    const val = ($field.val() || '').trim();
-
-                    if (val) return val;
-                }
-            }
-
-            return '';
-        },
-
         validatePOBox: function ($form) {
 
             const fields = [
@@ -847,6 +700,10 @@
                 $form.find('#billing_address_1').val(),
 
                 $form.find('#billing_address_2').val(),
+
+                $form.find('#shipping_address_1').val(),
+
+                $form.find('#shipping_address_2').val()
             ];
 
             for (let field of fields) {
@@ -881,21 +738,44 @@
 
         getPhoneNumber: function ($form) {
 
-            return this.getFieldValue($form, [
+            const selectors = [
                 'input[name="billing_phone"]',
+                'input[name="shipping_phone"]',
                 'input[type="tel"]',
                 'input[autocomplete="tel"]'
-            ]);
+            ];
+
+            for (let selector of selectors) {
+
+                const val = $form.find(selector).first().val();
+
+                if (val && val.trim()) {
+                    return val.trim();
+                }
+            }
+
+            return '';
         },
 
         getBillingEmail: function ($form) {
 
-            return this.getFieldValue($form, [
+            const selectors = [
                 '#billing_email',
-                'input[name="billing_email"]',
+                '#email',
                 'input[type="email"]',
-                '#email'
-            ]);
+                'input[name="billing_email"]'
+            ];
+
+            for (let selector of selectors) {
+
+                const val = $form.find(selector).first().val();
+
+                if (val && val.trim()) {
+                    return val.trim();
+                }
+            }
+
+            return '';
         },
 
         isValidEmail: function (email) {
@@ -977,12 +857,6 @@
                 $('body').prepend(html);
             }
 
-            const funnelkitTarget = $('.fkwc-checkout, .fkwc-step, .fkwc-order-review');
-
-            if (funnelkitTarget.length) {
-                funnelkitTarget.first().prepend(html);
-            }
-
             // Scroll to top notice
             const $notice = $('.woocommerce-notices-wrapper');
 
@@ -996,7 +870,7 @@
 
         clearCheckoutErrors: function () {
 
-            $('.bytenft-error-wrap').remove();
+            $('.woocommerce-notices-wrapper').remove();
 
             $('.woocommerce-error').remove();
 

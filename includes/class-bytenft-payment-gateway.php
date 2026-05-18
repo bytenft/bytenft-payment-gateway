@@ -97,8 +97,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_action('wp_ajax_bytenft_log_event', [$this, 'handle_log_event']);
 		add_action('wp_ajax_nopriv_bytenft_log_event', [$this, 'handle_log_event']);
 
-		add_action('wp_ajax_bytenft_create_block_order', [$this, 'create_block_order']);
-		add_action('wp_ajax_nopriv_bytenft_create_block_order', [$this, 'create_block_order']);
 	}
 
 	/**
@@ -256,42 +254,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 	}
 
-	public function create_block_order()
-	{
-		check_ajax_referer('bytenft_nonce', 'nonce');
-
-		try {
-
-			// Process checkout data into WC session
-			parse_str($_POST['checkout_data'] ?? '', $posted_data);
-
-			WC()->checkout()->process_customer($posted_data);
-
-			$order_id = WC()->checkout()->create_order($posted_data);
-
-			if (is_wp_error($order_id)) {
-
-				wp_send_json([
-					'success' => false,
-					'message' => $order_id->get_error_message(),
-				]);
-			}
-
-			wp_send_json([
-				'success' => true,
-				'data' => [
-					'order_id' => $order_id,
-				]
-			]);
-
-		} catch (\Throwable $e) {
-
-			wp_send_json([
-				'success' => false,
-				'message' => $e->getMessage(),
-			]);
-		}
-	}
 
 	public function bytenft_validate_blocks_checkout($order, $request)
 	{
@@ -1030,7 +992,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			]
 		);
 
-		$lock_name = $wpdb->prefix . 'bytenft_order_' . absint($order_id);
+		$lock_name = 'bytenft_order_' . $order_id;
 
 		// Try lock
 		$lock_result = $wpdb->get_var(
@@ -1053,7 +1015,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// 4. RATE LIMITING (UNCHANGED)
 			// -------------------------------------------------
 			$ip_address  = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP) ?: 'invalid';
-			$window_size = 60;
+			$window_size = 10;
 			$max_requests = 5;
 
 			$timestamp_key = "rate_limit_{$ip_address}_timestamps";
@@ -1091,26 +1053,24 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// 5. ORDER STATUS PROTECTION
 			// -------------------------------------------------
 			$status = $order->get_status();
-			if (in_array($status, ['completed', 'processing'], true)) {
 
-				WC()->cart?->empty_cart();
+			if ($status === 'completed' || $status === 'processing') {
 
-				if (WC()->session) {
-
-					if (method_exists(WC()->session, 'set_customer_session_cookie')) {
-						WC()->session->set_customer_session_cookie(false);
-					}
+				if (WC()->cart) {
+					WC()->cart->empty_cart();
+					WC()->session->cleanup_sessions();
+					WC()->session->destroy_session();
+					WC()->session->set_customer_session_cookie(false);
 				}
 
-				$redirect_url = $order->get_checkout_order_received_url();
+				$redirect = $status === 'completed'
+				? $order->get_checkout_order_received_url()
+				: $order->get_cancel_order_url();
 
 				return $this->build_response(
 					'success',
 					'Order already processed',
-					[
-						'redirect' => $redirect_url,
-						'order_status' => $status
-					],
+					[],
 					200,
 					$order->get_id()
 				);
@@ -1196,13 +1156,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				];
 
 				continue;
-			}
-
-			$order->update_meta_data('_bytenft_active_order', $order_id);
-			$order->save();
-
-			if (WC()->session) {
-				WC()->session->set('order_awaiting_payment', $order_id);
 			}
 
 			$limit_url = $this->get_api_url('/api/dailylimit');
@@ -1433,7 +1386,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 					$order->update_meta_data('_bytenft_active_pay_id', $pay_id);
 					$order->update_meta_data('_bytenft_payment_finalized', false);
-					$order->save();
 				}
 
 				// -------------------------------------------------
@@ -1485,15 +1437,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'success',
 					'Payment initiated',
 					[
-						'order_id' => $order_id,
 						'payment_status' => $resp_data['data']['payment_status'] ?? 'pending',
-						'redirect' => add_query_arg(
-						[
-							'order_id' => $order_id,
-							'key'      => $order->get_order_key(),
-						],
-						esc_url($payment_link)
-					)
+						'redirect' => esc_url($payment_link)
 					],
 					200,
 					$order_id
@@ -1515,9 +1460,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			} finally {
 
-				if (!empty($lock_name)) {
-					$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
-				}
+				$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
 			}
 	}
 
