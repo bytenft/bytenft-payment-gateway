@@ -96,6 +96,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		add_action('wp_ajax_bytenft_log_event', [$this, 'handle_log_event']);
 		add_action('wp_ajax_nopriv_bytenft_log_event', [$this, 'handle_log_event']);
+
+		add_action('wp_ajax_bytenft_create_block_order', [$this, 'create_block_order']);
+		add_action('wp_ajax_nopriv_bytenft_create_block_order', [$this, 'create_block_order']);
 	}
 
 	/**
@@ -250,6 +253,43 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'country'  => $country
 				]
 			);
+		}
+	}
+
+	public function create_block_order()
+	{
+		check_ajax_referer('bytenft_nonce', 'nonce');
+
+		try {
+
+			// Process checkout data into WC session
+			parse_str($_POST['checkout_data'] ?? '', $posted_data);
+
+			WC()->checkout()->process_customer($posted_data);
+
+			$order_id = WC()->checkout()->create_order($posted_data);
+
+			if (is_wp_error($order_id)) {
+
+				wp_send_json([
+					'success' => false,
+					'message' => $order_id->get_error_message(),
+				]);
+			}
+
+			wp_send_json([
+				'success' => true,
+				'data' => [
+					'order_id' => $order_id,
+				]
+			]);
+
+		} catch (\Throwable $e) {
+
+			wp_send_json([
+				'success' => false,
+				'message' => $e->getMessage(),
+			]);
 		}
 	}
 
