@@ -213,7 +213,7 @@
                     self.openPopupImmediately();
 
                     // Start block flow
-                    self.handleBlockCheckout($form);
+                    self.createBlockOrder($form);
 
                 },
                 true
@@ -246,13 +246,64 @@
             );
         },
 
-        handleBlockCheckout: function ($form) {
+        createBlockOrder: function ($form) {
 
             const self = this;
 
-            if (self.state.submitting) {
-                return;
-            }
+            self.state.submitting = true;
+
+            $.ajax({
+
+                type: 'POST',
+
+                url: bytenft_params.ajax_url,
+
+                data: {
+                    action: 'bytenft_create_block_order',
+                    nonce: bytenft_params.bytenft_nonce,
+                    checkout_data: $form.serialize()
+                },
+
+                success: function (response) {
+
+                    console.log('[Bytenft] create order response', response);
+
+                    if (!response || !response.success || !response.data?.order_id) {
+
+                        self.showCheckoutError(
+                            response?.message || 'Unable to create order.'
+                        );
+
+                        self.cleanupPopup();
+                        self.reset();
+
+                        return;
+                    }
+
+                    self.state.orderId = response.data.order_id;
+
+                    // IMPORTANT FIX
+                    self.state.submitting = false;
+
+                    // Continue payment flow
+                    self.handleBlockCheckout($form);
+                },
+
+                error: function () {
+
+                    self.showCheckoutError(
+                        'Unable to initialize order.'
+                    );
+
+                    self.cleanupPopup();
+                    self.reset();
+                }
+            });
+        },
+
+        handleBlockCheckout: function ($form) {
+
+            const self = this;
 
             self.state.submitting = true;
 
@@ -276,6 +327,8 @@
 
             // ✅ SAFE GUARD (improved UX + reset state)
             if (!orderId) {
+
+                self.state.orderId = null;
 
                 console.error('[Bytenft] Missing order_id');
 
