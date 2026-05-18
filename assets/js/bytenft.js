@@ -26,13 +26,54 @@
 
         init: function () {
 
-            this.bindClassicCheckout();
+            const self = this;
 
-            this.bindBlockCheckout();
+            self.bindClassicCheckout();
+            self.bindBlockCheckout();
+            self.bindInputSanitization();
 
-            this.bindInputSanitization();
+            // 🔥 FunnelKit safety: rebind on DOM changes
+           const observer = new MutationObserver(function () {
 
-            console.log('[Bytenft] initialized');
+                self.bindInputSanitization();
+
+                // rebind checkout safely (FunnelKit replaces DOM)
+                $(document.body)
+                    .off('checkout_place_order_' + self.PAYMENT_METHOD);
+
+                self.bindClassicCheckout();
+
+            });
+
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+
+            console.log('[Bytenft] initialized (FunnelKit safe)');
+        },
+
+        getCheckoutForm: function () {
+
+            let $form = $(
+                'form.checkout, form.woocommerce-checkout, form.fkwc-checkout form'
+            );
+
+            if ($form.length) {
+                return $form.first();
+            }
+
+            return $('form').filter(function () {
+
+                const $f = $(this);
+
+                return (
+                    $f.find('#billing_email').length ||
+                    $f.find('[name="billing_email"]').length ||
+                    $f.find('button[name="woocommerce_checkout_place_order"]').length
+                );
+
+            }).first();
         },
 
         /* =========================================================
@@ -43,7 +84,7 @@
 
             const self = this;
 
-            $('form.checkout')
+            $(document.body)
                 .off('checkout_place_order_' + self.PAYMENT_METHOD)
                 .on(
                     'checkout_place_order_' + self.PAYMENT_METHOD,
@@ -51,7 +92,7 @@
 
                         console.log('[Bytenft] classic checkout');
 
-                        const $form = $(this);
+                        const $form = self.getCheckoutForm();
 
                         if (self.state.submitting) {
                             return false;
@@ -154,14 +195,14 @@
                 function (e) {
 
                     const btn = e.target.closest(
-                        '.wc-block-components-checkout-place-order-button'
+                        '.wc-block-components-checkout-place-order-button, .fkwc-place-order, .place-order button'
                     );
 
                     if (!btn) {
                         return;
                     }
 
-                    const $form = $('form.wc-block-checkout__form');
+                    const $form = self.getCheckoutForm();
 
                     if (!$form.length) {
                         return;
@@ -249,6 +290,13 @@
         handleBlockCheckout: function ($form) {
 
             const self = this;
+
+            $form = $form || self.getCheckoutForm();
+
+            if (!$form.length) {
+                console.error('[Bytenft] Checkout form not found');
+                return;
+            }
 
             if (self.state.submitting) {
                 return;
@@ -729,6 +777,23 @@
             return null;
         },
 
+        getFieldValue: function ($form, selectors) {
+
+            for (let selector of selectors) {
+
+                const $field = $form.find(selector).first();
+
+                if ($field.length) {
+
+                    const val = ($field.val() || '').trim();
+
+                    if (val) return val;
+                }
+            }
+
+            return '';
+        },
+
         validatePOBox: function ($form) {
 
             const fields = [
@@ -736,10 +801,6 @@
                 $form.find('#billing_address_1').val(),
 
                 $form.find('#billing_address_2').val(),
-
-                $form.find('#shipping_address_1').val(),
-
-                $form.find('#shipping_address_2').val()
             ];
 
             for (let field of fields) {
@@ -774,44 +835,21 @@
 
         getPhoneNumber: function ($form) {
 
-            const selectors = [
+            return this.getFieldValue($form, [
                 'input[name="billing_phone"]',
-                'input[name="shipping_phone"]',
                 'input[type="tel"]',
                 'input[autocomplete="tel"]'
-            ];
-
-            for (let selector of selectors) {
-
-                const val = $form.find(selector).first().val();
-
-                if (val && val.trim()) {
-                    return val.trim();
-                }
-            }
-
-            return '';
+            ]);
         },
 
         getBillingEmail: function ($form) {
 
-            const selectors = [
+            return this.getFieldValue($form, [
                 '#billing_email',
-                '#email',
+                'input[name="billing_email"]',
                 'input[type="email"]',
-                'input[name="billing_email"]'
-            ];
-
-            for (let selector of selectors) {
-
-                const val = $form.find(selector).first().val();
-
-                if (val && val.trim()) {
-                    return val.trim();
-                }
-            }
-
-            return '';
+                '#email'
+            ]);
         },
 
         isValidEmail: function (email) {
@@ -891,6 +929,12 @@
             // Fallback
             if (!blockTarget.length && !classicTarget.length) {
                 $('body').prepend(html);
+            }
+
+            const funnelkitTarget = $('.fkwc-checkout, .fkwc-step, .fkwc-order-review');
+
+            if (funnelkitTarget.length) {
+                funnelkitTarget.first().prepend(html);
             }
 
             // Scroll to top notice
