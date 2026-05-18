@@ -152,6 +152,20 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			return new WP_REST_Response(['success' => false, 'message' => 'Order not found'], 404);
 		}
 
+		// Restore WooCommerce session for guest checkout recovery
+		if (isset(WC()->session) && $order) {
+
+			WC()->session->set('order_awaiting_payment', $order_id);
+
+			WC()->session->set_customer_session_cookie(true);
+
+			$order_key = $order->get_order_key();
+
+			if (!empty($order_key)) {
+				WC()->session->set('bytenft_order_key', $order_key);
+			}
+		}
+
 		// -------------------------
 		// 2. SECURITY CHECK (POST ONLY)
 		// -------------------------
@@ -247,11 +261,20 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			return new WP_REST_Response(['success' => $success, 'message' => $message], 200);
 		}
 
-		// --- SAFARI/SESSION FIX ---
-		// If the browser (Safari) lost the session cookie, WooCommerce might not know which 
-		// order the user just paid for. We force the session to recognize this order.
-		if (isset(WC()->session) && !empty($order)) {
-			WC()->session->set('order_awaiting_payment', $order->get_id());
+		$order_id =
+			absint($_REQUEST['order_id'] ?? 0);
+
+		if (!$order_id && isset(WC()->session)) {
+			$order_id = absint(
+				WC()->session->get('order_awaiting_payment')
+			);
+		}
+
+		if (!$order_id && !empty($_REQUEST['key'])) {
+
+			$order_id = wc_get_order_id_by_order_key(
+				sanitize_text_field($_REQUEST['key'])
+			);
 		}
 
 		if (in_array($target_status, ['failed', 'cancelled'])) {
