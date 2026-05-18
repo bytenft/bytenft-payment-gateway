@@ -250,6 +250,10 @@
 
             const self = this;
 
+            if (self.state.submitting) {
+                return;
+            }
+
             self.state.submitting = true;
 
             self.state.button = $(
@@ -268,12 +272,29 @@
             data += '&action=bytenft_block_gateway_process';
             data += '&nonce=' + encodeURIComponent(bytenft_params.bytenft_nonce);
 
+            const orderId = self.state.orderId;
+
+            // ✅ SAFE GUARD (improved UX + reset state)
+            if (!orderId) {
+
+                console.error('[Bytenft] Missing order_id');
+
+                self.showCheckoutError(
+                    'Order could not be initialized. Please refresh and try again.'
+                );
+
+                self.cleanupPopup();
+                self.reset();
+
+                return;
+            }
+
+            data += '&order_id=' + encodeURIComponent(orderId);
+
             $.ajax({
 
                 type: 'POST',
-
                 url: bytenft_params.ajax_url,
-
                 data: data,
 
                 success: function (response) {
@@ -283,17 +304,16 @@
                     self.handleResponse(response);
                 },
 
-                error: function (xhr, status, error) {
+                error: function (xhr) {
 
                     console.log('[Bytenft] block ajax error');
                     console.log(xhr.responseText);
 
                     self.showCheckoutError(
-                        'There was an error processing your order.'
+                        'There was an error processing your order. Please try again.'
                     );
 
                     self.cleanupPopup();
-
                     self.reset();
                 }
             });
@@ -303,27 +323,27 @@
          * RESPONSE HANDLER
          * ========================================================= */
 
-       handleResponse: function (response) {
+        handleResponse: function (response) {
 
-        const self = this;
+            const self = this;
 
-        try {
+            try {
 
-            if (typeof response === 'string') {
+                // =====================================================
+                // 1. SAFE JSON PARSE
+                // =====================================================
+                if (typeof response === 'string') {
 
                     try {
                         response = JSON.parse(response);
                     } catch (e) {
 
-                        console.log('[Bytenft] invalid json');
-
-                        self.showCheckoutError(
-                            'Invalid server response.'
-                        );
+                        console.log('[Bytenft] invalid json response');
 
                         self.cleanupPopup();
-
                         self.reset();
+
+                        self.showCheckoutError('Invalid server response.');
 
                         return;
                     }
@@ -331,6 +351,9 @@
 
                 console.log('[Bytenft] parsed response', response);
 
+                // =====================================================
+                // 2. EXTRACT CORE DATA SAFELY
+                // =====================================================
                 const success =
                     response?.result === 'success' ||
                     response?.success === true ||
@@ -338,13 +361,14 @@
                     response?.data?.payment_status === 'paid';
 
                 const redirect =
-                    response.redirect ||
-                    response.data?.redirect ||
+                    response?.redirect ||
+                    response?.data?.redirect ||
                     null;
 
                 const orderId =
-                    response.order_id ||
-                    response.data?.order_id ||
+                    response?.order_id ||
+                    response?.data?.order_id ||
+                    self.state.orderId ||
                     null;
 
                 const errorMessage =
@@ -356,36 +380,36 @@
                     response?.error ||
                     'Your payment could not be completed. Please try again.';
 
-                self.state.orderId = orderId;
+                // =====================================================
+                // 3. UPDATE STATE SAFELY
+                // =====================================================
+                if (orderId) {
+                    self.state.orderId = orderId;
+                }
 
                 // =====================================================
-                // ❌ FAILURE (FIXED - ERROR DISPLAY STABLE)
+                // 4. FAILURE HANDLING (STABLE UI)
                 // =====================================================
                 if (!success) {
 
-                    const msg = errorMessage || 'Your payment could not be completed. Please try again.';
-
-                    console.log('[Bytenft] showing failed message:', msg);
+                    console.log('[Bytenft] payment failed:', errorMessage);
 
                     self.cleanupPopup();
 
-                    // 🔥 IMPORTANT
                     setTimeout(function () {
 
-                        self.showCheckoutError(msg);
+                        self.showCheckoutError(errorMessage);
 
-                        // force scroll after Woo rerender
                         const $notice = $('.woocommerce-notices-wrapper');
 
                         if ($notice.length) {
                             $('html, body').animate({
                                 scrollTop: $notice.offset().top - 80
-                            }, 300);
+                            }, 250);
                         }
 
                     }, 50);
 
-                    // 🔥 IMPORTANT
                     setTimeout(function () {
                         self.reset();
                     }, 400);
@@ -394,13 +418,20 @@
                 }
 
                 // =====================================================
-                // ✅ SUCCESS
+                // 5. SUCCESS HANDLING
                 // =====================================================
                 if (redirect && typeof redirect === 'string' && redirect.length > 5) {
 
                     if (self.state.popup && !self.state.popup.closed) {
-                        self.state.popup.location.href = redirect;
+
+                        try {
+                            self.state.popup.location.href = redirect;
+                        } catch (e) {
+                            window.location.href = redirect;
+                        }
+
                         self.trackPopupClose();
+
                     } else {
                         window.location.href = redirect;
                     }
@@ -409,9 +440,14 @@
                     return;
                 }
 
+                // =====================================================
+                // 6. EDGE CASE: NO REDIRECT
+                // =====================================================
+                console.warn('[Bytenft] Missing redirect URL');
+
                 self.cleanupPopup();
 
-                self.showCheckoutError('Missing redirect URL.');
+                self.showCheckoutError('Payment completed but redirect missing.');
 
                 self.reset();
 
@@ -870,7 +906,7 @@
 
         clearCheckoutErrors: function () {
 
-            $('.woocommerce-notices-wrapper').remove();
+            $('.bytenft-error-wrap').remove();
 
             $('.woocommerce-error').remove();
 

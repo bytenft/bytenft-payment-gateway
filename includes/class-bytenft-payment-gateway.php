@@ -1156,6 +1156,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				continue;
 			}
 
+			$order->update_meta_data('_bytenft_active_order', $order_id);
+			$order->save();
+
+			if (isset(WC()->session)) {
+				WC()->session->set('order_awaiting_payment', $order_id);
+			}
+
 			$limit_url = $this->get_api_url('/api/dailylimit');
 
 			$limit_resp = wp_remote_post($limit_url, [
@@ -1435,8 +1442,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'success',
 					'Payment initiated',
 					[
+						'order_id' => $order_id,
 						'payment_status' => $resp_data['data']['payment_status'] ?? 'pending',
-						'redirect' => esc_url($payment_link)
+						'redirect' => add_query_arg(
+						[
+							'order_id' => $order_id,
+							'key'      => $order->get_order_key(),
+						],
+						esc_url($payment_link)
+					)
 					],
 					200,
 					$order_id
