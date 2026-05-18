@@ -1030,7 +1030,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			]
 		);
 
-		$lock_name = 'bytenft_order_' . $order_id;
+		$lock_name = $wpdb->prefix . 'bytenft_order_' . absint($order_id);
 
 		// Try lock
 		$lock_result = $wpdb->get_var(
@@ -1053,7 +1053,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// 4. RATE LIMITING (UNCHANGED)
 			// -------------------------------------------------
 			$ip_address  = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP) ?: 'invalid';
-			$window_size = 10;
+			$window_size = 60;
 			$max_requests = 5;
 
 			$timestamp_key = "rate_limit_{$ip_address}_timestamps";
@@ -1091,24 +1091,26 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// 5. ORDER STATUS PROTECTION
 			// -------------------------------------------------
 			$status = $order->get_status();
+			if (in_array($status, ['completed', 'processing'], true)) {
 
-			if ($status === 'completed' || $status === 'processing') {
+				WC()->cart?->empty_cart();
 
-				if (WC()->cart) {
-					WC()->cart->empty_cart();
-					WC()->session->cleanup_sessions();
-					WC()->session->destroy_session();
-					WC()->session->set_customer_session_cookie(false);
+				if (WC()->session) {
+
+					if (method_exists(WC()->session, 'set_customer_session_cookie')) {
+						WC()->session->set_customer_session_cookie(false);
+					}
 				}
 
-				$redirect = $status === 'completed'
-				? $order->get_checkout_order_received_url()
-				: $order->get_cancel_order_url();
+				$redirect_url = $order->get_checkout_order_received_url();
 
 				return $this->build_response(
 					'success',
 					'Order already processed',
-					[],
+					[
+						'redirect' => $redirect_url,
+						'order_status' => $status
+					],
 					200,
 					$order->get_id()
 				);
@@ -1199,7 +1201,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$order->update_meta_data('_bytenft_active_order', $order_id);
 			$order->save();
 
-			if (isset(WC()->session)) {
+			if (WC()->session) {
 				WC()->session->set('order_awaiting_payment', $order_id);
 			}
 
@@ -1431,6 +1433,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 					$order->update_meta_data('_bytenft_active_pay_id', $pay_id);
 					$order->update_meta_data('_bytenft_payment_finalized', false);
+					$order->save();
 				}
 
 				// -------------------------------------------------
@@ -1499,17 +1502,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			} catch (\Exception $e) {
 
 				ByteNFT_Payment_Gateway_Logger::error(
-					$log_prefix . ' Exception occurred during payment processing',
-					[
-						'order_id' => $order_id,
-						'message'  => $e->getMessage(),
-						'file'     => $e->getFile(),
-						'line'     => $e->getLine(),
-						'trace'    => $e->getTraceAsString(),
-					]
-				);
-
-				ByteNFT_Payment_Gateway_Logger::error(
 					"Payment processing exception: " . $e->getMessage(),
 					[
 						'order_id' => $order_id ?? null,
@@ -1523,7 +1515,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			} finally {
 
-				$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
+				if (!empty($lock_name)) {
+					$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
+				}
 			}
 	}
 
