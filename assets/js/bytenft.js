@@ -84,7 +84,7 @@
 
             const self = this;
 
-            $(document.body)
+            $('form.checkout')
                 .off('checkout_place_order_' + self.PAYMENT_METHOD)
                 .on(
                     'checkout_place_order_' + self.PAYMENT_METHOD,
