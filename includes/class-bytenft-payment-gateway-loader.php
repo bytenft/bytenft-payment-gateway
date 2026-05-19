@@ -636,13 +636,18 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (!$payment_status) {
 
-			ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' PopupClose | Payment still pending');
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' PopupClose | No payment status from API'
+			);
 
 			wp_send_json([
 				'success' => false,
-				'message' => 'Your payment is still being processed.',
+
+				// IMPORTANT FIX: don't say "processing"
+				'message' => 'Payment was not completed. You closed the payment window or no transaction was initiated.',
+
 				'data' => [
-					'payment_status' => 'pending',
+					'payment_status' => 'abandoned',
 					'order_id'       => $order_id,
 					'order_status'   => $order->get_status(),
 				]
@@ -673,62 +678,64 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$order = wc_get_order($order_id);
 
 		$wc_status = $order->get_status();
-
-		/**
-		 * ALWAYS derive final UI state
-		 * from REAL WC order status
-		 * after engine processing.
-		 */
-		if ($order->has_status(['processing', 'completed'])) {
-
-			$state = 'success';
-
-		} elseif ($order->has_status('failed')) {
-
-			$state = 'failed';
-
-		} elseif ($order->has_status('cancelled')) {
-
-			$state = 'cancelled';
-
-		} else {
-
-			$state = 'pending';
-		}
+		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order, $payment_status);
 
 		$is_success = ($state === 'success');
 
 		// -------------------------
 		// RESPONSE MESSAGE (UI ONLY)
 		// -------------------------
-		$message = match ($state) {
-			'success', 'paid'
-				=> 'Your payment was completed successfully.',
-			'failed'
-				=> 'Your payment could not be completed. Please try again.',
-			'canceled', 'cancelled'
-				=> 'Your payment was cancelled.',
-			default
-				=> 'Your payment is still being processed.'
+
+		$ui_state = 'unknown';
+
+		if ($state === 'success') {
+			$ui_state = 'success';
+
+		} elseif ($state === 'failed') {
+			$ui_state = 'failed';
+
+		} elseif ($state === 'cancelled') {
+			$ui_state = 'cancelled';
+
+		} elseif (empty($payment_status) || $payment_status === 'pending') {
+			$ui_state = 'abandoned';
+
+		} elseif (in_array($payment_status, ['processing', 'pending'], true)) {
+			$ui_state = 'processing';
+		}
+
+		$message = match ($ui_state) {
+
+			'success' =>
+				'Your payment was completed successfully.',
+
+			'failed' =>
+				'Payment failed. Please try again or use another method.',
+
+			'cancelled' =>
+				'You cancelled the payment.',
+
+			'processing' =>
+				'Payment is being processed. Please wait and do not close this window.',
+
+			'abandoned' =>
+				'Payment was not completed. You closed the payment window before finishing.',
+
+			default =>
+				'Payment status is currently unknown. Please check your order history.'
 		};
 
 		$redirect = null;
 
-		if ($state === 'success') {
-
+		if ($order->has_status(['processing', 'completed'])) {
 			$redirect = $order->get_checkout_order_received_url();
-
-		} elseif (in_array($state, ['failed', 'cancelled'], true)) {
-
-			$redirect = wc_get_checkout_url();
-
 		}
-		
+
 		wp_send_json([
 			'success' => $is_success,
 			'message' => $message,
 			'data' => [
-				'payment_status' => $state,
+				'payment_status' => $payment_status,
 				'redirect'       => $redirect,
 				'order_id'       => $order_id,
 				'order_status'   => $wc_status,
