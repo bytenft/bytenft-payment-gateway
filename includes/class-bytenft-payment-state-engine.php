@@ -92,49 +92,18 @@ class BYTENFT_PAYMENT_ENGINE
 
         $last_attempt = $order->get_meta('_bytenft_last_failure_attempt');
 
-        // ❌ If same attempt (popup + redirect + webhook), skip
         if ($last_attempt === $attempt_key) {
-            return;
+            return false;
         }
-
-        /* ======================================================
-        * ✔ NOW THIS IS A NEW FAILURE ATTEMPT
-        * ====================================================== */
 
         $fail_count = (int) $order->get_meta('_bytenft_fail_count');
         $fail_count++;
 
         $order->update_meta_data('_bytenft_fail_count', $fail_count);
-        $order->update_meta_data('_bytenft_last_event', $event_type);
-        $order->update_meta_data('_bytenft_last_event_time', current_time('mysql'));
-
-        // ✅ STORE HERE (IMPORTANT PLACE)
         $order->update_meta_data('_bytenft_last_failure_attempt', $attempt_key);
-
-        /* ======================================================
-        * NOTE LOGIC
-        * ====================================================== */
-        $source_label   = self::get_friendly_source($event_type);
-        $transaction_id = self::decode_token($payload['payment_token'] ?? '');
-
-        if ($fail_count <= self::MAX_FAIL_NOTES) {
-
-            $lines   = [];
-            $lines[] = '<strong>ByteNFT Gateway</strong>';
-            $lines[] = '';
-            $lines[] = "❌ Payment attempt <strong>#{$fail_count}</strong> failed.";
-
-            if (!empty($transaction_id)) {
-                $lines[] = '<strong>Payment ID:</strong> ' . esc_html($transaction_id);
-            }
-
-            $lines[] = '<strong>Updated via:</strong> ' . esc_html($source_label);
-            $lines[] = '<strong>Date:</strong> ' . date_i18n('M j, Y \a\t g:i A');
-
-            $order->add_order_note(implode("\n", $lines));
-        }
-
         $order->save();
+
+        return true;
     }
 
     /* =========================================================
@@ -260,25 +229,67 @@ class BYTENFT_PAYMENT_ENGINE
     private static function apply($order, $state, $event_type, $payload)
     {
         $current_state = self::get_state($order);
-        if ($current_state === $state) return;
 
         $wc_status = match ($state) {
             'success'    => self::get_success_wc_status(),
-            'cancelled'  => 'cancelled',
-            'expired'    => 'failed',
-            'processing' => 'pending',
             'failed'     => 'failed',
+            'cancelled'  => 'cancelled',
+            'processing' => 'pending',
+            'expired'    => 'failed',
             default      => null
         };
 
-        if (!$wc_status) return;
+        if (!$wc_status) {
+            return;
+        }
 
-        // If succeeding after failures, prepend failure summary to the success note
         $fail_count = (int) $order->get_meta('_bytenft_fail_count');
-        $note       = self::build_note($state, $event_type, $payload, $fail_count);
 
-        $order->update_status($wc_status, $note);
+        $note = self::build_note(
+            $state,
+            $event_type,
+            $payload,
+            $fail_count
+        );
 
+        /**
+         * FAILED STATUS
+         */
+        if ($state === 'failed') {
+
+            /**
+             * First fail:
+             * pending -> failed
+             */
+            if (!$order->has_status('failed')) {
+
+                $order->update_status('failed');
+
+                // add ONLY ONE custom note
+                $order->add_order_note($note);
+
+            } else {
+
+                /**
+                 * Already failed:
+                 * add retry failure note only
+                 */
+                $order->add_order_note($note);
+            }
+
+        } else {
+
+            /**
+             * Normal transitions
+             */
+            $order->update_status($wc_status);
+
+            $order->add_order_note($note);
+        }
+
+        /**
+         * Meta updates
+         */
         $order->update_meta_data('_bytenft_state', $state);
         $order->update_meta_data('_bytenft_last_event', $event_type);
         $order->update_meta_data('_bytenft_last_event_time', current_time('mysql'));
@@ -289,10 +300,6 @@ class BYTENFT_PAYMENT_ENGINE
 
         if ($state === 'success') {
             $order->update_meta_data('_bytenft_payment_success', 'yes');
-        }
-
-        if (in_array($state, ['success', 'failed', 'cancelled'], true)) {
-            $order->update_meta_data('_bytenft_finalized', 'yes');
         }
 
         $order->save();
@@ -373,27 +380,35 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function build_note($state, $event_type, $payload, $fail_count = 0)
     {
-        $map = [
-            'success'    => 'Payment completed successfully',
-            'failed'     => 'Payment failed',
-            'cancelled'  => 'Payment was cancelled',
-            'processing' => 'Payment is being processed',
-        ];
-
         $source_label   = self::get_friendly_source($event_type);
         $transaction_id = self::decode_token($payload['payment_token'] ?? '');
 
-        $lines   = [];
+        $lines = [];
+
         $lines[] = '<strong>ByteNFT Gateway</strong>';
         $lines[] = '';
-        $lines[] = $map[$state] ?? 'Payment update';
 
-        if ($state === 'processing') {
-            $lines[] = 'Your payment is currently being verified.';
-        }
+        switch ($state) {
 
-        if ($state === 'success' && $fail_count > 0) {
-            $lines[] = "";
+            case 'failed':
+
+                $lines[] = "Payment attempt <strong>#{$fail_count}</strong> failed.";
+                break;
+
+            case 'success':
+
+                $lines[] = "Payment completed successfully.";
+                break;
+
+            case 'processing':
+
+                $lines[] = "Payment is being processed.";
+                break;
+
+            case 'cancelled':
+
+                $lines[] = "Payment was cancelled.";
+                break;
         }
 
         if (!empty($transaction_id)) {
@@ -404,9 +419,7 @@ class BYTENFT_PAYMENT_ENGINE
             $lines[] = '<strong>Updated via:</strong> ' . esc_html($source_label);
         }
 
-        $lines[] = '';
         $lines[] = '<strong>Date:</strong> ' . date_i18n('M j, Y \a\t g:i A');
-        $lines[] = '';
 
         return implode("\n", $lines);
     }
