@@ -107,8 +107,9 @@ class BYTENFT_PAYMENT_ENGINE
     {
         $fail_count = (int) $order->get_meta('_bytenft_fail_count');
         $fail_count++;
+
         $order->update_meta_data('_bytenft_fail_count', $fail_count);
-        $order->update_meta_data('_bytenft_state', 'failed');           // ← persist state
+        $order->update_meta_data('_bytenft_state', 'failed');
         $order->update_meta_data('_bytenft_last_event', $event_type);
         $order->update_meta_data('_bytenft_last_event_time', current_time('mysql'));
 
@@ -116,6 +117,7 @@ class BYTENFT_PAYMENT_ENGINE
         $transaction_id = self::decode_token($payload['payment_token'] ?? '');
 
         if ($fail_count <= self::MAX_FAIL_NOTES) {
+
             $lines   = [];
             $lines[] = '<strong>ByteNFT Gateway</strong>';
             $lines[] = '';
@@ -129,11 +131,13 @@ class BYTENFT_PAYMENT_ENGINE
             $lines[] = '<strong>Date:</strong> ' . date_i18n('M j, Y \a\t g:i A');
 
             $order->add_order_note(implode("\n", $lines));
+
         } else {
+
             $lines   = [];
             $lines[] = '<strong>ByteNFT Gateway</strong>';
             $lines[] = '';
-            $lines[] = "❌ Payment attempt <strong>#{$fail_count}</strong> failed (previous {$fail_count} attempts also failed).";
+            $lines[] = "❌ Payment attempt #{$fail_count} failed (multiple failures detected).";
             $lines[] = '<strong>Updated via:</strong> ' . esc_html($source_label);
             $lines[] = '<strong>Date:</strong> ' . date_i18n('M j, Y \a\t g:i A');
 
@@ -323,8 +327,9 @@ class BYTENFT_PAYMENT_ENGINE
     {
         return hash('sha256', implode('|', [
             $type,
-            $payload['status']        ?? '',
-            $payload['payment_token'] ?? ''
+            $payload['status'] ?? '',
+            $payload['payment_token'] ?? '',
+            $payload['transaction_id'] ?? ''
         ]));
     }
 
