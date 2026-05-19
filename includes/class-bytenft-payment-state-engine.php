@@ -205,6 +205,13 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function apply($order, $state, $event_type, $payload)
     {
+        ByteNFT_Payment_Gateway_Logger::info('BYTENFT_PAYMENT_ENGINE - Apply function called', [
+            'order_id' => $order->get_id(),
+            'current_state' => self::get_state($order),
+            'new_state' => $state,
+            'event_type' => $event_type,
+            'payload' => $payload
+        ]);
         $current_state = self::get_state($order);
 
         $wc_status = match ($state) {
@@ -218,6 +225,9 @@ class BYTENFT_PAYMENT_ENGINE
             default => null
         };
 
+        ByteNFT_Payment_Gateway_Logger::info('BYTENFT_PAYMENT_ENGINE - Apply function called', [
+            'wc_status' => $wc_status,
+        ]);
         if (!$wc_status) return;
 
         $note = self::build_note($state, $event_type, $payload);
