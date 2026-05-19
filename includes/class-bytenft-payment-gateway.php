@@ -1832,6 +1832,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$selected = null;
 		$reason   = 'No eligible merchant account';
 
+		$pluginLogApiUrl        = $this->get_api_url('/api/plugin/check/checkout');
+		$all_accounts_limited = true;
+		$force_refresh = (
+			isset($_GET['refresh_accounts'], $_GET['_wpnonce']) &&
+			$_GET['refresh_accounts'] === '1' &&
+			wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'refresh_accounts_nonce')
+		);
+
 		foreach ($accounts as $account) {
 
 			$public = $this->sandbox
@@ -1876,6 +1884,20 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if (($limit['status'] ?? '') !== 'success') {
 				continue;
 			}
+
+			if (!empty($limit['status']) && $limit['status'] === 'success') {
+				$all_accounts_limited = false;
+			}
+
+			$this->send_plugin_logs(
+				$accounts,
+				$public,
+				$secret,
+				$amount,
+				$all_accounts_limited ? 0 : 1,
+				$pluginLogApiUrl,
+				$force_refresh
+			);
 
 			$selected = $account;
 			$reason   = 'Valid merchant account found';
@@ -2173,8 +2195,6 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 		$accStatusApiUrl        = $this->get_api_url('/api/check-merchant-status');
 		$transactionLimitApiUrl = $this->get_api_url('/api/dailylimit');
-		$pluginLogApiUrl        = $this->get_api_url('/api/plugin/check/checkout');
-
 		$user_account_active = false;
 		$all_accounts_limited = true;
 		$limit_data = [];
