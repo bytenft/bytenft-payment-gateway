@@ -67,9 +67,11 @@ class BYTENFT_PAYMENT_ENGINE
             /* -----------------------------
              * NO CHANGE
              * ----------------------------- */
-            if ($new_state === $current_state) {
-                return self::safe_response($order, 'no_change', $new_state);
-            }
+            // if ($new_state === $current_state) {
+            //     return self::safe_response($order, 'no_change', $new_state);
+            // }
+
+            
 
             /* -----------------------------
              * TRANSITION CHECK (FIXED EXACT MATRIX)
@@ -81,7 +83,22 @@ class BYTENFT_PAYMENT_ENGINE
             /* -----------------------------
              * APPLY STATE
              * ----------------------------- */
-            self::apply($order, $new_state, $event_type, $payload);
+            
+            $state_changed = ($new_state !== $current_state) 
+                && self::can_transition($current_state, $new_state);
+
+            /**
+             * ALWAYS write note (even failed → failed)
+             */
+            $note = self::build_note($new_state, $event_type, $payload);
+            $order->add_order_note($note, false, true);
+
+            /**
+             * ONLY change Woo state if valid transition
+             */
+            if ($state_changed) {
+                self::apply($order, $new_state, $event_type, $payload);
+            }
 
             return self::safe_response($order, 'updated', $new_state);
 
