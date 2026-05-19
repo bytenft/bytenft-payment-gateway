@@ -126,7 +126,7 @@ class BYTENFT_PAYMENT_ENGINE
         if (self::get_state($order) === 'success') {
             return;
         }
-        
+
         $order_id = $order->get_id();
         $payment_token = $payload['payment_token'] ?? '';
 
@@ -354,5 +354,32 @@ class BYTENFT_PAYMENT_ENGINE
             'order_id' => $order->get_id(),
             'state' => $state ?? self::get_state($order)
         ];
+    }
+
+    private static function resolve_final_state($payload)
+    {
+        $raw = $payload['status']
+            ?? $payload['payment_status']
+            ?? $payload['transaction_status']
+            ?? $payload['order_status']
+            ?? null;
+
+        $map = [
+            'success'   => 'success',
+            'paid'      => 'success',
+            'completed' => 'success',
+
+            'failed'    => 'failed',
+
+            'cancelled' => 'cancelled',
+            'canceled'  => 'cancelled',
+
+            'expired'   => 'expired',
+
+            'pending'   => 'processing',
+            'processing'=> 'processing',
+        ];
+
+        return $map[$raw] ?? null;
     }
 }
