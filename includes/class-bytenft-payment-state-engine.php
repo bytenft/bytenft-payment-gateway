@@ -220,6 +220,7 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function apply($order, $state, $event_type, $payload)
     {
+        // 1. ALWAYS log event (audit trail)
         $order->add_order_note(
             sprintf(
                 "[ByteNFT Event] %s | Incoming state: %s | Event: %s | Token: %s",
@@ -232,18 +233,12 @@ class BYTENFT_PAYMENT_ENGINE
             true
         );
 
-        $current_state = self::get_state($order);
-
-        if ($current_state === $state) return;
-
         $wc_status = match ($state) {
-
             'success'    => self::get_success_wc_status(),
             'failed'     => 'failed',
             'cancelled'  => 'cancelled',
             'expired'    => 'failed',
             'processing' => 'pending',
-
             default => null
         };
 
@@ -251,29 +246,23 @@ class BYTENFT_PAYMENT_ENGINE
 
         $note = self::build_note($state, $event_type, $payload);
 
-        $existing_status = $order->get_status();
+        $previous_wc_status = $order->get_status();
 
-        $order->update_status($wc_status, $note);
+        // 2. UPDATE STATUS
+        $order->update_status($wc_status);
 
-        // Force duplicate visibility when status is same
-        if ($existing_status === $wc_status) {
+        // 3. FORCE DUPLICATE NOTE IF SAME STATUS
+        if ($previous_wc_status === $wc_status) {
             $order->add_order_note($note, false, true);
         }
 
+        // 4. ALWAYS update internal engine state
         $order->update_meta_data('_bytenft_state', $state);
         $order->update_meta_data('_bytenft_last_event', $event_type);
         $order->update_meta_data('_bytenft_last_event_time', current_time('mysql'));
 
         if (!empty($payload['payment_token'])) {
             $order->update_meta_data('_bytenft_pay_id', $payload['payment_token']);
-        }
-
-        if ($state === 'success') {
-            $order->update_meta_data('_bytenft_payment_success', 'yes');
-        }
-
-        if (in_array($state, ['success','failed','cancelled'], true)) {
-            $order->update_meta_data('_bytenft_finalized', 'yes');
         }
 
         $order->save();
