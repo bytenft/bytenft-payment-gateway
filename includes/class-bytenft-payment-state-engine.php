@@ -252,19 +252,24 @@ class BYTENFT_PAYMENT_ENGINE
         // -------------------------------------------------
         // 4. Update WooCommerce status (NO NOTE HERE)
         // -------------------------------------------------
-        $order->update_status($wc_status);
+        if ($order->get_status() !== $wc_status) {
+            $order->update_status($wc_status);
+        }
 
         // -------------------------------------------------
         // 5. ALWAYS add clean payment note
         // -------------------------------------------------
-        $order->add_order_note($note, false, true);
+       $last_note_hash = $order->get_meta('_bytenft_last_note_hash');
 
-        // -------------------------------------------------
-        // 6. OPTIONAL: if status didn't change, still ensure visibility
-        // -------------------------------------------------
-        if ($previous_status === $wc_status) {
-            $order->add_order_note($note, false, true);
+        $current_hash = md5($note);
+
+        if ($last_note_hash === $current_hash) {
+            return; // skip duplicate note
         }
+
+        $order->add_order_note($note, false, true);
+        $order->update_meta_data('_bytenft_last_note_hash', $current_hash);
+
 
         // -------------------------------------------------
         // 7. Update internal metadata (ENGINE STATE ONLY)
@@ -309,10 +314,9 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function generate_event_id($type, $payload)
     {
-        return hash('sha256', implode('|', [
-            $type,
+       return hash('sha256', implode('|', [
+            $payload['payment_token'] ?? '',
             $payload['status'] ?? '',
-            $payload['payment_token'] ?? ''
         ]));
     }
 
