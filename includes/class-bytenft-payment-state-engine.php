@@ -110,7 +110,6 @@ class BYTENFT_PAYMENT_ENGINE
         $fail_count++;
 
         $order->update_meta_data('_bytenft_fail_count', $fail_count);
-        $order->update_meta_data('_bytenft_state', 'failed');
         $order->update_meta_data('_bytenft_last_event', $event_type);
         $order->update_meta_data('_bytenft_last_event_time', current_time('mysql'));
 
