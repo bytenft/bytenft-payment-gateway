@@ -66,7 +66,7 @@ class BYTENFT_PAYMENT_ENGINE
                 return self::safe_response($order, 'no_change', $new_state);
             }
 
-            /* -----------------------------
+             /* -----------------------------
             * ROUTE FAILURES BEFORE TRANSITION CHECK  ← THIS IS THE FIX
             * ----------------------------- */
             if ($new_state === 'failed') {
@@ -407,6 +407,10 @@ class BYTENFT_PAYMENT_ENGINE
 
         if ($state === 'processing') {
             $lines[] = 'Your payment is currently being verified.';
+        }
+
+        if ($state === 'success' && $fail_count > 0) {
+            $lines[] = "";
         }
 
         if (!empty($transaction_id)) {
