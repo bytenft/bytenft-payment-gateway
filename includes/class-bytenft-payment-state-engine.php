@@ -220,7 +220,8 @@ class BYTENFT_PAYMENT_ENGINE
             'failed'     => 'failed',
             'cancelled'  => 'cancelled',
             'expired'    => 'failed',
-            'processing' => 'pending',
+            'processing' => self::get_success_wc_status(),
+            'pending'    => 'pending',
 
             default => null
         };
