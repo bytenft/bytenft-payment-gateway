@@ -356,30 +356,43 @@ class BYTENFT_PAYMENT_ENGINE
         ];
     }
 
-    public static function resolve_final_state($payload)
+    public static function resolve_final_state($order, $api_status = null)
     {
-        $raw = $payload['status']
-            ?? $payload['payment_status']
-            ?? $payload['transaction_status']
-            ?? $payload['order_status']
-            ?? null;
+        // 1. PRIMARY: engine state (validated)
+        $state = $order->get_meta('_bytenft_state');
 
-        $map = [
-            'success'   => 'success',
-            'paid'      => 'success',
-            'completed' => 'success',
+        if (!empty($state) && in_array($state, ['pending','processing','success','failed','cancelled','expired'], true)) {
+            return $state;
+        }
 
-            'failed'    => 'failed',
+        // 2. SAFETY: API status (current response)
+        if (!empty($api_status)) {
+            $mapped = match ($api_status) {
+                'success', 'paid', 'completed' => 'success',
+                'failed' => 'failed',
+                'cancelled', 'canceled' => 'cancelled',
+                'processing', 'pending' => 'processing',
+                default => null
+            };
 
-            'cancelled' => 'cancelled',
-            'canceled'  => 'cancelled',
+            if ($mapped) {
+                return $mapped;
+            }
+        }
 
-            'expired'   => 'expired',
+        // 3. BACKUP: WooCommerce status
+        if ($order->has_status(['processing', 'completed'])) {
+            return 'success';
+        }
 
-            'pending'   => 'processing',
-            'processing'=> 'processing',
-        ];
+        if ($order->has_status(['failed'])) {
+            return 'failed';
+        }
 
-        return $map[$raw] ?? null;
+        if ($order->has_status(['cancelled'])) {
+            return 'cancelled';
+        }
+
+        return null;
     }
 }
