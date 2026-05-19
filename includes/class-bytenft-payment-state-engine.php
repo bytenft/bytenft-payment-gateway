@@ -189,79 +189,114 @@ class BYTENFT_PAYMENT_ENGINE
     private static function sync_order_notes($order)
     {
         $timeline = self::get_timeline($order);
-        if (empty($timeline)) return;
 
-        $note_key = md5('timeline_v3|' . json_encode($timeline));
-        $last_key = $order->get_meta('_bytenft_note_fingerprint');
+        if (empty($timeline)) {
+            return;
+        }
 
-        if ($note_key === $last_key) return;
-
-        $order->update_meta_data('_bytenft_note_fingerprint', $note_key);
-
-        $seen = [];
+        $seen_failed = [];
         $failed_events = [];
 
         foreach ($timeline as $event) {
 
-            if (($event['type'] ?? '') !== 'failed') continue;
-
-            // TRUE UNIQUE KEY = transaction_id (critical fix)
-            $key = $event['payment_token'] ?? null;
-
-            if (!$key) {
-                $key = md5(
-                    ($event['event_type'] ?? '') . '|' .
-                    ($event['time'] ?? '')
-                );
+            if (($event['type'] ?? '') !== 'failed') {
+                continue;
             }
 
-            if (isset($seen[$key])) continue;
+            // payment_token = unique payment attempt
+            $token = trim((string) ($event['payment_token'] ?? ''));
 
-            $seen[$key] = true;
+            if (empty($token)) {
+                continue;
+            }
+
+            if (isset($seen_failed[$token])) {
+                continue;
+            }
+
+            $seen_failed[$token] = true;
+
             $failed_events[] = $event;
         }
 
-        $success   = array_values(array_filter($timeline, fn($e) => ($e['type'] ?? '') === 'success'));
-        $cancelled = array_values(array_filter($timeline, fn($e) => ($e['type'] ?? '') === 'cancelled'));
-
-        $fail_count = count($failed_events);
-
         /**
-         * FAILED NOTES
+         * ONLY ADD NEW FAILED NOTES
          */
-        if ($fail_count > 0 && empty($success)) {
+        $already_synced = (int) $order->get_meta('_bytenft_failed_note_count');
 
-            for ($i = 0; $i < $fail_count; $i++) {
-                $order->add_order_note("Payment attempt #" . ($i + 1) . " failed.");
-            }
-        }
+        $actual_failed_count = count($failed_events);
 
-        /**
-         * SUCCESS OVERRIDES EVERYTHING
-         */
-        if (!empty($success)) {
+        if ($actual_failed_count > $already_synced) {
 
-            if (!$order->get_meta('_bytenft_success_note_added')) {
+            for ($i = $already_synced; $i < $actual_failed_count; $i++) {
 
-                $order->add_order_note("Payment completed successfully.");
+                $attempt_number = $i + 1;
 
-                $order->update_meta_data(
-                    '_bytenft_success_note_added',
-                    'yes'
+                $order->add_order_note(
+                    "Payment attempt #{$attempt_number} failed."
                 );
             }
 
-            $order->save();
-            return;
+            $order->update_meta_data(
+                '_bytenft_failed_note_count',
+                $actual_failed_count
+            );
         }
 
         /**
-         * CANCELLED
+         * SUCCESS NOTE (ONLY ONCE)
          */
-        if (!empty($cancelled)) {
-            $order->add_order_note("Payment was cancelled.");
-            $order->save();
-            return;
+        $has_success = false;
+
+        foreach ($timeline as $event) {
+
+            if (($event['type'] ?? '') === 'success') {
+                $has_success = true;
+                break;
+            }
+        }
+
+        if (
+            $has_success &&
+            !$order->get_meta('_bytenft_success_note_added')
+        ) {
+
+            $order->add_order_note(
+                'Payment completed successfully.'
+            );
+
+            $order->update_meta_data(
+                '_bytenft_success_note_added',
+                'yes'
+            );
+        }
+
+        /**
+         * CANCEL NOTE (ONLY ONCE)
+         */
+        $has_cancelled = false;
+
+        foreach ($timeline as $event) {
+
+            if (($event['type'] ?? '') === 'cancelled') {
+                $has_cancelled = true;
+                break;
+            }
+        }
+
+        if (
+            $has_cancelled &&
+            !$order->get_meta('_bytenft_cancel_note_added')
+        ) {
+
+            $order->add_order_note(
+                'Payment was cancelled.'
+            );
+
+            $order->update_meta_data(
+                '_bytenft_cancel_note_added',
+                'yes'
+            );
         }
 
         $order->save();
