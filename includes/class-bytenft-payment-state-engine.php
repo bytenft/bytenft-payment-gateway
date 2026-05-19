@@ -105,6 +105,19 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function record_failure($order, $event_type, $payload)
     {
+        $attempt_key = self::get_attempt_key($payload);
+
+        $last_attempt = $order->get_meta('_bytenft_last_failure_attempt');
+
+        // ❌ If same attempt (popup + redirect + webhook), skip
+        if ($last_attempt === $attempt_key) {
+            return;
+        }
+
+        /* ======================================================
+        * ✔ NOW THIS IS A NEW FAILURE ATTEMPT
+        * ====================================================== */
+
         $fail_count = (int) $order->get_meta('_bytenft_fail_count');
         $fail_count++;
 
@@ -113,6 +126,12 @@ class BYTENFT_PAYMENT_ENGINE
         $order->update_meta_data('_bytenft_last_event', $event_type);
         $order->update_meta_data('_bytenft_last_event_time', current_time('mysql'));
 
+        // ✅ STORE HERE (IMPORTANT PLACE)
+        $order->update_meta_data('_bytenft_last_failure_attempt', $attempt_key);
+
+        /* ======================================================
+        * NOTE LOGIC
+        * ====================================================== */
         $source_label   = self::get_friendly_source($event_type);
         $transaction_id = self::decode_token($payload['payment_token'] ?? '');
 
@@ -127,17 +146,6 @@ class BYTENFT_PAYMENT_ENGINE
                 $lines[] = '<strong>Payment ID:</strong> ' . esc_html($transaction_id);
             }
 
-            $lines[] = '<strong>Updated via:</strong> ' . esc_html($source_label);
-            $lines[] = '<strong>Date:</strong> ' . date_i18n('M j, Y \a\t g:i A');
-
-            $order->add_order_note(implode("\n", $lines));
-
-        } else {
-
-            $lines   = [];
-            $lines[] = '<strong>ByteNFT Gateway</strong>';
-            $lines[] = '';
-            $lines[] = "❌ Payment attempt #{$fail_count} failed (multiple failures detected).";
             $lines[] = '<strong>Updated via:</strong> ' . esc_html($source_label);
             $lines[] = '<strong>Date:</strong> ' . date_i18n('M j, Y \a\t g:i A');
 
@@ -360,6 +368,11 @@ class BYTENFT_PAYMENT_ENGINE
             'manual'      => 'Manual Admin Update',
             default       => 'Payment Gateway Update'
         };
+    }
+
+    private static function get_attempt_key($payload)
+    {
+        return $payload['payment_token'] ?? null;
     }
 
     /* =========================================================
