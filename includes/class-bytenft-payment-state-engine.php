@@ -35,43 +35,43 @@ class BYTENFT_PAYMENT_ENGINE
 
             $existing = self::get_state($order);
 
-            // Hard lock: only 'success' (normalized from completed) is truly final
+            // HARD LOCK: success is final
             if ($existing === 'success') {
                 return self::safe_response($order, 'final_success_locked', 'success');
             }
 
-            $current_state = self::get_state($order);
-            $new_state     = self::resolve_state($payload);
+            $current_state = self::normalize_state(self::get_state($order));
+            $new_state     = self::normalize_state(self::resolve_state($payload));
 
             if (!$new_state) {
                 return self::safe_response($order, 'no_state', $current_state);
             }
 
-            // In handle_event(), change this block order:
-
-            /* -----------------------------
-            * NORMALIZE
-            * ----------------------------- */
-            $current_state = self::normalize_state($current_state);
-            $new_state     = self::normalize_state($new_state);
-
             /* -----------------------------
             * NO CHANGE
             * ----------------------------- */
             if ($new_state === $current_state) {
+
                 if ($new_state === 'failed') {
                     self::record_failure($order, $event_type, $payload);
-                    return self::safe_response($order, 'failure_recorded', $new_state);
+                    // IMPORTANT: still allow WC update flow below if needed
+                    self::apply($order, $new_state, $event_type, $payload);
                 }
+
                 return self::safe_response($order, 'no_change', $new_state);
             }
 
-             /* -----------------------------
-            * ROUTE FAILURES BEFORE TRANSITION CHECK  ← THIS IS THE FIX
+            /* -----------------------------
+            * FAILURE HANDLING (NO EARLY RETURN)
             * ----------------------------- */
             if ($new_state === 'failed') {
+
                 self::record_failure($order, $event_type, $payload);
-                return self::safe_response($order, 'failure_recorded', $current_state);
+
+                // STILL APPLY STATUS UPDATE (this fixes your issue)
+                self::apply($order, $new_state, $event_type, $payload);
+
+                return self::safe_response($order, 'updated', $new_state);
             }
 
             /* -----------------------------
@@ -81,12 +81,9 @@ class BYTENFT_PAYMENT_ENGINE
                 return self::safe_response($order, 'invalid_transition', $current_state);
             }
 
-            // If incoming is a failure, record it separately and don't change WC status
-            if ($new_state === 'failed') {
-                self::record_failure($order, $event_type, $payload);
-                return self::safe_response($order, 'failure_recorded', $current_state);
-            }
-
+            /* -----------------------------
+            * NORMAL FLOW (SUCCESS / CANCEL / ETC)
+            * ----------------------------- */
             self::apply($order, $new_state, $event_type, $payload);
 
             return self::safe_response($order, 'updated', $new_state);
@@ -285,6 +282,7 @@ class BYTENFT_PAYMENT_ENGINE
             'cancelled'  => 'cancelled',
             'expired'    => 'failed',
             'processing' => 'pending',
+            'failed'     => 'failed',
             default      => null
         };
 
@@ -391,10 +389,10 @@ class BYTENFT_PAYMENT_ENGINE
     private static function build_note($state, $event_type, $payload, $fail_count = 0)
     {
         $map = [
-            'success'    => '✅ Payment completed successfully',
-            'failed'     => '❌ Payment failed',
-            'cancelled'  => '🚫 Payment was cancelled',
-            'processing' => '🔄 Payment is being processed',
+            'success'    => 'Payment completed successfully',
+            'failed'     => 'Payment failed',
+            'cancelled'  => 'Payment was cancelled',
+            'processing' => 'Payment is being processed',
         ];
 
         $source_label   = self::get_friendly_source($event_type);
