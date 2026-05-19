@@ -16,6 +16,16 @@ class BYTENFT_PAYMENT_ENGINE
 
         $event_id = self::generate_event_id($event_type, $payload);
 
+        /* -----------------------------
+         * CURRENT STATE
+         * ----------------------------- */
+        $current_state = self::get_state($order);
+
+        /* -----------------------------
+         * APPLY STATE
+         * ----------------------------- */
+        self::apply($order, $current_state, $event_type, $payload);
+
         if (self::is_duplicate_event($order_id, $event_id)) {
             return self::safe_response($order, 'duplicate_event_ignored', self::get_state($order));
         }
@@ -43,10 +53,6 @@ class BYTENFT_PAYMENT_ENGINE
                 return self::safe_response($order, 'final_success_locked', 'success');
             }
 
-            /* -----------------------------
-             * CURRENT STATE
-             * ----------------------------- */
-            $current_state = self::get_state($order);
 
             /* -----------------------------
              * RESOLVE NEW STATE
@@ -76,11 +82,6 @@ class BYTENFT_PAYMENT_ENGINE
             if (!self::can_transition($current_state, $new_state)) {
                 return self::safe_response($order, 'invalid_transition', $current_state);
             }
-
-            /* -----------------------------
-             * APPLY STATE
-             * ----------------------------- */
-            self::apply($order, $new_state, $event_type, $payload);
 
             return self::safe_response($order, 'updated', $new_state);
 
