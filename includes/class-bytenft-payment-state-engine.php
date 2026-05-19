@@ -356,7 +356,7 @@ class BYTENFT_PAYMENT_ENGINE
         ];
     }
 
-    private static function resolve_final_state($payload)
+    public static function resolve_final_state($payload)
     {
         $raw = $payload['status']
             ?? $payload['payment_status']
