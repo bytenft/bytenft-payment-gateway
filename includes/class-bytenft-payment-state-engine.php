@@ -67,14 +67,6 @@ class BYTENFT_PAYMENT_ENGINE
             }
 
             /* -----------------------------
-            * ROUTE FAILURES BEFORE TRANSITION CHECK  ← THIS IS THE FIX
-            * ----------------------------- */
-            if ($new_state === 'failed') {
-                self::record_failure($order, $event_type, $payload);
-                return self::safe_response($order, 'failure_recorded', $current_state);
-            }
-
-            /* -----------------------------
             * TRANSITION CHECK
             * ----------------------------- */
             if (!self::can_transition($current_state, $new_state)) {
