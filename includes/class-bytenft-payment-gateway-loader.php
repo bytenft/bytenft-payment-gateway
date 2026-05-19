@@ -673,35 +673,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$order = wc_get_order($order_id);
 
 		$wc_status = $order->get_status();
-
-		/**
-		 * ALWAYS derive final UI state
-		 * from REAL WC order status
-		 * after engine processing.
-		 */
-		if ($order->has_status(['processing', 'completed'])) {
-
-			$state = 'success';
-
-		} elseif ($order->has_status('failed')) {
-
-			$state = 'failed';
-
-		} elseif ($order->has_status('cancelled')) {
-
-			$state = 'cancelled';
-
-		} else {
-
-			$state = 'pending';
-		}
+		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order, $payment_status);
 
 		$is_success = ($state === 'success');
 
 		// -------------------------
 		// RESPONSE MESSAGE (UI ONLY)
 		// -------------------------
-		$message = match ($state) {
+		$message = match ($payment_status) {
 			'success', 'paid'
 				=> 'Your payment was completed successfully.',
 			'failed'
@@ -714,21 +693,15 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		$redirect = null;
 
-		if ($state === 'success') {
-
+		if ($order->has_status(['processing', 'completed'])) {
 			$redirect = $order->get_checkout_order_received_url();
-
-		} elseif (in_array($state, ['failed', 'cancelled'], true)) {
-
-			$redirect = wc_get_checkout_url();
-
 		}
-		
+
 		wp_send_json([
 			'success' => $is_success,
 			'message' => $message,
 			'data' => [
-				'payment_status' => $state,
+				'payment_status' => $payment_status,
 				'redirect'       => $redirect,
 				'order_id'       => $order_id,
 				'order_status'   => $wc_status,
