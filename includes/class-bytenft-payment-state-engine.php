@@ -409,11 +409,6 @@ class BYTENFT_PAYMENT_ENGINE
             $lines[] = 'Your payment is currently being verified.';
         }
 
-        // On success after retries, show how many attempts it took
-        if ($state === 'success' && $fail_count > 0) {
-            $lines[] = "ℹ️ Succeeded after <strong>{$fail_count}</strong> failed attempt(s).";
-        }
-
         if (!empty($transaction_id)) {
             $lines[] = '<strong>Payment ID:</strong> ' . esc_html($transaction_id);
         }
