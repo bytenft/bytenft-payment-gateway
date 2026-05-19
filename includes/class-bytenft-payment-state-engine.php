@@ -220,6 +220,18 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function apply($order, $state, $event_type, $payload)
     {
+        $order->add_order_note(
+            sprintf(
+                "[ByteNFT Event] %s | Incoming state: %s | Event: %s | Token: %s",
+                current_time('mysql'),
+                $state,
+                $event_type,
+                $payload['payment_token'] ?? 'n/a'
+            ),
+            false,
+            true
+        );
+
         $current_state = self::get_state($order);
 
         if ($current_state === $state) return;
@@ -239,7 +251,14 @@ class BYTENFT_PAYMENT_ENGINE
 
         $note = self::build_note($state, $event_type, $payload);
 
+        $existing_status = $order->get_status();
+
         $order->update_status($wc_status, $note);
+
+        // Force duplicate visibility when status is same
+        if ($existing_status === $wc_status) {
+            $order->add_order_note($note, false, true);
+        }
 
         $order->update_meta_data('_bytenft_state', $state);
         $order->update_meta_data('_bytenft_last_event', $event_type);
