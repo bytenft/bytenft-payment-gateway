@@ -54,11 +54,21 @@ class BYTENFT_PAYMENT_ENGINE
                 $order->update_meta_data('_bytenft_last_fail_key', $failure_key);
             }
 
+            if ($new_state === 'failed') {
+                $count = (int) $order->get_meta('_bytenft_fail_count');
+                $count++;
+
+                $order->update_meta_data('_bytenft_fail_count', $count);
+                $order->add_order_note("Payment attempt #{$count} failed.");
+            }
+
             // STEP 3: apply state (ONLY ONCE)
             self::apply($order, $new_state, $event_type, $payload);
 
             // STEP 4: ALWAYS push timeline AFTER apply
-            if (self::can_transition($current_state, $new_state)) {
+            if ($new_state === 'failed') {
+                self::push_timeline_event($order, $new_state, $event_type, $payload);
+            } elseif (self::can_transition($current_state, $new_state)) {
                 self::push_timeline_event($order, $new_state, $event_type, $payload);
             }
 
@@ -99,6 +109,8 @@ class BYTENFT_PAYMENT_ENGINE
             return;
         }
 
+        $old_state = self::get_state($order);
+
         $order_id = $order->get_id();
         $payment_token = $payload['payment_token'] ?? '';
 
@@ -111,11 +123,7 @@ class BYTENFT_PAYMENT_ENGINE
 
         $order->update_meta_data('_bytenft_state_lock', $state_lock_key);
 
-        $current_state = self::get_state($order);
-
-        if ($current_state === $state) {
-            return;
-        }
+        $order->add_order_note("Payment event: {$event_type} → {$state}");
 
         $wc_status = match ($state) {
             'success'    => self::get_success_wc_status(),
@@ -263,7 +271,7 @@ class BYTENFT_PAYMENT_ENGINE
 
         $map = [
             'pending' => ['cancelled','processing','success','failed'],
-            'failed' => ['success','processing','cancelled'],
+            'failed' => ['failed','success','processing','cancelled'],
             'cancelled' => ['success'],
             'expired' => ['failed','cancelled','success'],
         ];
