@@ -325,12 +325,23 @@ class BYTENFT_PAYMENT_ENGINE
             default          => 'System'
         };
 
+        // Decode Base64 payment token if possible
+        $decoded_payment_id = base64_decode($payment_token, true);
+
+        if (empty($decoded_payment_id)) {
+            $decoded_payment_id = $payment_token;
+        }
+
         return sprintf(
-            "ByteNFT Gateway\n\n%s\n\nPayment ID: %s\nUpdated Via: %s\nRecorded At: %s",
-            $title,
-            $payment_token ?: 'N/A',
-            $source,
-            current_time('F j, Y \a\t g:i A')
+            '<strong>ByteNFT Gateway</strong><br><br>
+            <strong>%s</strong><br><br>
+            <strong>Payment ID:</strong> %s<br>
+            <strong>Updated Via:</strong> %s<br>
+            <strong>Recorded At:</strong> %s',
+            esc_html($title),
+            esc_html($decoded_payment_id),
+            esc_html($source),
+            esc_html(current_time('F j, Y \a\t g:i A'))
         );
     }
 
