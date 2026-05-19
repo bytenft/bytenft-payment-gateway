@@ -47,11 +47,18 @@ class BYTENFT_PAYMENT_ENGINE
                 return self::safe_response($order, 'no_state', $current_state);
             }
 
+            // In handle_event(), change this block order:
+
+            /* -----------------------------
+            * NORMALIZE
+            * ----------------------------- */
             $current_state = self::normalize_state($current_state);
             $new_state     = self::normalize_state($new_state);
 
+            /* -----------------------------
+            * NO CHANGE
+            * ----------------------------- */
             if ($new_state === $current_state) {
-                // Even on same state, if it's a failure, still log the attempt note
                 if ($new_state === 'failed') {
                     self::record_failure($order, $event_type, $payload);
                     return self::safe_response($order, 'failure_recorded', $new_state);
@@ -59,6 +66,17 @@ class BYTENFT_PAYMENT_ENGINE
                 return self::safe_response($order, 'no_change', $new_state);
             }
 
+            /* -----------------------------
+            * ROUTE FAILURES BEFORE TRANSITION CHECK  ← THIS IS THE FIX
+            * ----------------------------- */
+            if ($new_state === 'failed') {
+                self::record_failure($order, $event_type, $payload);
+                return self::safe_response($order, 'failure_recorded', $current_state);
+            }
+
+            /* -----------------------------
+            * TRANSITION CHECK
+            * ----------------------------- */
             if (!self::can_transition($current_state, $new_state)) {
                 return self::safe_response($order, 'invalid_transition', $current_state);
             }
@@ -87,10 +105,10 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function record_failure($order, $event_type, $payload)
     {
-        // Increment persistent failure count on the order
         $fail_count = (int) $order->get_meta('_bytenft_fail_count');
         $fail_count++;
         $order->update_meta_data('_bytenft_fail_count', $fail_count);
+        $order->update_meta_data('_bytenft_state', 'failed');           // ← persist state
         $order->update_meta_data('_bytenft_last_event', $event_type);
         $order->update_meta_data('_bytenft_last_event_time', current_time('mysql'));
 
@@ -98,11 +116,10 @@ class BYTENFT_PAYMENT_ENGINE
         $transaction_id = self::decode_token($payload['payment_token'] ?? '');
 
         if ($fail_count <= self::MAX_FAIL_NOTES) {
-            // Individual note per failure attempt
             $lines   = [];
             $lines[] = '<strong>ByteNFT Gateway</strong>';
             $lines[] = '';
-            $lines[] = "⚠️ Payment attempt <strong>#{$fail_count}</strong> failed.";
+            $lines[] = "❌ Payment attempt <strong>#{$fail_count}</strong> failed.";
 
             if (!empty($transaction_id)) {
                 $lines[] = '<strong>Payment ID:</strong> ' . esc_html($transaction_id);
@@ -113,11 +130,10 @@ class BYTENFT_PAYMENT_ENGINE
 
             $order->add_order_note(implode("\n", $lines));
         } else {
-            // After MAX_FAIL_NOTES, add a concise summary note only
             $lines   = [];
             $lines[] = '<strong>ByteNFT Gateway</strong>';
             $lines[] = '';
-            $lines[] = "⚠️ Payment attempt <strong>#{$fail_count}</strong> failed (previous {$fail_count} attempts also failed).";
+            $lines[] = "❌ Payment attempt <strong>#{$fail_count}</strong> failed (previous {$fail_count} attempts also failed).";
             $lines[] = '<strong>Updated via:</strong> ' . esc_html($source_label);
             $lines[] = '<strong>Date:</strong> ' . date_i18n('M j, Y \a\t g:i A');
 
