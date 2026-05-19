@@ -54,11 +54,6 @@ class BYTENFT_PAYMENT_ENGINE
 
                 self::record_failure($order, $event_type, $payload);
 
-                // OPTIONAL: still respect transition rules
-                if (!self::can_transition($current_state, $new_state)) {
-                    return self::safe_response($order, 'invalid_transition', $current_state);
-                }
-
                 self::apply($order, $new_state, $event_type, $payload);
 
                 return self::safe_response($order, 'updated', $new_state);
@@ -203,22 +198,22 @@ class BYTENFT_PAYMENT_ENGINE
             return false;
         }
 
+         // PROCESSING IS ALSO FINAL
+        if ($from === 'processing') {
+            return false;
+        }
+
         $map = [
             'pending' => [
                 'cancelled',
                 'processing',
                 'success',
-                // 'failed' handled separately via record_failure()
-            ],
-
-            'processing' => [
-                'success',
-                'cancelled',
-                // 'failed' handled separately via record_failure()
+                'failed'
             ],
 
             'failed' => [
                 'success',
+                'processing',
                 'cancelled',
             ],
 
@@ -227,7 +222,7 @@ class BYTENFT_PAYMENT_ENGINE
             ],
 
             'expired' => [
-                'failed',   // here 'failed' IS a state change (expired → failed is final)
+                'failed', 
                 'cancelled',
                 'success',
             ],
