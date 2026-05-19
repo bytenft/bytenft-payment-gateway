@@ -244,15 +244,17 @@ class BYTENFT_PAYMENT_ENGINE
         }
 
         $payment_token = $payload['payment_token'] ?? '';
-        $note_key      = md5($state . '|' . $payment_token);
+        $note_key = sanitize_key(
+            $state . '_' . $payment_token
+        );
 
         /**
          * Prevent duplicate notes
          * popup_close + redirect + webhook
          */
-        $last_note_key = $order->get_meta('_bytenft_last_note_key');
+        $note_history = (array) $order->get_meta('_bytenft_note_history', true);
 
-        $should_add_note = ($last_note_key !== $note_key);
+        $should_add_note = !in_array($note_key, $note_history, true);
 
         /**
          * Build note
@@ -288,9 +290,11 @@ class BYTENFT_PAYMENT_ENGINE
 
             $order->add_order_note($note);
 
+           $note_history[] = $note_key;
+
             $order->update_meta_data(
-                '_bytenft_last_note_key',
-                $note_key
+                '_bytenft_note_history',
+                array_unique($note_history)
             );
         }
 
@@ -306,7 +310,15 @@ class BYTENFT_PAYMENT_ENGINE
         }
 
         if ($state === 'success') {
+            $order->delete_meta_data('_bytenft_last_failure_attempt');
+
             $order->update_meta_data('_bytenft_payment_success', 'yes');
+
+            /**
+             * IMPORTANT:
+             * reset fail state
+             */
+            $order->update_meta_data('_bytenft_fail_resolved', 'yes');
         }
 
         $order->save();
