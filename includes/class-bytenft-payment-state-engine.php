@@ -6,19 +6,34 @@ class BYTENFT_PAYMENT_ENGINE
     const LOCK_TTL  = 12;
     const EVENT_TTL = 86400;
 
+    private static function log_event($order, $event_type, $payload, $event_id)
+    {
+        $message = sprintf(
+            "[%s] Event: %s | Status: %s | Token: %s",
+            current_time('mysql'),
+            $event_type,
+            $payload['status'] ?? 'n/a',
+            $payload['payment_token'] ?? 'n/a'
+        );
+
+        $order->add_order_note($message, false, true);
+    }
+
     /* =========================================================
      * ENTRY POINT
      * ========================================================= */
     public static function handle_event($order_id, $event_type, $payload = [])
     {
+        
         $order = wc_get_order($order_id);
         if (!$order) return false;
-
+        
         $event_id = self::generate_event_id($event_type, $payload);
+        self::log_event($order, $event_type, $payload, $event_id);
 
-        // if (self::is_duplicate_event($order_id, $event_id)) {
-        //     return self::safe_response($order, 'duplicate_event_ignored', self::get_state($order));
-        // }
+        if (self::is_duplicate_event($order_id, $event_id)) {
+            return self::safe_response($order, 'duplicate_event_ignored', self::get_state($order));
+        }
 
         self::mark_event($order_id, $event_id);
 
@@ -150,6 +165,7 @@ class BYTENFT_PAYMENT_ENGINE
             ],
 
             'failed' => [
+                'failed',
                 'success',
             ],
 
@@ -205,6 +221,8 @@ class BYTENFT_PAYMENT_ENGINE
     private static function apply($order, $state, $event_type, $payload)
     {
         $current_state = self::get_state($order);
+
+        if ($current_state === $state) return;
 
         $wc_status = match ($state) {
 
