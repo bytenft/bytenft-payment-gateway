@@ -90,17 +90,29 @@ class BYTENFT_PAYMENT_ENGINE
     {
         $attempt_key = self::get_attempt_key($payload);
 
-        $last_attempt = $order->get_meta('_bytenft_last_failure_attempt');
+        $failure_key = md5($attempt_key . '|' . $event_type);
 
-        if ($last_attempt === $attempt_key) {
+        $last_key = $order->get_meta('_bytenft_last_failure_key');
+
+        if ($last_key === $failure_key) {
             return false;
         }
 
+        $order->update_meta_data('_bytenft_last_failure_key', $failure_key);
+
         $fail_count = (int) $order->get_meta('_bytenft_fail_count');
+
+        if ($fail_count >= self::MAX_FAIL_NOTES) {
+            $order->update_meta_data('_bytenft_last_failure_attempt', $attempt_key);
+            $order->save();
+            return true;
+        }
+
         $fail_count++;
 
         $order->update_meta_data('_bytenft_fail_count', $fail_count);
         $order->update_meta_data('_bytenft_last_failure_attempt', $attempt_key);
+
         $order->save();
 
         return true;
@@ -228,8 +240,41 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function apply($order, $state, $event_type, $payload)
     {
+        $order_id = $order->get_id();
+        $payment_token = $payload['payment_token'] ?? '';
+
+        /**
+         * =========================================================
+         * 1. GLOBAL STATE LOCK (MOST IMPORTANT FIX)
+         * Prevents popup_close + webhook + redirect duplicates
+         * =========================================================
+         */
+        $state_lock_key = md5($order_id . '|' . $state . '|' . $payment_token);
+
+        $last_lock = $order->get_meta('_bytenft_state_lock');
+
+        if ($last_lock === $state_lock_key) {
+            return; // HARD STOP DUPLICATE STATE
+        }
+
+        $order->update_meta_data('_bytenft_state_lock', $state_lock_key);
+
+        /**
+         * =========================================================
+         * 2. IDEMPOTENT STATE CHECK
+         * =========================================================
+         */
         $current_state = self::get_state($order);
 
+        if ($current_state === $state) {
+            return; // already applied
+        }
+
+        /**
+         * =========================================================
+         * 3. WC STATUS MAPPING
+         * =========================================================
+         */
         $wc_status = match ($state) {
             'success'    => self::get_success_wc_status(),
             'failed'     => 'failed',
@@ -243,21 +288,26 @@ class BYTENFT_PAYMENT_ENGINE
             return;
         }
 
-        $payment_token = $payload['payment_token'] ?? '';
-        $note_key = sanitize_key(
-            $state . '_' . $payment_token
-        );
-
         /**
-         * Prevent duplicate notes
-         * popup_close + redirect + webhook
+         * =========================================================
+         * 4. NOTE DEDUPLICATION (FIXED - SIMPLE & SAFE)
+         * =========================================================
          */
+        $note_key = md5($order_id . '|' . $state . '|' . $payment_token . '|' . $event_type);
+
         $note_history = (array) $order->get_meta('_bytenft_note_history', true);
 
-        $should_add_note = !in_array($note_key, $note_history, true);
+        $add_note = !in_array($note_key, $note_history, true);
+
+        if ($add_note) {
+            $note_history[] = $note_key;
+            $order->update_meta_data('_bytenft_note_history', array_unique($note_history));
+        }
 
         /**
-         * Build note
+         * =========================================================
+         * 5. BUILD NOTE
+         * =========================================================
          */
         $fail_count = (int) $order->get_meta('_bytenft_fail_count');
 
@@ -269,37 +319,27 @@ class BYTENFT_PAYMENT_ENGINE
         );
 
         /**
-         * Update WC status ONLY if changed
+         * =========================================================
+         * 6. UPDATE WC STATUS ONLY ON CHANGE
+         * =========================================================
          */
         if (!$order->has_status($wc_status)) {
-
-            /**
-             * IMPORTANT:
-             * pass empty note to avoid duplicate custom note
-             * WooCommerce will still create:
-             * "Order status changed from X to Y"
-             */
             $order->update_status($wc_status, '');
-
         }
 
         /**
-         * Add custom note ONLY once
+         * =========================================================
+         * 7. ADD NOTE ONLY ONCE
+         * =========================================================
          */
-        if ($should_add_note) {
-
+        if ($add_note) {
             $order->add_order_note($note);
-
-           $note_history[] = $note_key;
-
-            $order->update_meta_data(
-                '_bytenft_note_history',
-                array_unique($note_history)
-            );
         }
 
         /**
-         * Meta updates
+         * =========================================================
+         * 8. UPDATE META STATE (LAST STEP)
+         * =========================================================
          */
         $order->update_meta_data('_bytenft_state', $state);
         $order->update_meta_data('_bytenft_last_event', $event_type);
@@ -311,13 +351,7 @@ class BYTENFT_PAYMENT_ENGINE
 
         if ($state === 'success') {
             $order->delete_meta_data('_bytenft_last_failure_attempt');
-
             $order->update_meta_data('_bytenft_payment_success', 'yes');
-
-            /**
-             * IMPORTANT:
-             * reset fail state
-             */
             $order->update_meta_data('_bytenft_fail_resolved', 'yes');
         }
 
