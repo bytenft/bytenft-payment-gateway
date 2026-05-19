@@ -722,11 +722,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			$redirect = wc_get_checkout_url();
 
-		} else {
-
-			$redirect = null;
 		}
-
+		
 		wp_send_json([
 			'success' => $is_success,
 			'message' => $message,

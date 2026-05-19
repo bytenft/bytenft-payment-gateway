@@ -549,8 +549,7 @@
 
                             const redirectUrl =
                                 response?.data?.redirect ||
-                                response?.redirect ||
-                                null;
+                                response?.redirect;
 
                             if (
                                 paymentSuccess &&
