@@ -206,8 +206,6 @@ class BYTENFT_PAYMENT_ENGINE
     {
         $current_state = self::get_state($order);
 
-        if ($current_state === $state) return;
-
         $wc_status = match ($state) {
 
             'success'    => self::get_success_wc_status(),
