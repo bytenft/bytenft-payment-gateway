@@ -33,13 +33,6 @@ class BYTENFT_PAYMENT_ENGINE
 
         try {
 
-            $existing = self::get_state($order);
-
-            // HARD LOCK: success is final
-            if ($existing === 'success') {
-                return self::safe_response($order, 'final_success_locked', 'success');
-            }
-
             $current_state = self::normalize_state(self::get_state($order));
             $new_state     = self::normalize_state(self::resolve_state($payload));
 
@@ -47,43 +40,41 @@ class BYTENFT_PAYMENT_ENGINE
                 return self::safe_response($order, 'no_state', $current_state);
             }
 
-            /* -----------------------------
-            * NO CHANGE
-            * ----------------------------- */
-            if ($new_state === $current_state) {
-
-                if ($new_state === 'failed') {
-                    self::record_failure($order, $event_type, $payload);
-                    // IMPORTANT: still allow WC update flow below if needed
-                    self::apply($order, $new_state, $event_type, $payload);
-                }
-
-                return self::safe_response($order, 'no_change', $new_state);
+            // HARD LOCK
+            if ($current_state === 'success') {
+                return self::safe_response($order, 'final_success_locked', 'success');
             }
 
-            /* -----------------------------
-            * FAILURE HANDLING (NO EARLY RETURN)
-            * ----------------------------- */
+            /**
+             * ✅ FAILURE HANDLING (IMPORTANT FIX)
+             * - record failure
+             * - STILL allow apply() so WC status updates
+             */
             if ($new_state === 'failed') {
 
                 self::record_failure($order, $event_type, $payload);
 
-                // STILL APPLY STATUS UPDATE (this fixes your issue)
+                // OPTIONAL: still respect transition rules
+                if (!self::can_transition($current_state, $new_state)) {
+                    return self::safe_response($order, 'invalid_transition', $current_state);
+                }
+
                 self::apply($order, $new_state, $event_type, $payload);
 
                 return self::safe_response($order, 'updated', $new_state);
             }
 
-            /* -----------------------------
-            * TRANSITION CHECK
-            * ----------------------------- */
+            // NO CHANGE
+            if ($new_state === $current_state) {
+                return self::safe_response($order, 'no_change', $new_state);
+            }
+
+            // NORMAL TRANSITION CHECK
             if (!self::can_transition($current_state, $new_state)) {
                 return self::safe_response($order, 'invalid_transition', $current_state);
             }
 
-            /* -----------------------------
-            * NORMAL FLOW (SUCCESS / CANCEL / ETC)
-            * ----------------------------- */
+            // SUCCESS / CANCEL / ETC
             self::apply($order, $new_state, $event_type, $payload);
 
             return self::safe_response($order, 'updated', $new_state);
