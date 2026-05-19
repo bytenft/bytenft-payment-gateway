@@ -16,16 +16,6 @@ class BYTENFT_PAYMENT_ENGINE
 
         $event_id = self::generate_event_id($event_type, $payload);
 
-        /* -----------------------------
-         * CURRENT STATE
-         * ----------------------------- */
-        $current_state = self::get_state($order);
-
-        /* -----------------------------
-         * APPLY STATE
-         * ----------------------------- */
-        self::apply($order, $current_state, $event_type, $payload);
-
         if (self::is_duplicate_event($order_id, $event_id)) {
             return self::safe_response($order, 'duplicate_event_ignored', self::get_state($order));
         }
@@ -53,6 +43,10 @@ class BYTENFT_PAYMENT_ENGINE
                 return self::safe_response($order, 'final_success_locked', 'success');
             }
 
+            /* -----------------------------
+             * CURRENT STATE
+             * ----------------------------- */
+            $current_state = self::get_state($order);
 
             /* -----------------------------
              * RESOLVE NEW STATE
@@ -82,6 +76,11 @@ class BYTENFT_PAYMENT_ENGINE
             if (!self::can_transition($current_state, $new_state)) {
                 return self::safe_response($order, 'invalid_transition', $current_state);
             }
+
+            /* -----------------------------
+             * APPLY STATE
+             * ----------------------------- */
+            self::apply($order, $new_state, $event_type, $payload);
 
             return self::safe_response($order, 'updated', $new_state);
 
@@ -205,14 +204,9 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function apply($order, $state, $event_type, $payload)
     {
-        ByteNFT_Payment_Gateway_Logger::info('BYTENFT_PAYMENT_ENGINE - Apply function called', [
-            'order_id' => $order->get_id(),
-            'current_state' => self::get_state($order),
-            'new_state' => $state,
-            'event_type' => $event_type,
-            'payload' => $payload
-        ]);
         $current_state = self::get_state($order);
+
+        if ($current_state === $state) return;
 
         $wc_status = match ($state) {
 
@@ -220,15 +214,11 @@ class BYTENFT_PAYMENT_ENGINE
             'failed'     => 'failed',
             'cancelled'  => 'cancelled',
             'expired'    => 'failed',
-            'processing' => self::get_success_wc_status(),
-            'pending'    => 'pending',
+            'processing' => 'pending',
 
             default => null
         };
 
-        ByteNFT_Payment_Gateway_Logger::info('BYTENFT_PAYMENT_ENGINE - Apply function called', [
-            'wc_status' => $wc_status,
-        ]);
         if (!$wc_status) return;
 
         $note = self::build_note($state, $event_type, $payload);
