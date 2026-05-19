@@ -370,20 +370,26 @@ class BYTENFT_PAYMENT_ENGINE
 
         $lines = [];
 
-        $lines[] = 'ByteNFT Gateway';
+        $lines[] = '<strong> ByteNFT Gateway </strong>';
         $lines[] = '';
         $lines[] = $map[$state] ?? 'Payment update';
 
+        if ($state === 'processing') {
+            $lines[] = 'Your payment is currently being verified.';
+        }
+
         if (!empty($transaction_id)) {
-            $lines[] = 'Payment ID: ' . $transaction_id;
+            $lines[] = '<strong>Payment ID:</strong> ' . $transaction_id;
         }
 
         if (!empty($source_label)) {
-            $lines[] = 'Updated via: ' . $source_label;
+            $lines[] = '<strong>Updated via:</strong> ' . $source_label;
         }
 
         $lines[] = '';
-        $lines[] = 'Date: ' . date_i18n('M j, Y \a\t g:i A');
+        $lines[] = '<strong>Date:</strong> ' . date_i18n('M j, Y \a\t g:i A');
+        $lines[] = '';
+        $lines[] = '';
 
         return implode("\n", $lines);
     }
