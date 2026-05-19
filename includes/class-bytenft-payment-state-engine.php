@@ -230,10 +230,20 @@ class BYTENFT_PAYMENT_ENGINE
 
             for ($i = $already_synced; $i < $actual_failed_count; $i++) {
 
+                $event = $failed_events[$i];
+
                 $attempt_number = $i + 1;
 
+                $payment_token = $event['payment_token'] ?? '';
+
+                $event_type = $event['event_type'] ?? '';
+
                 $order->add_order_note(
-                    "Payment attempt #{$attempt_number} failed."
+                    self::build_order_note(
+                        "Payment Failed (Attempt {$attempt_number})",
+                        $payment_token,
+                        $event_type
+                    )
                 );
             }
 
@@ -300,6 +310,28 @@ class BYTENFT_PAYMENT_ENGINE
         }
 
         $order->save();
+    }
+
+    private static function build_order_note(
+        $title,
+        $payment_token,
+        $event_type
+    ) {
+
+        $source = match ($event_type) {
+            'popup_close'    => 'Customer Return from Payment Page',
+            'redirect'       => 'Customer Redirect',
+            'webhook_update' => 'Webhook',
+            default          => 'System'
+        };
+
+        return sprintf(
+            "ByteNFT Gateway\n\n%s\n\nPayment ID: %s\nUpdated Via: %s\nRecorded At: %s",
+            $title,
+            $payment_token ?: 'N/A',
+            $source,
+            current_time('F j, Y \a\t g:i A')
+        );
     }
 
     /* =========================================================
