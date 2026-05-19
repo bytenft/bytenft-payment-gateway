@@ -16,7 +16,6 @@ class BYTENFT_PAYMENT_ENGINE
 
         $event_id = self::generate_event_id($event_type, $payload);
 
-        // prevent exact webhook replay duplication only
         if (self::is_duplicate_event($order_id, $event_id)) {
             return self::safe_response($order, 'duplicate_event_ignored', self::get_state($order));
         }
@@ -32,25 +31,53 @@ class BYTENFT_PAYMENT_ENGINE
 
         try {
 
-            $new_state = self::normalize_state(
-                self::resolve_state($payload)
-            );
+            $existing = self::get_state($order);
 
-            if (!$new_state) {
-                return self::safe_response($order, 'no_state', self::get_state($order));
+            if ($existing === 'success') {
+                return self::safe_response($order, 'final_success_locked', 'success');
             }
 
-            // ALWAYS write note (no conditions)
-            self::write_note($order, $new_state, $event_type, $payload);
+            $new_state = self::resolve_state($payload);
 
-            // ALWAYS update WooCommerce state (even repeated same state)
-            self::update_state($order, $new_state, $event_type, $payload);
+            if (!$new_state) {
+                return self::safe_response($order, 'no_state', $existing);
+            }
+
+            $current_state = self::normalize_state($existing);
+            $new_state     = self::normalize_state($new_state);
+
+            if (!self::can_transition($current_state, $new_state)) {
+                return self::safe_response($order, 'invalid_transition', $current_state);
+            }
+
+            // 🔥 ALWAYS APPLY (single source of truth)
+            self::apply($order, $new_state, $event_type, $payload);
 
             return self::safe_response($order, 'updated', $new_state);
 
         } finally {
             delete_transient($lock_key);
         }
+    }
+
+    /* =========================================================
+     * NORMALIZATION
+     * ========================================================= */
+    private static function normalize_state($state)
+    {
+        return match ($state) {
+            'completed' => 'success',
+            'canceled'  => 'cancelled',
+            default     => $state
+        };
+    }
+
+    /* =========================================================
+     * CURRENT STATE
+     * ========================================================= */
+    private static function get_state($order)
+    {
+        return $order->get_meta('_bytenft_state') ?: 'pending';
     }
 
     /* =========================================================
@@ -68,37 +95,86 @@ class BYTENFT_PAYMENT_ENGINE
             'success','paid','completed' => 'success',
             'failed'                     => 'failed',
             'cancelled','canceled'       => 'cancelled',
-            'expired'                    => 'failed',
+            'expired'                    => 'expired',
             'pending','processing'       => 'processing',
             default => null
         };
     }
 
     /* =========================================================
-     * NORMALIZATION
+     * FINAL STATE TRANSITION MATRIX (YOUR EXACT RULES)
      * ========================================================= */
-    private static function normalize_state($state)
+    private static function can_transition($from, $to)
     {
-        return match ($state) {
-            'completed' => 'success',
-            'canceled'  => 'cancelled',
-            default     => $state
-        };
+        // 🔒 HARD LOCK STATES
+        if (in_array($from, ['processing', 'completed'], true)) {
+            return false;
+        }
+
+        $map = [
+
+            'pending' => [
+                'failed',
+                'cancelled',
+                'processing',
+                'success',
+            ],
+
+            'failed' => [
+                'failed',
+                'success',
+            ],
+
+            'cancelled' => [
+                'success',
+            ],
+
+            'success' => [
+                // optional hard lock
+            ],
+
+            'expired' => [
+                'failed',
+                'cancelled',
+                'success',
+            ],
+        ];
+
+        return in_array($to, $map[$from] ?? [], true);
+    }
+
+    public static function resolve_final_state($order, $api_status = null)
+    {
+        // 1. PRIMARY: engine state
+        $state = $order->get_meta('_bytenft_state');
+
+        if (!empty($state)) {
+            return $state;
+        }
+
+        // 2. SAFETY: API status (current response)
+        if (!empty($api_status)) {
+            return match ($api_status) {
+                'success', 'paid', 'completed' => 'success',
+                'failed' => 'failed',
+                'cancelled', 'canceled' => 'cancelled',
+                'processing', 'pending' => 'processing',
+                default => null
+            };
+        }
+
+        // 3. BACKUP: WooCommerce status
+        if ($order->has_status(['processing', 'completed'])) {
+            return 'success';
+        }
+
+        return null;
     }
 
     /* =========================================================
-     * WRITE ORDER NOTE (ALWAYS)
+     * APPLY STATE (UNCHANGED CORE LOGIC)
      * ========================================================= */
-    private static function write_note($order, $state, $event_type, $payload)
-    {
-        $note = self::build_note($state, $event_type, $payload);
-        $order->add_order_note($note, false, true);
-    }
-
-    /* =========================================================
-     * UPDATE STATE (ALWAYS)
-     * ========================================================= */
-    private static function update_state($order, $state, $event_type, $payload)
+    private static function apply($order, $state, $event_type, $payload)
     {
         $wc_status = match ($state) {
             'success'    => self::get_success_wc_status(),
@@ -109,9 +185,22 @@ class BYTENFT_PAYMENT_ENGINE
             default => null
         };
 
-        if ($wc_status) {
-            $order->set_status($wc_status);
+        if (!$wc_status) return;
+
+        // prevent duplicate identical note spam
+        $note = self::build_note($state, $event_type, $payload);
+        $note_hash = md5($note);
+
+        if ($order->get_meta('_bytenft_last_note_hash') === $note_hash) {
+            return;
         }
+
+        if ($order->get_status() !== $wc_status) {
+            $order->update_status($wc_status);
+        }
+
+        $order->add_order_note($note, false, true);
+        $order->update_meta_data('_bytenft_last_note_hash', $note_hash);
 
         $order->update_meta_data('_bytenft_state', $state);
         $order->update_meta_data('_bytenft_last_event', $event_type);
@@ -133,7 +222,7 @@ class BYTENFT_PAYMENT_ENGINE
     }
 
     /* =========================================================
-     * WC STATUS CONFIG
+     * WC SUCCESS STATUS
      * ========================================================= */
     private static function get_success_wc_status()
     {
@@ -146,15 +235,13 @@ class BYTENFT_PAYMENT_ENGINE
     }
 
     /* =========================================================
-     * EVENT ID (light dedupe only)
+     * EVENT HASH
      * ========================================================= */
     private static function generate_event_id($type, $payload)
     {
-        return hash('sha256', implode('|', [
-            $type,
-            $payload['status'] ?? '',
+       return hash('sha256', implode('|', [
             $payload['payment_token'] ?? '',
-            microtime(true) // ensures repeated failed still allowed
+            $payload['status'] ?? '',
         ]));
     }
 
@@ -165,11 +252,33 @@ class BYTENFT_PAYMENT_ENGINE
 
     private static function mark_event($order_id, $event_id)
     {
-        set_transient("bytenft_event_{$order_id}_{$event_id}", 1, self::EVENT_TTL);
+        set_transient(
+            "bytenft_event_{$order_id}_{$event_id}",
+            1,
+            self::EVENT_TTL
+        );
     }
 
     /* =========================================================
-     * BUILD NOTE
+     * SOURCE LABELS
+     * ========================================================= */
+    private static function get_friendly_source($event_type)
+    {
+        return match ($event_type) {
+
+            'popup_close' => 'Customer Checkout Session Closed',
+            'api_update'  => 'Payment Gateway Webhook Update',
+            'redirect'    => 'Customer Return from Payment Page',
+
+            'cron'        => 'Automatic Payment Reconciliation',
+            'manual'      => 'Manual Admin Update',
+
+            default       => 'Payment Gateway Update'
+        };
+    }
+
+    /* =========================================================
+     * ORDER NOTE (UNCHANGED)
      * ========================================================= */
     private static function build_note($state, $event_type, $payload)
     {
@@ -180,44 +289,45 @@ class BYTENFT_PAYMENT_ENGINE
             'processing' => 'Payment is being processed'
         ];
 
-        $source_label = match ($event_type) {
-            'popup_close' => 'Customer Checkout Session Closed',
-            'api_update'  => 'Payment Gateway Webhook Update',
-            'redirect'    => 'Customer Return from Payment Page',
-            default       => 'Payment Gateway Update'
-        };
+        $source_label = self::get_friendly_source($event_type);
 
         $transaction_id = null;
 
         if (!empty($payload['payment_token'])) {
             $decoded = base64_decode($payload['payment_token'], true);
-            if ($decoded) {
+            if (!empty($decoded)) {
                 $transaction_id = $decoded;
             }
         }
 
         $lines = [];
 
-        $lines[] = 'ByteNFT Gateway';
+        $lines[] = '<strong> ByteNFT Gateway </strong>';
         $lines[] = '';
         $lines[] = $map[$state] ?? 'Payment update';
 
-        if ($transaction_id) {
-            $lines[] = 'Payment ID: ' . $transaction_id;
+        if ($state === 'processing') {
+            $lines[] = 'Your payment is currently being verified.';
         }
 
-        if ($source_label) {
-            $lines[] = 'Updated via: ' . $source_label;
+        if (!empty($transaction_id)) {
+            $lines[] = '<strong>Payment ID:</strong> ' . $transaction_id;
+        }
+
+        if (!empty($source_label)) {
+            $lines[] = '<strong>Updated via:</strong> ' . $source_label;
         }
 
         $lines[] = '';
-        $lines[] = 'Date: ' . date_i18n('M j, Y \a\t g:i A');
+        $lines[] = '<strong>Date:</strong> ' . date_i18n('M j, Y \a\t g:i A');
+        $lines[] = '';
+        $lines[] = '';
 
         return implode("\n", $lines);
     }
 
     /* =========================================================
-     * SAFE RESPONSE
+     * RESPONSE
      * ========================================================= */
     private static function safe_response($order, $reason, $state = null)
     {
@@ -229,8 +339,5 @@ class BYTENFT_PAYMENT_ENGINE
         ];
     }
 
-    private static function get_state($order)
-    {
-        return $order->get_meta('_bytenft_state') ?: 'pending';
-    }
+    
 }
