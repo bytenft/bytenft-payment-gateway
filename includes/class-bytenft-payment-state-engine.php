@@ -16,9 +16,9 @@ class BYTENFT_PAYMENT_ENGINE
 
         $event_id = self::generate_event_id($event_type, $payload);
 
-        if (self::is_duplicate_event($order_id, $event_id)) {
-            return self::safe_response($order, 'duplicate_event_ignored', self::get_state($order));
-        }
+        // if (self::is_duplicate_event($order_id, $event_id)) {
+        //     return self::safe_response($order, 'duplicate_event_ignored', self::get_state($order));
+        // }
 
         self::mark_event($order_id, $event_id);
 
