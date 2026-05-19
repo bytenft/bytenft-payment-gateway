@@ -16,7 +16,6 @@ class BYTENFT_PAYMENT_ENGINE
 
         $event_id = self::generate_event_id($event_type, $payload);
 
-        // ONLY dedupe webhook retries (NOT payment attempts)
         if ($event_type === 'api_update' && self::is_duplicate_event($order_id, $event_id)) {
             return self::safe_response($order, 'duplicate_event_ignored', self::get_state($order));
         }
@@ -24,7 +23,6 @@ class BYTENFT_PAYMENT_ENGINE
         self::mark_event($order_id, $event_id);
 
         $lock_key = "bytenft_lock_{$order_id}";
-
         if (get_transient($lock_key)) {
             return self::safe_response($order, 'locked_skip');
         }
@@ -33,7 +31,6 @@ class BYTENFT_PAYMENT_ENGINE
 
         try {
 
-            // STEP 1: resolve
             $current_state = self::normalize_state(self::get_state($order));
             $new_state     = self::normalize_state(self::resolve_state($payload));
 
@@ -45,34 +42,14 @@ class BYTENFT_PAYMENT_ENGINE
                 return self::safe_response($order, 'final_success_locked', 'success');
             }
 
-            // STEP 2: duplicate failure logic (optional early exit)
-            if ($new_state === 'failed') {
-                $failure_key = md5(($payload['payment_token'] ?? '') . '|' . $event_type . '|failed');
-                if ($order->get_meta('_bytenft_last_fail_key') === $failure_key) {
-                    return self::safe_response($order, 'duplicate_failure_ignored', $new_state);
-                }
-                $order->update_meta_data('_bytenft_last_fail_key', $failure_key);
-            }
-
-            if ($new_state === 'failed') {
-                $count = (int) $order->get_meta('_bytenft_fail_count');
-                $count++;
-
-                $order->update_meta_data('_bytenft_fail_count', $count);
-                $order->add_order_note("Payment attempt #{$count} failed.");
-            }
-
-            // STEP 3: apply state (ONLY ONCE)
+            // ❗ ONLY STATE + TIMELINE (NO NOTES HERE)
             self::apply($order, $new_state, $event_type, $payload);
 
-            // STEP 4: ALWAYS push timeline AFTER apply
-            if ($new_state === 'failed') {
-                self::push_timeline_event($order, $new_state, $event_type, $payload);
-            } elseif (self::can_transition($current_state, $new_state)) {
+            if (self::can_transition($current_state, $new_state)) {
                 self::push_timeline_event($order, $new_state, $event_type, $payload);
             }
 
-            // STEP 5: ALWAYS sync notes LAST
+            // ❗ SINGLE SOURCE OF NOTES
             self::sync_order_notes($order);
 
             return self::safe_response($order, 'updated', $new_state);
@@ -109,8 +86,6 @@ class BYTENFT_PAYMENT_ENGINE
             return;
         }
 
-        $old_state = self::get_state($order);
-
         $order_id = $order->get_id();
         $payment_token = $payload['payment_token'] ?? '';
 
@@ -122,8 +97,6 @@ class BYTENFT_PAYMENT_ENGINE
         }
 
         $order->update_meta_data('_bytenft_state_lock', $state_lock_key);
-
-        $order->add_order_note("Payment event: {$event_type} → {$state}");
 
         $wc_status = match ($state) {
             'success'    => self::get_success_wc_status(),
@@ -176,10 +149,9 @@ class BYTENFT_PAYMENT_ENGINE
     /* =========================================================
      * TIMELINE → ORDER NOTES SYNC
      * ========================================================= */
-    private static function sync_order_notes($order)
+   private static function sync_order_notes($order)
     {
         $timeline = self::get_timeline($order);
-
         if (empty($timeline)) return;
 
         $note_key = md5('timeline_v1|' . json_encode($timeline));
@@ -189,22 +161,37 @@ class BYTENFT_PAYMENT_ENGINE
 
         $order->update_meta_data('_bytenft_note_fingerprint', $note_key);
 
-        $failed    = array_values(array_filter($timeline, fn($e) => $e['type'] === 'failed'));
-        $success   = array_values(array_filter($timeline, fn($e) => $e['type'] === 'success'));
-        $cancelled = array_values(array_filter($timeline, fn($e) => $e['type'] === 'cancelled'));
+        $failed_events = [];
+        $seen = [];
 
-        /**
-         * FAILED (max 3)
-         */
-        $count = count($failed);
-        $show = min($count, 3);
+        foreach ($timeline as $event) {
 
-        for ($i = 0; $i < $show; $i++) {
-            $order->add_order_note("Payment attempt #" . ($i + 1) . " failed.");
+            if (($event['type'] ?? '') !== 'failed') continue;
+
+            $key = md5(
+                ($event['payment_token'] ?? '') . '|' .
+                ($event['event_type'] ?? '') . '|' .
+                ($event['time'] ?? '')
+            );
+
+            if (isset($seen[$key])) continue;
+
+            $seen[$key] = true;
+            $failed_events[] = $event;
         }
 
-        if ($count > 3) {
-            $order->add_order_note("Payment failed {$count} times.");
+        $success   = array_values(array_filter($timeline, fn($e) => ($e['type'] ?? '') === 'success'));
+        $cancelled = array_values(array_filter($timeline, fn($e) => ($e['type'] ?? '') === 'cancelled'));
+
+        $fail_count = count($failed_events);
+
+        /**
+         * FAILED NOTES (ONLY HERE)
+         */
+        if ($fail_count > 0) {
+            for ($i = 0; $i < $fail_count; $i++) {
+                $order->add_order_note("Payment attempt #" . ($i + 1) . " failed.");
+            }
         }
 
         /**
