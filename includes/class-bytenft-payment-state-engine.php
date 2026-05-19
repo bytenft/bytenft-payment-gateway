@@ -45,11 +45,19 @@ class BYTENFT_PAYMENT_ENGINE
                 return self::safe_response($order, 'final_success_locked', 'success');
             }
 
-            // always log timeline FIRST
-            self::push_timeline_event($order, $new_state, $event_type, $payload);
-
+            
             // FAILURE → just apply (no blocking logic)
             if ($new_state === 'failed') {
+
+                $failure_key = md5(($payload['payment_token'] ?? '') . '|' . $event_type . '|failed');
+                $last_fail = $order->get_meta('_bytenft_last_fail_key');
+
+                if ($last_fail === $failure_key) {
+                    return self::safe_response($order, 'duplicate_failure_ignored', $new_state);
+                }
+
+                $order->update_meta_data('_bytenft_last_fail_key', $failure_key);
+
 
                 $fail_count = (int) $order->get_meta('_bytenft_fail_count');
                 $fail_count++;
@@ -73,6 +81,15 @@ class BYTENFT_PAYMENT_ENGINE
                 return self::safe_response($order, 'invalid_transition', $current_state);
             }
 
+            // FINAL GUARD BEFORE ANY WRITE
+            if (
+                $new_state &&
+                $current_state !== 'success' &&
+                self::can_transition($current_state, $new_state)
+            ) {
+                self::push_timeline_event($order, $new_state, $event_type, $payload);
+            }
+
             self::apply($order, $new_state, $event_type, $payload);
             self::sync_order_notes($order);
 
@@ -88,7 +105,7 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function push_timeline_event($order, $state, $event_type, $payload)
     {
-        $timeline = (array) $order->get_meta('_bytenft_timeline', true);
+        $timeline = self::get_timeline($order);
 
         $timeline[] = [
             'type'          => $state,
@@ -106,6 +123,10 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function apply($order, $state, $event_type, $payload)
     {
+        if (self::get_state($order) === 'success') {
+            return;
+        }
+        
         $order_id = $order->get_id();
         $payment_token = $payload['payment_token'] ?? '';
 
@@ -153,26 +174,44 @@ class BYTENFT_PAYMENT_ENGINE
         $order->save();
     }
 
+    private static function get_timeline($order)
+    {
+        $data = $order->get_meta('_bytenft_timeline', true);
+
+        if (empty($data)) {
+            return [];
+        }
+
+        // If corrupted string
+        if (!is_array($data)) {
+            return [];
+        }
+
+        // sanitize each entry
+        return array_values(array_filter($data, function ($item) {
+            return is_array($item) && isset($item['type']);
+        }));
+    }
+
     /* =========================================================
      * TIMELINE → ORDER NOTES SYNC
      * ========================================================= */
     private static function sync_order_notes($order)
     {
-        $timeline = (array) $order->get_meta('_bytenft_timeline', true);
+        $timeline = self::get_timeline($order);
 
         if (empty($timeline)) return;
+
+        $note_key = md5('timeline_v1|' . json_encode($timeline));
+        $last_key = $order->get_meta('_bytenft_note_fingerprint');
+
+        if ($note_key === $last_key) return;
+
+        $order->update_meta_data('_bytenft_note_fingerprint', $note_key);
 
         $failed    = array_values(array_filter($timeline, fn($e) => $e['type'] === 'failed'));
         $success   = array_values(array_filter($timeline, fn($e) => $e['type'] === 'success'));
         $cancelled = array_values(array_filter($timeline, fn($e) => $e['type'] === 'cancelled'));
-
-        // prevent duplicate regeneration
-        $last_sync = $order->get_meta('_bytenft_note_sync_hash');
-        $sync_hash = md5(json_encode($timeline));
-
-        if ($last_sync === $sync_hash) return;
-
-        $order->update_meta_data('_bytenft_note_sync_hash', $sync_hash);
 
         /**
          * FAILED (max 3)
