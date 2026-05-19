@@ -243,6 +243,20 @@ class BYTENFT_PAYMENT_ENGINE
             return;
         }
 
+        $payment_token = $payload['payment_token'] ?? '';
+        $note_key      = md5($state . '|' . $payment_token);
+
+        /**
+         * Prevent duplicate notes
+         * popup_close + redirect + webhook
+         */
+        $last_note_key = $order->get_meta('_bytenft_last_note_key');
+
+        $should_add_note = ($last_note_key !== $note_key);
+
+        /**
+         * Build note
+         */
         $fail_count = (int) $order->get_meta('_bytenft_fail_count');
 
         $note = self::build_note(
@@ -253,38 +267,31 @@ class BYTENFT_PAYMENT_ENGINE
         );
 
         /**
-         * FAILED STATUS
+         * Update WC status ONLY if changed
          */
-        if ($state === 'failed') {
+        if (!$order->has_status($wc_status)) {
 
             /**
-             * First fail:
-             * pending -> failed
+             * IMPORTANT:
+             * pass empty note to avoid duplicate custom note
+             * WooCommerce will still create:
+             * "Order status changed from X to Y"
              */
-            if (!$order->has_status('failed')) {
+            $order->update_status($wc_status, '');
 
-                $order->update_status('failed');
+        }
 
-                // add ONLY ONE custom note
-                $order->add_order_note($note);
-
-            } else {
-
-                /**
-                 * Already failed:
-                 * add retry failure note only
-                 */
-                $order->add_order_note($note);
-            }
-
-        } else {
-
-            /**
-             * Normal transitions
-             */
-            $order->update_status($wc_status);
+        /**
+         * Add custom note ONLY once
+         */
+        if ($should_add_note) {
 
             $order->add_order_note($note);
+
+            $order->update_meta_data(
+                '_bytenft_last_note_key',
+                $note_key
+            );
         }
 
         /**
@@ -294,8 +301,8 @@ class BYTENFT_PAYMENT_ENGINE
         $order->update_meta_data('_bytenft_last_event', $event_type);
         $order->update_meta_data('_bytenft_last_event_time', current_time('mysql'));
 
-        if (!empty($payload['payment_token'])) {
-            $order->update_meta_data('_bytenft_pay_id', $payload['payment_token']);
+        if (!empty($payment_token)) {
+            $order->update_meta_data('_bytenft_pay_id', $payment_token);
         }
 
         if ($state === 'success') {
