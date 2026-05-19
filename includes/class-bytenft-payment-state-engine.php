@@ -42,14 +42,29 @@ class BYTENFT_PAYMENT_ENGINE
                 return self::safe_response($order, 'final_success_locked', 'success');
             }
 
-            // ❗ ONLY STATE + TIMELINE (NO NOTES HERE)
+            // ONLY apply state change (NO NOTES HERE)
             self::apply($order, $new_state, $event_type, $payload);
 
-            if (self::can_transition($current_state, $new_state)) {
+            // ONLY push timeline (no notes logic here)
+            if ($new_state === 'failed') {
+
+                // failed should only be added once per payment token
+                $existing = self::timeline_has_state_for_token(
+                    $order,
+                    'failed',
+                    $payload['payment_token'] ?? ''
+                );
+
+                if (!$existing) {
+                    self::push_timeline_event($order, $new_state, $event_type, $payload);
+                }
+
+            } elseif (self::can_transition($current_state, $new_state)) {
+
                 self::push_timeline_event($order, $new_state, $event_type, $payload);
             }
 
-            // ❗ SINGLE SOURCE OF NOTES
+            // SINGLE SOURCE OF TRUTH FOR NOTES
             self::sync_order_notes($order);
 
             return self::safe_response($order, 'updated', $new_state);
@@ -57,6 +72,27 @@ class BYTENFT_PAYMENT_ENGINE
         } finally {
             delete_transient($lock_key);
         }
+    }
+
+    private static function timeline_has_state_for_token($order, $state, $payment_token)
+    {
+        if (empty($payment_token)) {
+            return false;
+        }
+
+        $timeline = self::get_timeline($order);
+
+        foreach ($timeline as $event) {
+
+            if (
+                ($event['type'] ?? '') === $state &&
+                ($event['payment_token'] ?? '') === $payment_token
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /* =========================================================
@@ -89,7 +125,9 @@ class BYTENFT_PAYMENT_ENGINE
         $order_id = $order->get_id();
         $payment_token = $payload['payment_token'] ?? '';
 
+        // stable idempotency key (VERY IMPORTANT)
         $state_lock_key = md5($order_id . '|' . $state . '|' . $payment_token);
+
         $last_lock = $order->get_meta('_bytenft_state_lock');
 
         if ($last_lock === $state_lock_key) {
@@ -121,7 +159,6 @@ class BYTENFT_PAYMENT_ENGINE
 
         if ($state === 'success') {
             $order->update_meta_data('_bytenft_payment_success', 'yes');
-            $order->delete_meta_data('_bytenft_fail_count');
         }
 
         $order->save();
@@ -149,30 +186,34 @@ class BYTENFT_PAYMENT_ENGINE
     /* =========================================================
      * TIMELINE → ORDER NOTES SYNC
      * ========================================================= */
-   private static function sync_order_notes($order)
+    private static function sync_order_notes($order)
     {
         $timeline = self::get_timeline($order);
         if (empty($timeline)) return;
 
-        $note_key = md5('timeline_v1|' . json_encode($timeline));
+        $note_key = md5('timeline_v3|' . json_encode($timeline));
         $last_key = $order->get_meta('_bytenft_note_fingerprint');
 
         if ($note_key === $last_key) return;
 
         $order->update_meta_data('_bytenft_note_fingerprint', $note_key);
 
-        $failed_events = [];
         $seen = [];
+        $failed_events = [];
 
         foreach ($timeline as $event) {
 
             if (($event['type'] ?? '') !== 'failed') continue;
 
-            $key = md5(
-                ($event['payment_token'] ?? '') . '|' .
-                ($event['event_type'] ?? '') . '|' .
-                ($event['time'] ?? '')
-            );
+            // TRUE UNIQUE KEY = transaction_id (critical fix)
+            $key = $event['payment_token'] ?? null;
+
+            if (!$key) {
+                $key = md5(
+                    ($event['event_type'] ?? '') . '|' .
+                    ($event['time'] ?? '')
+                );
+            }
 
             if (isset($seen[$key])) continue;
 
@@ -186,19 +227,30 @@ class BYTENFT_PAYMENT_ENGINE
         $fail_count = count($failed_events);
 
         /**
-         * FAILED NOTES (ONLY HERE)
+         * FAILED NOTES
          */
-        if ($fail_count > 0) {
+        if ($fail_count > 0 && empty($success)) {
+
             for ($i = 0; $i < $fail_count; $i++) {
                 $order->add_order_note("Payment attempt #" . ($i + 1) . " failed.");
             }
         }
 
         /**
-         * SUCCESS overrides everything
+         * SUCCESS OVERRIDES EVERYTHING
          */
         if (!empty($success)) {
-            $order->add_order_note("Payment completed successfully.");
+
+            if (!$order->get_meta('_bytenft_success_note_added')) {
+
+                $order->add_order_note("Payment completed successfully.");
+
+                $order->update_meta_data(
+                    '_bytenft_success_note_added',
+                    'yes'
+                );
+            }
+
             $order->save();
             return;
         }
@@ -295,8 +347,7 @@ class BYTENFT_PAYMENT_ENGINE
         return hash('sha256', implode('|', [
             $type,
             $payload['status'] ?? '',
-            $payload['payment_token'] ?? '',
-            $payload['transaction_id'] ?? ''
+            $payload['payment_token'] ?? ''
         ]));
     }
 
