@@ -220,43 +220,52 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function apply($order, $state, $event_type, $payload)
     {
-        // 1. ALWAYS log event (audit trail)
-        $order->add_order_note(
-            sprintf(
-                "[ByteNFT Event] %s | Incoming state: %s | Event: %s | Token: %s",
-                current_time('mysql'),
-                $state,
-                $event_type,
-                $payload['payment_token'] ?? 'n/a'
-            ),
-            false,
-            true
-        );
-
+        // -------------------------------------------------
+        // 1. Resolve WC status
+        // -------------------------------------------------
         $wc_status = match ($state) {
+
             'success'    => self::get_success_wc_status(),
             'failed'     => 'failed',
             'cancelled'  => 'cancelled',
             'expired'    => 'failed',
             'processing' => 'pending',
+
             default => null
         };
 
         if (!$wc_status) return;
 
+        // -------------------------------------------------
+        // 2. Build CLEAN customer-facing note ONLY
+        // -------------------------------------------------
         $note = self::build_note($state, $event_type, $payload);
 
-        $previous_wc_status = $order->get_status();
+        // -------------------------------------------------
+        // 3. Detect previous status
+        // -------------------------------------------------
+        $previous_status = $order->get_status();
 
-        // 2. UPDATE STATUS
+        // -------------------------------------------------
+        // 4. Update WooCommerce status (NO NOTE HERE)
+        // -------------------------------------------------
         $order->update_status($wc_status);
 
-        // 3. FORCE DUPLICATE NOTE IF SAME STATUS
-        if ($previous_wc_status === $wc_status) {
+        // -------------------------------------------------
+        // 5. ALWAYS add clean payment note
+        // -------------------------------------------------
+        $order->add_order_note($note, false, true);
+
+        // -------------------------------------------------
+        // 6. OPTIONAL: if status didn't change, still ensure visibility
+        // -------------------------------------------------
+        if ($previous_status === $wc_status) {
             $order->add_order_note($note, false, true);
         }
 
-        // 4. ALWAYS update internal engine state
+        // -------------------------------------------------
+        // 7. Update internal metadata (ENGINE STATE ONLY)
+        // -------------------------------------------------
         $order->update_meta_data('_bytenft_state', $state);
         $order->update_meta_data('_bytenft_last_event', $event_type);
         $order->update_meta_data('_bytenft_last_event_time', current_time('mysql'));
@@ -265,6 +274,17 @@ class BYTENFT_PAYMENT_ENGINE
             $order->update_meta_data('_bytenft_pay_id', $payload['payment_token']);
         }
 
+        if ($state === 'success') {
+            $order->update_meta_data('_bytenft_payment_success', 'yes');
+        }
+
+        if (in_array($state, ['success','failed','cancelled'], true)) {
+            $order->update_meta_data('_bytenft_finalized', 'yes');
+        }
+
+        // -------------------------------------------------
+        // 8. SAVE
+        // -------------------------------------------------
         $order->save();
     }
 
@@ -350,26 +370,20 @@ class BYTENFT_PAYMENT_ENGINE
 
         $lines = [];
 
-        $lines[] = '<strong> ByteNFT Gateway </strong>';
+        $lines[] = 'ByteNFT Gateway';
         $lines[] = '';
         $lines[] = $map[$state] ?? 'Payment update';
 
-        if ($state === 'processing') {
-            $lines[] = 'Your payment is currently being verified.';
-        }
-
         if (!empty($transaction_id)) {
-            $lines[] = '<strong>Payment ID:</strong> ' . $transaction_id;
+            $lines[] = 'Payment ID: ' . $transaction_id;
         }
 
         if (!empty($source_label)) {
-            $lines[] = '<strong>Updated via:</strong> ' . $source_label;
+            $lines[] = 'Updated via: ' . $source_label;
         }
 
         $lines[] = '';
-        $lines[] = '<strong>Date:</strong> ' . date_i18n('M j, Y \a\t g:i A');
-        $lines[] = '';
-        $lines[] = '';
+        $lines[] = 'Date: ' . date_i18n('M j, Y \a\t g:i A');
 
         return implode("\n", $lines);
     }
