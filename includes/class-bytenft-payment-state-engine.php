@@ -33,6 +33,7 @@ class BYTENFT_PAYMENT_ENGINE
 
         try {
 
+            // STEP 1: resolve
             $current_state = self::normalize_state(self::get_state($order));
             $new_state     = self::normalize_state(self::resolve_state($payload));
 
@@ -40,57 +41,28 @@ class BYTENFT_PAYMENT_ENGINE
                 return self::safe_response($order, 'no_state', $current_state);
             }
 
-            // HARD LOCK SUCCESS
             if ($current_state === 'success') {
                 return self::safe_response($order, 'final_success_locked', 'success');
             }
 
-            
-            // FAILURE → just apply (no blocking logic)
+            // STEP 2: duplicate failure logic (optional early exit)
             if ($new_state === 'failed') {
-
                 $failure_key = md5(($payload['payment_token'] ?? '') . '|' . $event_type . '|failed');
-                $last_fail = $order->get_meta('_bytenft_last_fail_key');
-
-                if ($last_fail === $failure_key) {
+                if ($order->get_meta('_bytenft_last_fail_key') === $failure_key) {
                     return self::safe_response($order, 'duplicate_failure_ignored', $new_state);
                 }
-
                 $order->update_meta_data('_bytenft_last_fail_key', $failure_key);
-
-
-                $fail_count = (int) $order->get_meta('_bytenft_fail_count');
-                $fail_count++;
-
-                $order->update_meta_data('_bytenft_fail_count', $fail_count);
-                $order->save();
-
-                self::apply($order, $new_state, $event_type, $payload);
-                self::sync_order_notes($order);
-
-                return self::safe_response($order, 'updated', $new_state);
             }
 
-            // NO CHANGE
-            if ($new_state === $current_state) {
-                return self::safe_response($order, 'no_change', $new_state);
-            }
+            // STEP 3: apply state (ONLY ONCE)
+            self::apply($order, $new_state, $event_type, $payload);
 
-            // TRANSITION CHECK
-            if (!self::can_transition($current_state, $new_state)) {
-                return self::safe_response($order, 'invalid_transition', $current_state);
-            }
-
-            // FINAL GUARD BEFORE ANY WRITE
-            if (
-                $new_state &&
-                $current_state !== 'success' &&
-                self::can_transition($current_state, $new_state)
-            ) {
+            // STEP 4: ALWAYS push timeline AFTER apply
+            if (self::can_transition($current_state, $new_state)) {
                 self::push_timeline_event($order, $new_state, $event_type, $payload);
             }
 
-            self::apply($order, $new_state, $event_type, $payload);
+            // STEP 5: ALWAYS sync notes LAST
             self::sync_order_notes($order);
 
             return self::safe_response($order, 'updated', $new_state);
