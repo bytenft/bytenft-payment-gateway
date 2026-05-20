@@ -143,89 +143,155 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		// 1. VALIDATION
 		// -------------------------
 		if ($order_id <= 0) {
-			return new WP_REST_Response(['success' => false, 'message' => 'Invalid ID'], 400);
+			return new WP_REST_Response([
+				'success' => false,
+				'message' => 'Invalid ID'
+			], 400);
 		}
 
 		$order = wc_get_order($order_id);
 
 		if (!$order) {
-			return new WP_REST_Response(['success' => false, 'message' => 'Order not found'], 404);
+			return new WP_REST_Response([
+				'success' => false,
+				'message' => 'Order not found'
+			], 404);
 		}
 
 		// -------------------------
 		// 2. SECURITY CHECK (POST ONLY)
 		// -------------------------
 		if ($method === 'POST') {
+
 			$decoded_nonce = base64_decode($api_key_raw);
 
-			if (empty($api_key_raw) || !$this->bytenft_verify_api_key($decoded_nonce)) {
-				ByteNFT_Payment_Gateway_Logger::error("ByteNFT SECURITY FAIL #{$order_id}", $log_context);
-				return new WP_REST_Response(['success' => false, 'error_code' => 'INVALID_API_KEY'], 401);
+			if (
+				empty($api_key_raw) ||
+				!$this->bytenft_verify_api_key($decoded_nonce)
+			) {
+
+				ByteNFT_Payment_Gateway_Logger::error(
+					"ByteNFT SECURITY FAIL #{$order_id}",
+					$log_context
+				);
+
+				return new WP_REST_Response([
+					'success'   => false,
+					'error_code'=> 'INVALID_API_KEY'
+				], 401);
 			}
 		}
 
 		// -------------------------
-		// 3. EVENT SOURCE
+		// 3. EVENT TYPE
 		// -------------------------
-		$event_source = ($method === 'POST') ? 'Webhook' : 'Redirect';
 		$event_type = ($method === 'POST')
 			? 'webhook_update'
 			: 'redirect';
 
+		$event_source = ($method === 'POST')
+			? 'Webhook'
+			: 'Redirect';
+
 		// -------------------------
-		// 4. ENGINE CALL (SINGLE SOURCE OF TRUTH)
+		// 4. ENGINE CALL
 		// -------------------------
-		$result = BYTENFT_PAYMENT_ENGINE::handle_event(
-			$order_id,
-			$event_type,
-			[
-				'status'        => $api_order_status,
-				'payment_token' => $pay_id,
-				'source'        => $event_source
-			]
+		if (!empty($api_order_status)) {
+
+			$result = BYTENFT_PAYMENT_ENGINE::handle_event(
+				$order_id,
+				$event_type,
+				[
+					'status'        => $api_order_status,
+					'payment_token' => $pay_id,
+					'source'        => $event_source
+				]
+			);
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				"ByteNFT ENGINE RESULT | Order #{$order_id} | " . json_encode($result),
+				$log_context
+			);
+		}
+
+		// -------------------------
+		// 5. REFRESH ORDER
+		// -------------------------
+		$order = wc_get_order($order_id);
+
+		/**
+		 * IMPORTANT:
+		 * ALWAYS trust ENGINE FINAL STATE
+		 * instead of raw API response.
+		 */
+		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state(
+			$order,
+			$api_order_status
 		);
 
+		$wc_status = $order->get_status();
+
+		// -------------------------
+		// 6. SUCCESS DETECTION
+		// -------------------------
+		$is_success = ($state === 'success');
+
+		// -------------------------
+		// 7. MESSAGE
+		// -------------------------
+		$message = match ($state) {
+
+			'success' =>
+				'Payment confirmed successfully.',
+
+			'failed' =>
+				'Payment failed. Please try again.',
+
+			'cancelled' =>
+				'Payment was cancelled.',
+
+			'processing' =>
+				'Payment is being processed.',
+
+			'pending' =>
+				'Payment is pending.',
+
+			default =>
+				'Payment status is currently being verified.'
+		};
+
+		// -------------------------
+		// 8. REDIRECT LOGIC
+		// -------------------------
+		$redirect = null;
+
+		/**
+		 * CRITICAL FIX:
+		 * Redirect ONLY from ENGINE STATE.
+		 *
+		 * This fixes:
+		 * failed → failed → success
+		 * still redirecting to checkout.
+		 */
+
+		if ($state === 'success') {
+
+			$redirect = $order->get_checkout_order_received_url();
+
+		} elseif (
+			in_array($state, ['failed', 'cancelled'], true)
+		) {
+
+			$redirect = wc_get_checkout_url();
+		}
+
 		ByteNFT_Payment_Gateway_Logger::info(
-			"ByteNFT ENGINE RESULT | Order #{$order_id} | " . json_encode($result),
+			"ByteNFT FINAL RESPONSE | Order #{$order_id} | State: {$state} | WC: {$wc_status} | Redirect: {$redirect}",
 			$log_context
 		);
 
 		// -------------------------
-		// 5. REFRESH ORDER (AFTER ENGINE)
-		// -------------------------
-		$order = wc_get_order($order_id);
-
-		// 🔥 PRIMARY SOURCE = ENGINE STATE
-		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order, $api_order_status);
-
-		$wc_status = $order->get_status();
-
-		$is_success = ($state === 'success');
-
-		// -------------------------
-		// 6. MESSAGE (STATE BASED ONLY)
-		// -------------------------
-		$message = match ($state) {
-			'success'    => 'Payment confirmed successfully.',
-			'failed'     => 'Payment failed. Please try again.',
-			'cancelled'  => 'Payment was cancelled.',
-			'processing' => 'Payment is being processed.',
-			default      => 'Payment is being processed.'
-		};
-
-		// -------------------------
-		// 7. REDIRECT LOGIC (SAFARI SAFE + WEB SAFE)
-		// -------------------------
-		$redirect = null;
-
-		if ($state === 'success') {
-			$redirect = $order->get_checkout_order_received_url();
-		} elseif (in_array($state, ['failed', 'cancelled'], true)) {
-			$redirect = wc_get_checkout_url();
-		}
-
-		// -------------------------
-		// 8. RESPONSE HANDLING (IMPORTANT FIX)
+		// 9. RESPONSE
 		// -------------------------
 		return $this->bytenft_finalize_response(
 			$method,
