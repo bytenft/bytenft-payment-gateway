@@ -633,49 +633,30 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			]
 		);
 
-		/**
-		 * IMPORTANT:
-		 * If another request is currently updating
-		 * the order, wait briefly and reload state.
-		 *
-		 * Fixes:
-		 * failed -> failed -> success race condition
-		 */
-		if (($result['reason'] ?? '') === 'locked_skip') {
-
-			usleep(700000); // 0.7 second
-
-			clean_post_cache($order_id);
-
-			$order = wc_get_order($order_id);
-		}
+		// ❌ REMOVE locked_skip handling completely
 
 		ByteNFT_Payment_Gateway_Logger::info(
 			$log_prefix . " PopupClose | Engine result: " . json_encode($result)
 		);
 
 		// -------------------------
-		// REFRESH ORDER
+		// ALWAYS RELOAD ORDER AFTER ENGINE
 		// -------------------------
 		$order = wc_get_order($order_id);
 
-		$wc_status = $order->get_status();
+		// 🔥 PRIMARY STATE = ENGINE STORED STATE ONLY
+		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order);
 
-		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state(
-			$order,
-			$payment_status
-		);
-
-		/**
-		 * SUCCESS ALWAYS WINS
-		 */
-		if (
-			$state !== 'success' &&
-			$order->has_status(['processing', 'completed'])
-		) {
+		// -------------------------
+		// HARD OVERRIDE SAFETY (ONLY ONE SOURCE)
+		// -------------------------
+		if ($order->get_meta('_bytenft_state') === 'success') {
 			$state = 'success';
 		}
 
+		// -------------------------
+		// FINAL SUCCESS CHECK
+		// -------------------------
 		$is_success = ($state === 'success');
 
 		// -------------------------
@@ -704,13 +685,18 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		$redirect = null;
 
-		if ($order->has_status(['processing', 'completed'])) {
+		// 🔥 ONLY ENGINE STATE DECIDES REDIRECT
+		if ($state === 'success') {
 
 			$redirect = $order->get_checkout_order_received_url();
 
-		} elseif (in_array($state, ['failed', 'cancelled'], true)) {
+		} elseif (in_array($state, ['failed', 'cancelled', 'expired'], true)) {
 
 			$redirect = wc_get_checkout_url();
+
+		} else {
+
+			$redirect = null; // processing → no redirect
 		}
 
 		// -------------------------
@@ -721,7 +707,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			'message' => $message,
 			'data' => [
 				'payment_status' => $payment_status,
-				'order_status'   => $wc_status,
+				'order_status'   => $order->get_status(),
 				'state'          => $state,
 				'redirect'       => $redirect,
 				'order_id'       => $order_id,
