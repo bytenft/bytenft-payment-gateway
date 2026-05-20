@@ -271,7 +271,11 @@ class BYTENFT_PAYMENT_ENGINE
         ) {
 
             $order->add_order_note(
-                'Payment completed successfully.'
+                self::build_order_note(
+                    "Payment completed successfully.",
+                    $payment_token,
+                    $event_type
+                )
             );
 
             $order->update_meta_data(
