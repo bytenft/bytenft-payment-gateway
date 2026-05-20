@@ -633,6 +633,23 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			]
 		);
 
+		/**
+		 * IMPORTANT:
+		 * If another request is currently updating
+		 * the order, wait briefly and reload state.
+		 *
+		 * Fixes:
+		 * failed -> failed -> success race condition
+		 */
+		if (($result['reason'] ?? '') === 'locked_skip') {
+
+			usleep(700000); // 0.7 second
+
+			clean_post_cache($order_id);
+
+			$order = wc_get_order($order_id);
+		}
+
 		ByteNFT_Payment_Gateway_Logger::info(
 			$log_prefix . " PopupClose | Engine result: " . json_encode($result)
 		);
@@ -652,7 +669,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		/**
 		 * SUCCESS ALWAYS WINS
 		 */
-		if ($order->has_status(['processing', 'completed'])) {
+		if (
+			$state !== 'success' &&
+			$order->has_status(['processing', 'completed'])
+		) {
 			$state = 'success';
 		}
 

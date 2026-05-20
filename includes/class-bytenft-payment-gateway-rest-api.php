@@ -169,15 +169,9 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 				empty($api_key_raw) ||
 				!$this->bytenft_verify_api_key($decoded_nonce)
 			) {
-
-				ByteNFT_Payment_Gateway_Logger::error(
-					"ByteNFT SECURITY FAIL #{$order_id}",
-					$log_context
-				);
-
 				return new WP_REST_Response([
-					'success'   => false,
-					'error_code'=> 'INVALID_API_KEY'
+					'success'    => false,
+					'error_code' => 'INVALID_API_KEY'
 				], 401);
 			}
 		}
@@ -220,9 +214,9 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$order = wc_get_order($order_id);
 
 		/**
-		 * IMPORTANT:
-		 * ALWAYS trust ENGINE FINAL STATE
-		 * instead of raw API response.
+		 * CRITICAL FIX:
+		 * Always resolve from ENGINE + WC state,
+		 * not raw API response.
 		 */
 		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state(
 			$order,
@@ -232,8 +226,12 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$wc_status = $order->get_status();
 
 		// -------------------------
-		// 6. SUCCESS DETECTION
+		// 6. SUCCESS OVERRIDE (IMPORTANT FIX)
 		// -------------------------
+		if ($wc_status === 'processing' || $wc_status === 'completed') {
+			$state = 'success';
+		}
+
 		$is_success = ($state === 'success');
 
 		// -------------------------
@@ -257,30 +255,19 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 				'Payment is pending.',
 
 			default =>
-				'Payment status is currently being verified.'
+				'Payment status is being verified.'
 		};
 
 		// -------------------------
-		// 8. REDIRECT LOGIC
+		// 8. REDIRECT (ENGINE ONLY)
 		// -------------------------
 		$redirect = null;
-
-		/**
-		 * CRITICAL FIX:
-		 * Redirect ONLY from ENGINE STATE.
-		 *
-		 * This fixes:
-		 * failed → failed → success
-		 * still redirecting to checkout.
-		 */
 
 		if ($state === 'success') {
 
 			$redirect = $order->get_checkout_order_received_url();
 
-		} elseif (
-			in_array($state, ['failed', 'cancelled'], true)
-		) {
+		} elseif (in_array($state, ['failed', 'cancelled'], true)) {
 
 			$redirect = wc_get_checkout_url();
 		}
