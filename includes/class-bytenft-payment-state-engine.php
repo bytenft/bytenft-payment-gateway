@@ -193,33 +193,57 @@ class BYTENFT_PAYMENT_ENGINE
             return;
         }
 
-        $seen_failed = [];
         $failed_events = [];
+        $success_event = null;
+        $cancel_event  = null;
+        $seen_failed   = [];
 
+        /**
+         * SINGLE PASS TIMELINE PARSE
+         */
         foreach ($timeline as $event) {
 
-            if (($event['type'] ?? '') !== 'failed') {
-                continue;
-            }
-
-            // payment_token = unique payment attempt
+            $type  = $event['type'] ?? '';
             $token = trim((string) ($event['payment_token'] ?? ''));
 
-            if (empty($token)) {
-                continue;
+            /**
+             * FAILED EVENTS
+             */
+            if ($type === 'failed') {
+
+                if (
+                    !empty($token) &&
+                    !isset($seen_failed[$token])
+                ) {
+                    $seen_failed[$token] = true;
+
+                    $failed_events[] = $event;
+                }
             }
 
-            if (isset($seen_failed[$token])) {
-                continue;
+            /**
+             * SUCCESS EVENT
+             */
+            if (
+                $type === 'success' &&
+                !$success_event
+            ) {
+                $success_event = $event;
             }
 
-            $seen_failed[$token] = true;
-
-            $failed_events[] = $event;
+            /**
+             * CANCEL EVENT
+             */
+            if (
+                $type === 'cancelled' &&
+                !$cancel_event
+            ) {
+                $cancel_event = $event;
+            }
         }
 
         /**
-         * ONLY ADD NEW FAILED NOTES
+         * FAILED NOTES
          */
         $already_synced = (int) $order->get_meta('_bytenft_failed_note_count');
 
@@ -233,15 +257,11 @@ class BYTENFT_PAYMENT_ENGINE
 
                 $attempt_number = $i + 1;
 
-                $payment_token = $event['payment_token'] ?? '';
-
-                $event_type = $event['event_type'] ?? '';
-
                 $order->add_order_note(
                     self::build_order_note(
                         "Payment Failed (Attempt {$attempt_number})",
-                        $payment_token,
-                        $event_type
+                        $event['payment_token'] ?? '',
+                        $event['event_type'] ?? ''
                     )
                 );
             }
@@ -253,25 +273,19 @@ class BYTENFT_PAYMENT_ENGINE
         }
 
         /**
-         * SUCCESS NOTE (ONLY ONCE)
+         * SUCCESS NOTE
          */
-        $has_success = false;
-
-        foreach ($timeline as $event) {
-
-            if (($event['type'] ?? '') === 'success') {
-                $has_success = true;
-                break;
-            }
-        }
-
         if (
-            $has_success &&
+            $success_event &&
             !$order->get_meta('_bytenft_success_note_added')
         ) {
 
             $order->add_order_note(
-                'Payment completed successfully.'
+                self::build_order_note(
+                    'Payment completed successfully.',
+                    $success_event['payment_token'] ?? '',
+                    $success_event['event_type'] ?? ''
+                )
             );
 
             $order->update_meta_data(
@@ -281,25 +295,19 @@ class BYTENFT_PAYMENT_ENGINE
         }
 
         /**
-         * CANCEL NOTE (ONLY ONCE)
+         * CANCEL NOTE
          */
-        $has_cancelled = false;
-
-        foreach ($timeline as $event) {
-
-            if (($event['type'] ?? '') === 'cancelled') {
-                $has_cancelled = true;
-                break;
-            }
-        }
-
         if (
-            $has_cancelled &&
+            $cancel_event &&
             !$order->get_meta('_bytenft_cancel_note_added')
         ) {
 
             $order->add_order_note(
-                'Payment was cancelled.'
+                self::build_order_note(
+                    'Payment was cancelled.',
+                    $cancel_event['payment_token'] ?? '',
+                    $cancel_event['event_type'] ?? ''
+                )
             );
 
             $order->update_meta_data(
