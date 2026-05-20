@@ -43,12 +43,37 @@ class BYTENFT_PAYMENT_ENGINE
             }
 
             // ONLY apply state change (NO NOTES HERE)
+            $can_transition = self::can_transition($current_state, $new_state);
+
+            /**
+             * ALWAYS allow success recovery
+             */
+            if ($new_state === 'success') {
+                $can_transition = true;
+            }
+
+            /**
+             * BLOCK invalid transitions
+             */
+            if (!$can_transition) {
+
+                return self::safe_response(
+                    $order,
+                    'invalid_transition_blocked',
+                    $current_state
+                );
+            }
+
+            /**
+             * APPLY STATE
+             */
             self::apply($order, $new_state, $event_type, $payload);
 
-            // ONLY push timeline (no notes logic here)
+            /**
+             * PUSH TIMELINE
+             */
             if ($new_state === 'failed') {
 
-                // failed should only be added once per payment token
                 $existing = self::timeline_has_state_for_token(
                     $order,
                     'failed',
@@ -56,12 +81,22 @@ class BYTENFT_PAYMENT_ENGINE
                 );
 
                 if (!$existing) {
-                    self::push_timeline_event($order, $new_state, $event_type, $payload);
+                    self::push_timeline_event(
+                        $order,
+                        $new_state,
+                        $event_type,
+                        $payload
+                    );
                 }
 
-            } elseif (self::can_transition($current_state, $new_state)) {
+            } else {
 
-                self::push_timeline_event($order, $new_state, $event_type, $payload);
+                self::push_timeline_event(
+                    $order,
+                    $new_state,
+                    $event_type,
+                    $payload
+                );
             }
 
             // SINGLE SOURCE OF TRUTH FOR NOTES
