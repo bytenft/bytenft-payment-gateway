@@ -30,6 +30,7 @@
 
             this.bindBlockCheckout();
 
+            console.log("Calling bindInputSanitization function");
             this.bindInputSanitization();
 
             console.log('[Bytenft] initialized');
@@ -923,19 +924,25 @@
          * ========================================================= */
 
         bindInputSanitization: function () {
+            console.log(" COME INSIDE THE FUNCTION ");
 
             // First Name, Last Name, City
             $('#billing_first_name, #billing_last_name, #billing_city')
                 .off('input.sanitize')
                 .on('input.sanitize', function () {
+                    console.log(" ------ COME INSIDE THE FUNCTION -------");
 
                     let originalValue = this.value;
+                    console.log("originalValue FOR NAME- ", originalValue);
 
                     // Allow only alphabets and spaces
                     this.value = this.value.replace(/[^A-Za-z\s]/g, '');
 
+                    console.log(" this.value - ",  this.value);
+
                     // Prevent numbers specifically
                     this.value = this.value.replace(/[0-9]/g, '');
+                    console.log(" this.value new - ",  this.value);
 
                     if (originalValue !== this.value) {
                         console.log(
