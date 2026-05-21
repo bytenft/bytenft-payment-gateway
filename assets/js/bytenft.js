@@ -924,7 +924,7 @@
 
         bindInputSanitization: function () {
 
-            // $('#billing_first_name, #billing_last_name, #billing_city')
+            // $('#billing_first_name, #billing-first_name, #billing_last_name, #billing-last_name, #billing_city, #billing-city, input[name="billing_first_name"], input[name="billing_last_name"], input[name="billing_city"]')
             //     .on('input', function () {
 
             //         this.value = this.value.replace(
@@ -935,49 +935,30 @@
 
             $(document).on(
                 'input',
-                '#billing-first_name, input[name="billing_first_name"]',
+                '#billing_first_name, #billing-first_name, #billing_last_name, #billing-last_name, #billing_city, #billing-city, input[name="billing_first_name"], input[name="billing_last_name"], input[name="billing_city"]',
                 function () {
 
                     const input = this;
 
-                    // Delay slightly so React finishes updating first
-                    setTimeout(function () {
+                    setTimeout(() => {
 
-                        const oldValue = input.value;
-
-                        const sanitizedValue = oldValue.replace(
+                        const clean = input.value.replace(
                             /[^A-Za-z\s]/g,
                             ''
                         );
 
-                        if (oldValue !== sanitizedValue) {
+                        if (input.value !== clean) {
 
-                            // Native setter for React compatibility
-                            const nativeInputValueSetter =
-                                Object.getOwnPropertyDescriptor(
-                                    window.HTMLInputElement.prototype,
-                                    'value'
-                                ).set;
+                            Object.getOwnPropertyDescriptor(
+                                HTMLInputElement.prototype,
+                                'value'
+                            ).set.call(input, clean);
 
-                            nativeInputValueSetter.call(
-                                input,
-                                sanitizedValue
-                            );
-
-                            // Notify WooCommerce Blocks / React
                             input.dispatchEvent(
-                                new Event('input', {
-                                    bubbles: true
-                                })
-                            );
-
-                            console.log(
-                                '[Bytenft] Sanitized:',
-                                oldValue,
-                                '=>',
-                                sanitizedValue
+                                new Event('input', { bubbles: true })
                             );
                         }
+
                     }, 0);
                 }
             );
