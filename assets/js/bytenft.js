@@ -924,14 +924,29 @@
 
         bindInputSanitization: function () {
 
-            $('#billing_first_name, #billing_last_name, #billing_city')
-                .on('input', function () {
+            $('#billing_first_name, #billing-first_name, #billing_last_name, #billing-last_name, #billing_city, #billing-city, input[name="billing_first_name"], input[name="billing_last_name"], input[name="billing_city"]')
+            .on('input', function () {
 
-                    this.value = this.value.replace(
+                const input = this;
+
+                setTimeout(() => {
+                    const clean = input.value.replace(
                         /[^A-Za-z\s]/g,
                         ''
                     );
-                });
+                    if (input.value !== clean) {
+                        Object.getOwnPropertyDescriptor(
+                            HTMLInputElement.prototype,
+                            'value'
+                        ).set.call(input, clean);
+
+                        input.dispatchEvent(
+                            new Event('input', { bubbles: true })
+                        );
+                    }
+
+                }, 0);
+            });
 
             $('#billing_address_1')
                 .on('input', function () {
