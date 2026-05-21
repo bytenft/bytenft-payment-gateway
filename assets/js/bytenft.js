@@ -30,7 +30,6 @@
 
             this.bindBlockCheckout();
 
-            console.log("Calling bindInputSanitization function");
             this.bindInputSanitization();
 
             console.log('[Bytenft] initialized');
@@ -953,17 +952,6 @@
                             /[^A-Za-z\s]/g,
                             ''
                         );
-
-                        if (originalValue !== this.value) {
-
-                            console.log(
-                                '[Sanitization]',
-                                this.name || this.id,
-                                originalValue,
-                                '=>',
-                                this.value
-                            );
-                        }
                     }
                 );
 
@@ -989,17 +977,6 @@
                             /[^A-Za-z0-9\s,.\-#]/g,
                             ''
                         );
-
-                        if (originalValue !== this.value) {
-
-                            console.log(
-                                '[Sanitization]',
-                                this.name || this.id,
-                                originalValue,
-                                '=>',
-                                this.value
-                            );
-                        }
                     }
                 );
         }
