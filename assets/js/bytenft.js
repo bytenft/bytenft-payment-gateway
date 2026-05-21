@@ -924,62 +924,84 @@
          * ========================================================= */
 
         bindInputSanitization: function () {
-            console.log(" COME INSIDE THE FUNCTION ");
+
+            // Supports all WooCommerce themes / blocks
+            const nameSelectors = `
+                #billing_first_name,
+                #billing-first_name,
+                #billing_last_name,
+                #billing-last_name,
+                #billing_city,
+                #billing-city,
+                input[name="billing_first_name"],
+                input[name="billing_last_name"],
+                input[name="billing_city"]
+            `;
 
             // First Name, Last Name, City
-            $('#billing_first_name, #billing_last_name, #billing_city')
-                .off('input.sanitize')
-                .on('input.sanitize', function () {
-                    console.log(" ------ COME INSIDE THE FUNCTION -------");
+            $(document)
+                .off('input.sanitize', nameSelectors)
+                .on(
+                    'input.sanitize',
+                    nameSelectors,
+                    function () {
 
-                    let originalValue = this.value;
-                    console.log("originalValue FOR NAME- ", originalValue);
+                        let originalValue = this.value;
 
-                    // Allow only alphabets and spaces
-                    this.value = this.value.replace(/[^A-Za-z\s]/g, '');
-
-                    console.log(" this.value - ",  this.value);
-
-                    // Prevent numbers specifically
-                    this.value = this.value.replace(/[0-9]/g, '');
-                    console.log(" this.value new - ",  this.value);
-
-                    if (originalValue !== this.value) {
-                        console.log(
-                            '[Sanitization]',
-                            this.id,
-                            'Invalid characters removed:',
-                            originalValue,
-                            '=>',
-                            this.value
+                        // Allow only alphabets and spaces
+                        this.value = this.value.replace(
+                            /[^A-Za-z\s]/g,
+                            ''
                         );
+
+                        if (originalValue !== this.value) {
+
+                            console.log(
+                                '[Sanitization]',
+                                this.name || this.id,
+                                originalValue,
+                                '=>',
+                                this.value
+                            );
+                        }
                     }
-                });
+                );
+
+            // Address selectors
+            const addressSelectors = `
+                #billing_address_1,
+                #billing-address_1,
+                input[name="billing_address_1"]
+            `;
 
             // Address
-            $('#billing_address_1')
-                .off('input.sanitize')
-                .on('input.sanitize', function () {
+            $(document)
+                .off('input.sanitize', addressSelectors)
+                .on(
+                    'input.sanitize',
+                    addressSelectors,
+                    function () {
 
-                    let originalValue = this.value;
+                        let originalValue = this.value;
 
-                    // Allow letters, numbers, spaces and address characters
-                    this.value = this.value.replace(
-                        /[^A-Za-z0-9\s,.\-#]/g,
-                        ''
-                    );
-
-                    if (originalValue !== this.value) {
-                        console.log(
-                            '[Sanitization]',
-                            this.id,
-                            'Invalid characters removed:',
-                            originalValue,
-                            '=>',
-                            this.value
+                        // Allow letters, numbers, spaces and address characters
+                        this.value = this.value.replace(
+                            /[^A-Za-z0-9\s,.\-#]/g,
+                            ''
                         );
+
+                        if (originalValue !== this.value) {
+
+                            console.log(
+                                '[Sanitization]',
+                                this.name || this.id,
+                                originalValue,
+                                '=>',
+                                this.value
+                            );
+                        }
                     }
-                });
+                );
         }
     };
 
