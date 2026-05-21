@@ -924,7 +924,7 @@
 
         bindInputSanitization: function () {
 
-            // Supports all WooCommerce themes / blocks
+            // Supports WooCommerce Classic + Blocks + Themes
             const nameSelectors = `
                 #billing_first_name,
                 #billing-first_name,
@@ -937,21 +937,30 @@
                 input[name="billing_city"]
             `;
 
-            // First Name, Last Name, City
+            // First Name / Last Name / City
             $(document)
-                .off('input.sanitize', nameSelectors)
+                .off(
+                    'input.sanitize keyup.sanitize change.sanitize blur.sanitize',
+                    nameSelectors
+                )
                 .on(
-                    'input.sanitize',
+                    'input.sanitize keyup.sanitize change.sanitize blur.sanitize',
                     nameSelectors,
                     function () {
 
-                        let originalValue = this.value;
-
-                        // Allow only alphabets and spaces
-                        this.value = this.value.replace(
+                        const cleaned = this.value.replace(
                             /[^A-Za-z\s]/g,
                             ''
                         );
+
+                        // Update only if changed
+                        if (this.value !== cleaned) {
+
+                            this.value = cleaned;
+
+                            // Trigger WooCommerce / React update
+                            $(this).trigger('change');
+                        }
                     }
                 );
 
@@ -964,19 +973,26 @@
 
             // Address
             $(document)
-                .off('input.sanitize', addressSelectors)
+                .off(
+                    'input.sanitize keyup.sanitize change.sanitize blur.sanitize',
+                    addressSelectors
+                )
                 .on(
-                    'input.sanitize',
+                    'input.sanitize keyup.sanitize change.sanitize blur.sanitize',
                     addressSelectors,
                     function () {
 
-                        let originalValue = this.value;
-
-                        // Allow letters, numbers, spaces and address characters
-                        this.value = this.value.replace(
+                        const cleaned = this.value.replace(
                             /[^A-Za-z0-9\s,.\-#]/g,
                             ''
                         );
+
+                        if (this.value !== cleaned) {
+
+                            this.value = cleaned;
+
+                            $(this).trigger('change');
+                        }
                     }
                 );
         }
