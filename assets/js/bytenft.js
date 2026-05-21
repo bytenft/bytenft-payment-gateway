@@ -930,14 +930,11 @@
                 const input = this;
 
                 setTimeout(() => {
-
                     const clean = input.value.replace(
                         /[^A-Za-z\s]/g,
                         ''
                     );
-
                     if (input.value !== clean) {
-
                         Object.getOwnPropertyDescriptor(
                             HTMLInputElement.prototype,
                             'value'
