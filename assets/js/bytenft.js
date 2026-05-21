@@ -938,33 +938,47 @@
                 '#billing-first_name, input[name="billing_first_name"]',
                 function () {
 
-                    const oldValue = this.value;
+                    const input = this;
 
-                    const sanitizedValue = oldValue.replace(
-                        /[^A-Za-z\s]/g,
-                        ''
-                    );
+                    // Delay slightly so React finishes updating first
+                    setTimeout(function () {
 
-                    // Nothing changed
-                    if (oldValue === sanitizedValue) {
-                        return;
-                    }
+                        const oldValue = input.value;
 
-                    // Update real input value
-                    this.value = sanitizedValue;
+                        const sanitizedValue = oldValue.replace(
+                            /[^A-Za-z\s]/g,
+                            ''
+                        );
 
-                    // IMPORTANT:
-                    // Trigger React/WooCommerce Blocks update
-                    this.dispatchEvent(
-                        new Event('input', { bubbles: true })
-                    );
+                        if (oldValue !== sanitizedValue) {
 
-                    console.log(
-                        '[Bytenft] Sanitized:',
-                        oldValue,
-                        '=>',
-                        sanitizedValue
-                    );
+                            // Native setter for React compatibility
+                            const nativeInputValueSetter =
+                                Object.getOwnPropertyDescriptor(
+                                    window.HTMLInputElement.prototype,
+                                    'value'
+                                ).set;
+
+                            nativeInputValueSetter.call(
+                                input,
+                                sanitizedValue
+                            );
+
+                            // Notify WooCommerce Blocks / React
+                            input.dispatchEvent(
+                                new Event('input', {
+                                    bubbles: true
+                                })
+                            );
+
+                            console.log(
+                                '[Bytenft] Sanitized:',
+                                oldValue,
+                                '=>',
+                                sanitizedValue
+                            );
+                        }
+                    }, 0);
                 }
             );
 
