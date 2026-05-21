@@ -924,7 +924,7 @@
 
         bindInputSanitization: function () {
 
-            $('#billing_first_name, #billing_last_name, #billing_city,#billing-first_name')
+            $('#billing_first_name, #billing-first_name, #billing_last_name, #billing-last_name, #billing_city, #billing-city, input[name="billing_first_name"], input[name="billing_last_name"], input[name="billing_city"]')
                 .on('input', function () {
 
                     const sanitizedValue = $(this)
