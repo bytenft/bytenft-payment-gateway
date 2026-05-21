@@ -924,77 +924,23 @@
 
         bindInputSanitization: function () {
 
-            // Supports WooCommerce Classic + Blocks + Themes
-            const nameSelectors = `
-                #billing_first_name,
-                #billing-first_name,
-                #billing_last_name,
-                #billing-last_name,
-                #billing_city,
-                #billing-city,
-                input[name="billing_first_name"],
-                input[name="billing_last_name"],
-                input[name="billing_city"]
-            `;
+            $('#billing_first_name, #billing_last_name, #billing_city, #billing-first_name, #billing-last_name')
+                .on('input', function () {
 
-            // First Name / Last Name / City
-            $(document)
-                .off(
-                    'input.sanitize keyup.sanitize change.sanitize blur.sanitize',
-                    nameSelectors
-                )
-                .on(
-                    'input.sanitize keyup.sanitize change.sanitize blur.sanitize',
-                    nameSelectors,
-                    function () {
+                    this.value = this.value.replace(
+                        /[^A-Za-z\s]/g,
+                        ''
+                    );
+                });
 
-                        const cleaned = this.value.replace(
-                            /[^A-Za-z\s]/g,
-                            ''
-                        );
+            $('#billing_address_1')
+                .on('input', function () {
 
-                        // Update only if changed
-                        if (this.value !== cleaned) {
-
-                            this.value = cleaned;
-
-                            // Trigger WooCommerce / React update
-                            $(this).trigger('change');
-                        }
-                    }
-                );
-
-            // Address selectors
-            const addressSelectors = `
-                #billing_address_1,
-                #billing-address_1,
-                input[name="billing_address_1"]
-            `;
-
-            // Address
-            $(document)
-                .off(
-                    'input.sanitize keyup.sanitize change.sanitize blur.sanitize',
-                    addressSelectors
-                )
-                .on(
-                    'input.sanitize keyup.sanitize change.sanitize blur.sanitize',
-                    addressSelectors,
-                    function () {
-
-                        const cleaned = this.value.replace(
-                            /[^A-Za-z0-9\s,.\-#]/g,
-                            ''
-                        );
-
-                        if (this.value !== cleaned) {
-
-                            this.value = cleaned;
-
-                            $(this).trigger('change');
-                        }
-                    }
-                );
+                    this.value = this.value.replace(
+                        /[^A-Za-z0-9\s,.\-#]/g,
+                        ''
+                    );
+                });
         }
     };
 
