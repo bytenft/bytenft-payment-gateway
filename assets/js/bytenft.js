@@ -929,10 +929,11 @@
                     
                     const oldValue = this.value;
 
-                    this.value = this.value.replace(
-                        /[^A-Za-z\s]/g,
-                        ''
-                    );
+                    // this.value = this.value.replace(
+                    //     /[^A-Za-z\s]/g,
+                    //     ''
+                    // );
+                    
                     console.log('Old:', oldValue);
                     console.log('New:', this.value);
                 });
