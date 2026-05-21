@@ -924,21 +924,37 @@
 
         bindInputSanitization: function () {
 
-            $('#billing_first_name, #billing_last_name, #billing_city, #billing-first_name')
-                .on('input', function () {
-                    
-                    const oldValue = this.value;
-
-                    this.value = this.value.replace(
-                        /[^A-Za-z\s]/g,
-                        ''
-                    );
-
-                    $(input).trigger('change');
-                    
-                    console.log('Old:', oldValue);
-                    console.log('New:', this.value);
+            $('#billing_first_name, #billing_last_name, #billing_city')
+                .on('input', filterNameInput)
+                .on('paste', function(e) {
+                    // Handle paste separately
+                    setTimeout(() => filterNameInput(e), 10);
                 });
+            
+            function filterNameInput(event) {
+                const input = event.target;
+                const oldValue = input.value;
+                
+                // Remove any non-letter and non-space characters
+                let newValue = oldValue.replace(/[^A-Za-z\s]/g, '');
+                
+                // Prevent multiple consecutive spaces (optional)
+                newValue = newValue.replace(/\s+/g, ' ');
+                
+                // Trim spaces from start and end (optional)
+                newValue = newValue.trim();
+                
+                if (oldValue !== newValue) {
+                    input.value = newValue;
+                    
+                    // Trigger change event for any dependent scripts
+                    $(input).trigger('change');
+                }
+                
+                console.log('Field:', input.id || input.name);
+                console.log('Old:', oldValue);
+                console.log('New:', newValue);
+            }
 
             $('#billing_address_1')
                 .on('input', function () {
