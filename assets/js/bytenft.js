@@ -924,18 +924,49 @@
 
         bindInputSanitization: function () {
 
-            $('#billing_first_name, #billing-first_name, #billing_last_name, #billing-last_name, #billing_city, #billing-city, input[name="billing_first_name"], input[name="billing_last_name"], input[name="billing_city"]')
-                .on('input', function () {
+            // $('#billing_first_name, #billing_last_name, #billing_city')
+            //     .on('input', function () {
 
-                    const sanitizedValue = $(this)
-                        .val()
-                        .replace(/[^A-Za-z\s]/g, '');
+            //         this.value = this.value.replace(
+            //             /[^A-Za-z\s]/g,
+            //             ''
+            //         );
+            //     });
 
-                    $(this).val(sanitizedValue);
+            $(document).on(
+                'input',
+                '#billing-first_name, input[name="billing_first_name"]',
+                function () {
 
-                    // Important for WooCommerce block fields
-                    $(this).trigger('change');
-                });
+                    const oldValue = this.value;
+
+                    const sanitizedValue = oldValue.replace(
+                        /[^A-Za-z\s]/g,
+                        ''
+                    );
+
+                    // Nothing changed
+                    if (oldValue === sanitizedValue) {
+                        return;
+                    }
+
+                    // Update real input value
+                    this.value = sanitizedValue;
+
+                    // IMPORTANT:
+                    // Trigger React/WooCommerce Blocks update
+                    this.dispatchEvent(
+                        new Event('input', { bubbles: true })
+                    );
+
+                    console.log(
+                        '[Bytenft] Sanitized:',
+                        oldValue,
+                        '=>',
+                        sanitizedValue
+                    );
+                }
+            );
 
             $('#billing_address_1')
                 .on('input', function () {
