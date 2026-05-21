@@ -924,22 +924,54 @@
 
         bindInputSanitization: function () {
 
+            // First Name, Last Name, City
             $('#billing_first_name, #billing_last_name, #billing_city')
-                .on('input', function () {
+                .off('input.sanitize')
+                .on('input.sanitize', function () {
 
-                    this.value = this.value.replace(
-                        /[^A-Za-z\s]/g,
-                        ''
-                    );
+                    let originalValue = this.value;
+
+                    // Allow only alphabets and spaces
+                    this.value = this.value.replace(/[^A-Za-z\s]/g, '');
+
+                    // Prevent numbers specifically
+                    this.value = this.value.replace(/[0-9]/g, '');
+
+                    if (originalValue !== this.value) {
+                        console.log(
+                            '[Sanitization]',
+                            this.id,
+                            'Invalid characters removed:',
+                            originalValue,
+                            '=>',
+                            this.value
+                        );
+                    }
                 });
 
+            // Address
             $('#billing_address_1')
-                .on('input', function () {
+                .off('input.sanitize')
+                .on('input.sanitize', function () {
 
+                    let originalValue = this.value;
+
+                    // Allow letters, numbers, spaces and address characters
                     this.value = this.value.replace(
                         /[^A-Za-z0-9\s,.\-#]/g,
                         ''
                     );
+
+                    if (originalValue !== this.value) {
+                        console.log(
+                            '[Sanitization]',
+                            this.id,
+                            'Invalid characters removed:',
+                            originalValue,
+                            '=>',
+                            this.value
+                        );
+                    }
                 });
         }
     };
