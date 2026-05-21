@@ -924,37 +924,19 @@
 
         bindInputSanitization: function () {
 
-            $('#billing_first_name, #billing_last_name, #billing_city')
-                .on('input', filterNameInput)
-                .on('paste', function(e) {
-                    // Handle paste separately
-                    setTimeout(() => filterNameInput(e), 10);
+            $('#billing_first_name, #billing_last_name, #billing_city,#billing-first_name')
+                .on('input', function () {
+
+                    this.value = this.value.replace(
+                        /[^A-Za-z\s]/g,
+                        ''
+                    );
+
+                    $(this).val(this.value);
+
+                    // Important for WooCommerce block fields
+                    $(this).trigger('change');
                 });
-            
-            function filterNameInput(event) {
-                const input = event.target;
-                const oldValue = input.value;
-                
-                // Remove any non-letter and non-space characters
-                let newValue = oldValue.replace(/[^A-Za-z\s]/g, '');
-                
-                // Prevent multiple consecutive spaces (optional)
-                newValue = newValue.replace(/\s+/g, ' ');
-                
-                // Trim spaces from start and end (optional)
-                newValue = newValue.trim();
-                
-                if (oldValue !== newValue) {
-                    input.value = newValue;
-                    
-                    // Trigger change event for any dependent scripts
-                    $(input).trigger('change');
-                }
-                
-                console.log('Field:', input.id || input.name);
-                console.log('Old:', oldValue);
-                console.log('New:', newValue);
-            }
 
             $('#billing_address_1')
                 .on('input', function () {
