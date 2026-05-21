@@ -933,6 +933,9 @@
                         /[^A-Za-z\s]/g,
                         ''
                     );
+
+                    $(input).trigger('change');
+                    
                     console.log('Old:', oldValue);
                     console.log('New:', this.value);
                 });
