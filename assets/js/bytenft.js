@@ -924,7 +924,7 @@
 
         bindInputSanitization: function () {
 
-            $('#billing_first_name, #billing_last_name, #billing_city, #billing-first_name, #billing-last_name')
+            $('#billing_first_name, #billing_last_name, #billing_city')
                 .on('input', function () {
 
                     this.value = this.value.replace(
