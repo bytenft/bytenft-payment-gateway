@@ -927,12 +927,11 @@
             $('#billing_first_name, #billing_last_name, #billing_city,#billing-first_name')
                 .on('input', function () {
 
-                    this.value = this.value.replace(
-                        /[^A-Za-z\s]/g,
-                        ''
-                    );
+                    const sanitizedValue = $(this)
+                        .val()
+                        .replace(/[^A-Za-z\s]/g, '');
 
-                    $(this).val(this.value);
+                    $(this).val(sanitizedValue);
 
                     // Important for WooCommerce block fields
                     $(this).trigger('change');
