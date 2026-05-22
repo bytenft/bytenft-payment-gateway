@@ -146,7 +146,7 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 - Improved payment order synchronization logic for better reliability and consistency between payment gateway and WooCommerce orders.
 - Optimized handling of payment status updates to reduce race conditions and ensure accurate final order states.
 - Minor code improvements for better stability and maintainability.
-- Wert provider support
+- W provider support
 
 ### Version 1.0.13
 - **Payment Gateway Visibility Fix:** Resolved an issue where when the payment limit was reached, other available payment methods were not displayed correctly.
