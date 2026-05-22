@@ -751,13 +751,13 @@
 
             const fields = [
 
-                $form.find('#billing_address_1').val(),
+                $form.find('[name="billing_address_1"]').val(),
 
-                $form.find('#billing_address_2').val(),
+                $form.find('[name="billing_address_2"]').val(),
 
-                $form.find('#shipping_address_1').val(),
+                $form.find('[name="shipping_address_1"]').val(),
 
-                $form.find('#shipping_address_2').val()
+                $form.find('[name="shipping_address_2"]').val()
             ];
 
             for (let field of fields) {
