@@ -6,6 +6,7 @@ if (!defined('ABSPATH')) {
 // Include the configuration file
 require_once plugin_dir_path(__FILE__) . 'config.php';
 require_once plugin_dir_path(__FILE__) . 'class-bytenft-payment-state-engine.php';
+require_once plugin_dir_path(__FILE__) . 'class-bytenft-payment-logger.php';
 /**
  * Class BYTENFT_PAYMENT_GATEWAY_Loader
  * Handles the loading and initialization of the ByteNFT Payment Gateway plugin.
