@@ -677,7 +677,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'Payment is being processed.',
 
 			default =>
-				'Payment status is currently unavailable.'
+				'Payment was not completed. Please try again to continue with your order.'
 		};
 
 		// -------------------------
