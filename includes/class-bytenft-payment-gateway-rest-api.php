@@ -3,6 +3,8 @@ if (!defined('ABSPATH')) {
 	exit; // Exit if accessed directly.
 }
 
+require_once plugin_dir_path(__FILE__) . 'class-bytenft-payment-state-engine.php';
+
 class BYTENFT_PAYMENT_GATEWAY_REST_API
 {
 	private $logger;
@@ -69,14 +71,8 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	    $accounts_data = get_option('woocommerce_bytenft_payment_gateway_accounts');
 	    $general_settings = get_option('woocommerce_bytenft_settings');
 
-	    // $this->logger->info('Raw settings loaded', [
-	    //     'source' => 'bytenft-payment-gateway',
-	    //     'accounts_data' => $accounts_data,
-	    //     'general_settings' => $general_settings,
-	    // ]);
-
 	    if (empty($accounts_data)) {
-	        $this->logger->warning('No account data found', ['source' => 'bytenft-payment-gateway']);
+	        ByteNFT_Payment_Gateway_Logger::warning('No account data found', ['source' => 'bytenft-payment-gateway']);
 	        return false;
 	    }
 
@@ -90,7 +86,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	    foreach ($accounts_data as $account_id => $account) {
 	        // Ensure valid array
 	        if (!is_array($account)) {
-	            $this->logger->warning('Skipping invalid account entry', [
+	            ByteNFT_Payment_Gateway_Logger::warning('Skipping invalid account entry', [
 	                'source' => 'bytenft-payment-gateway',
 	                'account_id' => $account_id,
 	                'account_value' => $account
@@ -102,13 +98,13 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	            ? sanitize_text_field($account['sandbox_public_key'] ?? '')
 	            : sanitize_text_field($account['live_public_key'] ?? '');
 
-	        $this->logger->info('Checking public key :: ' . $public_key, [
+	        ByteNFT_Payment_Gateway_Logger::info('Checking public key :: ' . $public_key, [
 	            'source' => 'bytenft-payment-gateway',
 	            'sandbox' => $sandbox,
 	        ]);
 
 	        if (!empty($public_key) && hash_equals($public_key, $api_key)) {
-	            $this->logger->info('Keys matched successfully', [
+	            ByteNFT_Payment_Gateway_Logger::info('Keys matched successfully', [
 	                'source' => 'bytenft-payment-gateway',
 	                'account_id' => $account_id,
 	            ]);
@@ -131,7 +127,6 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$params      = $request->get_params();
 		$log_context = ['source' => 'bytenft-payment-gateway'];
 
-		// Support nested payload (like Celery / webhook)
 		$data = isset($params['api_data']) ? $params['api_data'] : $params;
 
 		$order_id         = intval($data['order_id'] ?? 0);
@@ -139,178 +134,200 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$pay_id           = sanitize_text_field($data['pay_id'] ?? '');
 		$api_key_raw      = $data['nonce'] ?? '';
 
-		$this->logger->info(
-			"ByteNFT: {$method} request for Order #{$order_id} (status: {$api_order_status})",
+		ByteNFT_Payment_Gateway_Logger::info(
+			"ByteNFT API HIT | Order #{$order_id} | Status: {$api_order_status} | Pay ID: {$pay_id}",
 			$log_context
 		);
 
-		// -------------------------------------------------
+		// -------------------------
 		// 1. VALIDATION
-		// -------------------------------------------------
+		// -------------------------
 		if ($order_id <= 0) {
-			return new WP_REST_Response(['success' => false, 'message' => 'Invalid Order ID'], 400);
+			return new WP_REST_Response([
+				'success' => false,
+				'message' => 'Invalid ID'
+			], 400);
 		}
 
 		$order = wc_get_order($order_id);
+
 		if (!$order) {
-			return new WP_REST_Response(['success' => false, 'message' => 'Order not found'], 404);
+			return new WP_REST_Response([
+				'success' => false,
+				'message' => 'Order not found'
+			], 404);
 		}
 
-		$current_status = $order->get_status();
-
-		// -------------------------------------------------
-		// 2. STATUS MAPPING (ADMIN CONTROLLED)
-		// -------------------------------------------------
-		$settings        = get_option('woocommerce_bytenft_settings', []);
-		$success_status  = $settings['order_status'] ?? 'processing';
-
-		switch ($api_order_status) {
-			case 'completed':
-				$target_status = $success_status; // ✅ admin-controlled
-				break;
-
-			case 'failed':
-				$target_status = 'failed';
-				break;
-
-			case 'expired':
-			case 'cancelled':
-				$target_status = 'cancelled';
-				break;
-
-			default:
-				$target_status = null;
-		}
-
-		if (!$target_status) {
-			if ($method === 'POST') {
-				return new WP_REST_Response(['success' => true, 'message' => 'No action needed'], 200);
-			}
-			wp_safe_redirect($order->get_checkout_order_received_url());
-			exit;
-		}
-
-		// -------------------------------------------------
-		// 3. FINAL STATE RULE (ONLY COMPLETED IS LOCKED)
-		// -------------------------------------------------
-		if ($current_status === 'completed') {
-			$this->logger->info("Order #{$order_id} already completed. Skipping update.", $log_context);
-
-			if ($method === 'POST') {
-				return new WP_REST_Response(['success' => true], 200);
-			}
-
-			wp_safe_redirect($order->get_checkout_order_received_url());
-			exit;
-		}
-
-		// -------------------------------------------------
-		// 4. SECURITY (POST ONLY)
-		// -------------------------------------------------
+		// -------------------------
+		// 2. SECURITY CHECK (POST ONLY)
+		// -------------------------
 		if ($method === 'POST') {
+
 			$decoded_nonce = base64_decode($api_key_raw);
 
-			if (empty($api_key_raw) || !$this->bytenft_verify_api_key($decoded_nonce)) {
-				$this->logger->error("INVALID_API_KEY for Order #{$order_id}", $log_context);
-
+			if (
+				empty($api_key_raw) ||
+				!$this->bytenft_verify_api_key($decoded_nonce)
+			) {
 				return new WP_REST_Response([
-					'success' => false,
+					'success'    => false,
 					'error_code' => 'INVALID_API_KEY'
 				], 401);
 			}
 		}
 
-		// -------------------------------------------------
-		// 5. DUPLICATE CALLBACK PROTECTION
-		// -------------------------------------------------
-		$last_status = $order->get_meta('_bytenft_last_status');
+		// -------------------------
+		// 3. EVENT TYPE
+		// -------------------------
+		$event_type = ($method === 'POST')
+			? 'webhook_update'
+			: 'redirect';
 
-		if ($last_status === $api_order_status) {
-			$this->logger->info("Duplicate callback ignored for Order #{$order_id}", $log_context);
+		$event_source = ($method === 'POST')
+			? 'Webhook'
+			: 'Redirect';
 
-			if ($method === 'POST') {
-				return new WP_REST_Response(['success' => true], 200);
-			}
+		// -------------------------
+		// 4. ENGINE CALL
+		// -------------------------
+		if (!empty($api_order_status)) {
 
-			wp_safe_redirect($order->get_checkout_order_received_url());
-			exit;
+			$result = BYTENFT_PAYMENT_ENGINE::handle_event(
+				$order_id,
+				$event_type,
+				[
+					'status'        => $api_order_status,
+					'payment_token' => $pay_id,
+					'source'        => $event_source
+				]
+			);
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				"ByteNFT ENGINE RESULT | Order #{$order_id} | " . json_encode($result),
+				$log_context
+			);
 		}
 
-		// -------------------------------------------------
-		// 6. CONCURRENCY LOCK (RACE CONDITION FIX)
-		// -------------------------------------------------
-		$lock_key = 'bytenft_lock_' . $order_id;
+		// -------------------------
+		// 5. REFRESH ORDER
+		// -------------------------
+		$order = wc_get_order($order_id);
 
-		if (get_transient($lock_key)) {
-			$this->logger->info("Order #{$order_id} locked, skipping concurrent request.", $log_context);
+		/**
+		 * CRITICAL FIX:
+		 * Always resolve from ENGINE + WC state,
+		 * not raw API response.
+		 */
+		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state(
+			$order,
+			$api_order_status
+		);
 
-			if ($method === 'POST') {
-				return new WP_REST_Response(['success' => true], 200);
-			}
+		$wc_status = $order->get_status();
 
-			wp_safe_redirect($order->get_checkout_order_received_url());
-			exit;
+		// -------------------------
+		// 6. SUCCESS OVERRIDE (IMPORTANT FIX)
+		// -------------------------
+		if ($wc_status === 'processing' || $wc_status === 'completed') {
+			$state = 'success';
 		}
 
-		set_transient($lock_key, true, 15);
+		$is_success = ($state === 'success');
 
-		try {
-			// 🔥 Re-fetch order (important for Safari / race condition)
-			$order = wc_get_order($order_id);
-			$current_status = $order->get_status();
+		// -------------------------
+		// 7. MESSAGE
+		// -------------------------
+		$message = match ($state) {
 
-			// Final double-check
-			if ($current_status === 'completed') {
-				delete_transient($lock_key);
+			'success' =>
+				'Payment confirmed successfully.',
 
-				if ($method === 'POST') {
-					return new WP_REST_Response(['success' => true], 200);
-				}
+			'failed' =>
+				'Payment failed. Please try again.',
 
-				wp_safe_redirect($order->get_checkout_order_received_url());
-				exit;
-			}
+			'cancelled' =>
+				'Payment was cancelled.',
 
-			$source = ($method === 'POST') ? 'Webhook/API' : 'Customer Redirect';
+			'processing' =>
+				'Payment is being processed.',
 
-			$note  = "🔄 ByteNFT Payment Update\n";
-			$note .= "Status: {$api_order_status}\n";
-			$note .= "Source: {$source}\n";
-			$note .= "Transaction ID: {$pay_id}";
+			'pending' =>
+				'Payment is pending.',
 
-			$order->update_status($target_status, $note);
+			default =>
+				'Payment status is being verified.'
+		};
 
-			if ($pay_id) {
-				$order->update_meta_data('_bytenft_pay_id', $pay_id);
-			}
+		// -------------------------
+		// 8. REDIRECT (ENGINE ONLY)
+		// -------------------------
+		$redirect = null;
 
-			$order->update_meta_data('_bytenft_last_status', $api_order_status);
-			$order->save();
+		if ($state === 'success') {
 
-			$this->logger->info("Order #{$order_id} updated → {$target_status}", $log_context);
+			$redirect = $order->get_checkout_order_received_url();
 
-		} catch (\Exception $e) {
-			$this->logger->error("Order #{$order_id} update failed: " . $e->getMessage(), $log_context);
-		} finally {
-			delete_transient($lock_key);
+		} elseif (in_array($state, ['failed', 'cancelled'], true)) {
+
+			$redirect = wc_get_checkout_url();
 		}
 
-		// -------------------------------------------------
-		// 7. FINAL RESPONSE (SAFARI SAFE)
-		// -------------------------------------------------
+		ByteNFT_Payment_Gateway_Logger::info(
+			"ByteNFT FINAL RESPONSE | Order #{$order_id} | State: {$state} | WC: {$wc_status} | Redirect: {$redirect}",
+			$log_context
+		);
+
+		// -------------------------
+		// 9. RESPONSE
+		// -------------------------
+		return $this->bytenft_finalize_response(
+			$method,
+			$order,
+			$is_success,
+			$message,
+			$wc_status,
+			$redirect
+		);
+	}
+
+	/**
+	 * HELPER: Handles API responses and Safari-safe redirects
+	 */
+	private function bytenft_finalize_response($method, $order, $success, $message, $target_status = '', $redirect_url = '') 
+	{
+		// If it's a server-to-server Webhook, just return JSON
 		if ($method === 'POST') {
-			return new WP_REST_Response(['success' => true], 200);
+			return new WP_REST_Response(['success' => $success, 'message' => $message], 200);
 		}
 
-		// Safari fix: update already done BEFORE redirect
+		// --- SAFARI/SESSION FIX ---
+		// If the browser (Safari) lost the session cookie, WooCommerce might not know which 
+		// order the user just paid for. We force the session to recognize this order.
+		if (isset(WC()->session) && !empty($order)) {
+			WC()->session->set('order_awaiting_payment', $order->get_id());
+		}
 
 		if (in_array($target_status, ['failed', 'cancelled'])) {
-			wc_add_notice('Payment failed or cancelled. Please try again.', 'error');
+			wc_add_notice('Payment was not completed. Please try again.', 'error');
 			wp_safe_redirect(wc_get_checkout_url());
 		} else {
+			// Send user to the 'Thank You' page
 			wp_safe_redirect($order->get_checkout_order_received_url());
 		}
-
 		exit;
+	}
+
+	/**
+	 * HELPER: Simple Status Mapping
+	 */
+	private function bytenft_map_status($api_status, $success_target) 
+	{
+		switch ($api_status) {
+			case 'completed': return $success_target;
+			case 'failed':    return 'failed';
+			case 'expired':
+			case 'cancelled': return 'cancelled';
+			default:          return null;
+		}
 	}
 }

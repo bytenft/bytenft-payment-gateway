@@ -64,3 +64,43 @@ function bytenft_activation_check()
 		wp_die(esc_html($environment_warning)); // Escape the output before calling wp_die
 	}
 }
+
+if (!function_exists('bytenft_add_unique_order_note')) {
+
+    function bytenft_add_unique_order_note($order, $key, $message)
+    {
+        if (!$order instanceof WC_Order) {
+            return false;
+        }
+
+        if (empty($message)) {
+            return false;
+        }
+
+        // Plugin identifier (IMPORTANT for tracking in WP admin)
+        $plugin_prefix = '<strong>ByteNFT Gateway</strong>';
+
+        // Unique meta key per note type (scoped to plugin)
+        $meta_key = '_bytenft_order_note_' . sanitize_key($key);
+
+        // Check if already exists
+        $existing = $order->get_meta($meta_key, true);
+
+        if (!empty($existing)) {
+            return false;
+        }
+
+        // Prepend plugin identifier to every note
+        $final_message = $plugin_prefix . "\n\n" . wp_kses_post($message);
+
+        // Add WooCommerce order note
+        $order->add_order_note($final_message);
+
+        // Store timestamp using WooCommerce timezone-aware time
+        $order->update_meta_data($meta_key, current_time('timestamp'));
+
+        $order->save();
+
+        return true;
+    }
+}
