@@ -978,7 +978,6 @@
          * ========================================================= */
 
         bindInputSanitization: function () {
-
             const selectors = `
                 #billing_first_name,
                 #billing-first_name,
@@ -991,58 +990,64 @@
                 input[name="billing_city"]
             `;
 
-            // =========================================
-            // NAME / CITY FIELDS
-            // =========================================
             $(document)
+            .on('input',selectors, function () {
 
-                // Input typing
-                .on('input', selectors, function () {
+                const input = this;
 
-                    const clean = this.value.replace(
+                setTimeout(() => {
+                    const clean = input.value.replace(
                         /[^A-Za-z\s]/g,
                         ''
                     );
+                    if (input.value !== clean) {
+                        Object.getOwnPropertyDescriptor(
+                            HTMLInputElement.prototype,
+                            'value'
+                        ).set.call(input, clean);
 
-                    if (this.value !== clean) {
-                        this.value = clean;
-                    }
-                })
-
-                // iOS autocomplete / paste fix
-                .on('keyup blur change paste', selectors, function () {
-
-                    const input = this;
-
-                    setTimeout(function () {
-
-                        const clean = input.value.replace(
-                            /[^A-Za-z\s]/g,
-                            ''
+                        input.dispatchEvent(
+                            new Event('input', { bubbles: true })
                         );
+                    }
 
-                        if (input.value !== clean) {
-                            input.value = clean;
-                        }
+                }, 0);
+            })
 
-                    }, 0);
-                });
+            // iOS autocomplete / paste fix
+            .on('keyup blur change paste', selectors, function () {
 
-            // =========================================
-            // ADDRESS FIELD
-            // =========================================
-            $(document).on(
-                'input',
-                '#billing_address_1',
-                function () {
+                 const input = this;
+
+                setTimeout(() => {
+                    const clean = input.value.replace(
+                        /[^A-Za-z\s]/g,
+                        ''
+                    );
+                    if (input.value !== clean) {
+                        Object.getOwnPropertyDescriptor(
+                            HTMLInputElement.prototype,
+                            'value'
+                        ).set.call(input, clean);
+
+                        input.dispatchEvent(
+                            new Event('input', { bubbles: true })
+                        );
+                    }
+
+                }, 0);
+            });
+            
+
+            $('#billing_address_1')
+                .on('input', function () {
 
                     this.value = this.value.replace(
                         /[^A-Za-z0-9\s,.\-#]/g,
                         ''
                     );
-                }
-            );
-        },
+                });
+        }
     };
 
     $(document).ready(function () {
