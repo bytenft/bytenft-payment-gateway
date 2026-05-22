@@ -990,53 +990,34 @@
                 input[name="billing_city"]
             `;
 
-            $(document)
-            .on('input',selectors, function () {
+            const sanitizeInput = (input) => {
+                const clean = input.value.replace(
+                    /[^A-Za-z\s]/g,
+                    ''
+                );
 
-                const input = this;
+                if (input.value !== clean) {
+                    Object.getOwnPropertyDescriptor(
+                        HTMLInputElement.prototype,
+                        'value'
+                    ).set.call(input, clean);
 
-                setTimeout(() => {
-                    const clean = input.value.replace(
-                        /[^A-Za-z\s]/g,
-                        ''
+                    input.dispatchEvent(
+                        new Event('input', { bubbles: true })
                     );
-                    if (input.value !== clean) {
-                        Object.getOwnPropertyDescriptor(
-                            HTMLInputElement.prototype,
-                            'value'
-                        ).set.call(input, clean);
+                }
+            };
 
-                        input.dispatchEvent(
-                            new Event('input', { bubbles: true })
-                        );
-                    }
-
-                }, 0);
-            })
-
-            // iOS autocomplete / paste fix
-            .on('keyup blur change paste', selectors, function () {
-
-                 const input = this;
-
-                setTimeout(() => {
-                    const clean = input.value.replace(
-                        /[^A-Za-z\s]/g,
-                        ''
-                    );
-                    if (input.value !== clean) {
-                        Object.getOwnPropertyDescriptor(
-                            HTMLInputElement.prototype,
-                            'value'
-                        ).set.call(input, clean);
-
-                        input.dispatchEvent(
-                            new Event('input', { bubbles: true })
-                        );
-                    }
-
-                }, 0);
-            });
+            $(document).on(
+                'input keyup blur change paste',
+                selectors,
+                function () {
+                    const input = this;
+                    setTimeout(() => {
+                        sanitizeInput(input);
+                    }, 0);
+                }
+            );
             
 
             $('#billing_address_1')
