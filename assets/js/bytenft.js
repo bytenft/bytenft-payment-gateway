@@ -407,10 +407,12 @@
                         } catch (e) {
 
                             // Safari fallback
-                            window.open(redirect, '_blank');
+                            self.state.popup = window.open(
+                                redirect,
+                                '_blank'
+                            );
                         }
 
-                        // Start polling immediately
                         self.trackPopupClose();
 
                     } else {
@@ -528,15 +530,24 @@
 
             const self = this;
 
+            let redirected = false;
+
             clearInterval(self.state.popupInterval);
 
             self.state.popupInterval = setInterval(function () {
 
-                // Popup manually closed
-                const popupClosed =
-                    !self.state.popup ||
-                    self.state.popup.closed;
+                // Prevent duplicate execution
+                if (redirected) {
+                    return;
+                }
 
+                const popupExists =
+                    self.state.popup &&
+                    !self.state.popup.closed;
+
+                // =========================================
+                // SAFARI + CHROME PAYMENT CHECK
+                // =========================================
                 $.post(
                     bytenft_params.ajax_url,
                     {
@@ -545,6 +556,10 @@
                         security: bytenft_params.bytenft_nonce
                     },
                     function (response) {
+
+                        if (redirected) {
+                            return;
+                        }
 
                         console.log(
                             '[Bytenft] popup status response',
@@ -565,9 +580,10 @@
                         // =========================================
                         if (paymentSuccess && redirectUrl) {
 
+                            redirected = true;
+
                             clearInterval(self.state.popupInterval);
 
-                            // Safari-safe popup close
                             try {
 
                                 if (
@@ -579,26 +595,27 @@
 
                             } catch (e) {
                                 console.log(
-                                    '[Bytenft] safari popup close blocked'
+                                    '[Bytenft] popup close blocked'
                                 );
                             }
 
                             self.state.popup = null;
 
                             console.log(
-                                '[Bytenft] redirecting to thank you page'
+                                '[Bytenft] redirect success page'
                             );
 
-                            // Safari prefers replace()
                             window.location.replace(redirectUrl);
 
                             return;
                         }
 
                         // =========================================
-                        // POPUP CLOSED + PAYMENT FAILED
+                        // USER MANUALLY CLOSED POPUP
                         // =========================================
-                        if (popupClosed) {
+                        if (!popupExists) {
+
+                            redirected = true;
 
                             clearInterval(self.state.popupInterval);
 
@@ -618,7 +635,7 @@
                     'json'
                 );
 
-            }, 1000);
+            }, 1500);
         },
 
         /* =========================================================
