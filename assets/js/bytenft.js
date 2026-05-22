@@ -399,9 +399,22 @@
                 if (redirect && typeof redirect === 'string' && redirect.length > 5) {
 
                     if (self.state.popup && !self.state.popup.closed) {
-                        self.state.popup.location.href = redirect;
+
+                        try {
+
+                            self.state.popup.location.href = redirect;
+
+                        } catch (e) {
+
+                            // Safari fallback
+                            window.open(redirect, '_blank');
+                        }
+
+                        // Start polling immediately
                         self.trackPopupClose();
+
                     } else {
+
                         window.location.href = redirect;
                     }
 
@@ -519,68 +532,93 @@
 
             self.state.popupInterval = setInterval(function () {
 
-                if (
+                // Popup manually closed
+                const popupClosed =
                     !self.state.popup ||
-                    self.state.popup.closed
-                ) {
+                    self.state.popup.closed;
 
-                    clearInterval(self.state.popupInterval);
+                $.post(
+                    bytenft_params.ajax_url,
+                    {
+                        action: 'bytenft_popup_closed_event',
+                        order_id: self.state.orderId,
+                        security: bytenft_params.bytenft_nonce
+                    },
+                    function (response) {
 
-                    self.state.popup = null;
+                        console.log(
+                            '[Bytenft] popup status response',
+                            response
+                        );
 
-                    $.post(
-                        bytenft_params.ajax_url,
-                        {
-                            action: 'bytenft_popup_closed_event',
-                            order_id: self.state.orderId,
-                            security: bytenft_params.bytenft_nonce
-                        },
-                        function (response) {
+                        const paymentSuccess =
+                            response?.success === true ||
+                            response?.data?.payment_status === 'success' ||
+                            response?.data?.payment_status === 'paid';
+
+                        const redirectUrl =
+                            response?.data?.redirect ||
+                            response?.redirect;
+
+                        // =========================================
+                        // PAYMENT SUCCESS
+                        // =========================================
+                        if (paymentSuccess && redirectUrl) {
+
+                            clearInterval(self.state.popupInterval);
+
+                            // Safari-safe popup close
+                            try {
+
+                                if (
+                                    self.state.popup &&
+                                    !self.state.popup.closed
+                                ) {
+                                    self.state.popup.close();
+                                }
+
+                            } catch (e) {
+                                console.log(
+                                    '[Bytenft] safari popup close blocked'
+                                );
+                            }
+
+                            self.state.popup = null;
 
                             console.log(
-                                '[Bytenft] popup close response',
-                                response
+                                '[Bytenft] redirecting to thank you page'
                             );
 
-                            const paymentSuccess =
-                                response?.success === true ||
-                                response?.data?.payment_status === 'success' ||
-                                response?.data?.payment_status === 'paid';
+                            // Safari prefers replace()
+                            window.location.replace(redirectUrl);
 
-                            const redirectUrl =
-                                response?.data?.redirect ||
-                                response?.redirect;
+                            return;
+                        }
 
-                            if (
-                                paymentSuccess &&
-                                redirectUrl
-                            ) {
+                        // =========================================
+                        // POPUP CLOSED + PAYMENT FAILED
+                        // =========================================
+                        if (popupClosed) {
 
-                                console.log('[Bytenft] redirecting to thank you page');
-
-                                window.location.replace(redirectUrl);
-
-                                return;
-                            }
+                            clearInterval(self.state.popupInterval);
 
                             const failedMessage =
                                 response?.message ||
                                 response?.data?.message ||
                                 'Your payment could not be completed. Please try again.';
 
-                            console.log('[Bytenft] popup failed:', failedMessage);
-
                             self.cleanupPopup();
 
                             self.showCheckoutError(failedMessage);
 
                             self.reset();
-                        },
-                        'json'
-                    );
-                }
+                        }
 
-            }, 500);
+                    },
+                    'json'
+                );
+
+            }, 1000);
         },
 
         /* =========================================================
