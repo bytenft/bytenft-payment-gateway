@@ -399,9 +399,24 @@
                 if (redirect && typeof redirect === 'string' && redirect.length > 5) {
 
                     if (self.state.popup && !self.state.popup.closed) {
-                        self.state.popup.location.href = redirect;
+
+                        try {
+
+                            self.state.popup.location.href = redirect;
+
+                        } catch (e) {
+
+                            // Safari fallback
+                            self.state.popup = window.open(
+                                redirect,
+                                '_blank'
+                            );
+                        }
+
                         self.trackPopupClose();
+
                     } else {
+
                         window.location.href = redirect;
                     }
 
@@ -515,72 +530,112 @@
 
             const self = this;
 
+            let redirected = false;
+
             clearInterval(self.state.popupInterval);
 
             self.state.popupInterval = setInterval(function () {
 
-                if (
-                    !self.state.popup ||
-                    self.state.popup.closed
-                ) {
+                // Prevent duplicate execution
+                if (redirected) {
+                    return;
+                }
 
-                    clearInterval(self.state.popupInterval);
+                const popupExists =
+                    self.state.popup &&
+                    !self.state.popup.closed;
 
-                    self.state.popup = null;
+                // =========================================
+                // SAFARI + CHROME PAYMENT CHECK
+                // =========================================
+                $.post(
+                    bytenft_params.ajax_url,
+                    {
+                        action: 'bytenft_popup_closed_event',
+                        order_id: self.state.orderId,
+                        security: bytenft_params.bytenft_nonce
+                    },
+                    function (response) {
 
-                    $.post(
-                        bytenft_params.ajax_url,
-                        {
-                            action: 'bytenft_popup_closed_event',
-                            order_id: self.state.orderId,
-                            security: bytenft_params.bytenft_nonce
-                        },
-                        function (response) {
+                        if (redirected) {
+                            return;
+                        }
+
+                        console.log(
+                            '[Bytenft] popup status response',
+                            response
+                        );
+
+                        const paymentSuccess =
+                            response?.success === true ||
+                            response?.data?.payment_status === 'success' ||
+                            response?.data?.payment_status === 'paid';
+
+                        const redirectUrl =
+                            response?.data?.redirect ||
+                            response?.redirect;
+
+                        // =========================================
+                        // PAYMENT SUCCESS
+                        // =========================================
+                        if (paymentSuccess && redirectUrl) {
+
+                            redirected = true;
+
+                            clearInterval(self.state.popupInterval);
+
+                            try {
+
+                                if (
+                                    self.state.popup &&
+                                    !self.state.popup.closed
+                                ) {
+                                    self.state.popup.close();
+                                }
+
+                            } catch (e) {
+                                console.log(
+                                    '[Bytenft] popup close blocked'
+                                );
+                            }
+
+                            self.state.popup = null;
 
                             console.log(
-                                '[Bytenft] popup close response',
-                                response
+                                '[Bytenft] redirect success page'
                             );
 
-                            const paymentSuccess =
-                                response?.success === true ||
-                                response?.data?.payment_status === 'success' ||
-                                response?.data?.payment_status === 'paid';
+                            window.location.replace(redirectUrl);
 
-                            const redirectUrl =
-                                response?.data?.redirect ||
-                                response?.redirect;
+                            return;
+                        }
 
-                            if (
-                                paymentSuccess &&
-                                redirectUrl
-                            ) {
+                        // =========================================
+                        // USER MANUALLY CLOSED POPUP
+                        // =========================================
+                        if (!popupExists) {
 
-                                console.log('[Bytenft] redirecting to thank you page');
+                            redirected = true;
 
-                                window.location.replace(redirectUrl);
-
-                                return;
-                            }
+                            clearInterval(self.state.popupInterval);
 
                             const failedMessage =
                                 response?.message ||
                                 response?.data?.message ||
                                 'Your payment could not be completed. Please try again.';
 
-                            console.log('[Bytenft] popup failed:', failedMessage);
-
                             self.cleanupPopup();
 
                             self.showCheckoutError(failedMessage);
 
                             self.reset();
-                        },
-                        'json'
-                    );
-                }
+                        }
 
-            }, 500);
+                    },
+                    'json'
+                );
+
+            }, 1500);
         },
 
         /* =========================================================
@@ -923,30 +978,47 @@
          * ========================================================= */
 
         bindInputSanitization: function () {
+            const selectors = `
+                #billing_first_name,
+                #billing-first_name,
+                #billing_last_name,
+                #billing-last_name,
+                #billing_city,
+                #billing-city,
+                input[name="billing_first_name"],
+                input[name="billing_last_name"],
+                input[name="billing_city"]
+            `;
 
-            $('#billing_first_name, #billing-first_name, #billing_last_name, #billing-last_name, #billing_city, #billing-city, input[name="billing_first_name"], input[name="billing_last_name"], input[name="billing_city"]')
-            .on('input', function () {
+            const sanitizeInput = (input) => {
+                const clean = input.value.replace(
+                    /[^A-Za-z\s]/g,
+                    ''
+                );
 
-                const input = this;
+                if (input.value !== clean) {
+                    Object.getOwnPropertyDescriptor(
+                        HTMLInputElement.prototype,
+                        'value'
+                    ).set.call(input, clean);
 
-                setTimeout(() => {
-                    const clean = input.value.replace(
-                        /[^A-Za-z\s]/g,
-                        ''
+                    input.dispatchEvent(
+                        new Event('input', { bubbles: true })
                     );
-                    if (input.value !== clean) {
-                        Object.getOwnPropertyDescriptor(
-                            HTMLInputElement.prototype,
-                            'value'
-                        ).set.call(input, clean);
+                }
+            };
 
-                        input.dispatchEvent(
-                            new Event('input', { bubbles: true })
-                        );
-                    }
-
-                }, 0);
-            });
+            $(document).on(
+                'input keyup blur change paste',
+                selectors,
+                function () {
+                    const input = this;
+                    setTimeout(() => {
+                        sanitizeInput(input);
+                    }, 0);
+                }
+            );
+            
 
             $('#billing_address_1')
                 .on('input', function () {
