@@ -677,7 +677,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'Payment is being processed.',
 
 			default =>
-				'Payment was not completed. Please try again to continue with your order.'
+				'We couldn’t confirm your payment status yet. If needed, you can try placing the order again after checking your order status.'
 		};
 
 		// -------------------------
