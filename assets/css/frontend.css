@@ -82,3 +82,34 @@
     border-color: #df1b41 !important;
     box-shadow: 0 0 0 1px #df1b41 !important;
 }
+
+.bytenft-gateway-description-container {
+    display: block !important;
+    width: 100%;
+    clear: both;
+}
+
+.bytenft-gateway-description-container p {
+    margin: 0 0 12px;
+    line-height: 1.5;
+}
+
+.bytenft-consent-wrapper {
+    display: block !important;
+    width: 100%;
+    margin-top: 15px;
+}
+
+.bytenft-consent-wrapper label {
+    display: flex !important;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
+    line-height: 1.5;
+    cursor: pointer;
+}
+
+.bytenft-consent-wrapper input[type="checkbox"] {
+    margin-top: 3px;
+    flex-shrink: 0;
+}

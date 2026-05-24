@@ -1,7 +1,15 @@
 console.log('bytenft-blocks.js loaded at', new Date().toISOString());
 (function () {
-    const { registerPaymentMethod } = window.wc?.wcBlocksRegistry || {};
-    const { createElement, RawHTML } = window.wp?.element || {};
+     const wc = window.wc || {};
+    const wp = window.wp || {};
+
+    const registerPaymentMethod =
+        wc.wcBlocksRegistry && wc.wcBlocksRegistry.registerPaymentMethod;
+
+    const element = wp.element || {};
+    const createElement = element.createElement;
+    const RawHTML = element.RawHTML;
+    const Fragment = element.Fragment;
 
     if (typeof registerPaymentMethod !== 'function') {
         return;
@@ -13,22 +21,78 @@ console.log('bytenft-blocks.js loaded at', new Date().toISOString());
     const label = settings.title || 'ByteNFT';
     const description = settings.description || '';
 
+    console.log('ALL SETTINGS:', window.wc?.wcSettings);
+
+    console.log(
+        'BYTENFT SETTINGS:',
+        window.wc?.wcSettings?.getPaymentMethodData?.('bytenft')
+    );
+
+    /**
+     * BLOCK CONTENT
+     */
+    const Content = () => {
+
+        return createElement(
+            Fragment,
+            {},
+
+            // Description
+            createElement(
+                'div',
+                {
+                    className: 'bytenft-description'
+                },
+                createElement(
+                    RawHTML,
+                    {},
+                    description
+                )
+            ),
+
+            // Consent Checkbox
+            createElement(
+                'p',
+                {
+                    className:
+                        'form-row form-row-wide bytenft-consent-wrapper',
+                    style: {
+                        marginTop: '15px'
+                    }
+                },
+
+                createElement(
+                    'label',
+                    {
+                        htmlFor: 'bytenft_consent',
+                        style: {
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                        }
+                    },
+
+                    createElement('input', {
+                        type: 'checkbox',
+                        id: 'bytenft_consent',
+                        name: 'bytenft_consent',
+                        value: '1',
+                        required: true
+                    }),
+
+                    'I consent to the collection of my data to process this payment'
+                )
+            )
+        );
+    };
+
     const methodConfig = {
         name: settings.id || 'bytenft',
         label,
         ariaLabel: label,
 
-        content: createElement(
-            'div',
-            { className: 'bytenft-description' },
-            createElement(RawHTML, {}, description)
-        ),
-
-        edit: createElement(
-            'div',
-            { className: 'bytenft-edit' },
-            label
-        ),
+        content: createElement(Content),
+        edit: createElement(Content),
 
         canMakePayment: async () => {
             return settings.can_pay !== false;

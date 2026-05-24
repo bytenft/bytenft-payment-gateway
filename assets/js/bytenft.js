@@ -265,6 +265,24 @@
 
             let data = $form.serialize();
 
+            const consentElement = document.querySelector('#bytenft_consent');
+
+            if (!consentElement || !consentElement.checked) {
+
+                self.cleanupPopup();
+
+                self.state.submitting = false; // 🔥 IMPORTANT FIX
+
+                self.state.button
+                    .prop('disabled', false)
+                    .removeClass('loading')
+                    .text(self.state.buttonText);
+
+                self.showCheckoutError('You must accept consent to continue payment.');
+
+                return;
+            }
+
             data += '&action=bytenft_block_gateway_process';
             data += '&nonce=' + encodeURIComponent(bytenft_params.bytenft_nonce);
 

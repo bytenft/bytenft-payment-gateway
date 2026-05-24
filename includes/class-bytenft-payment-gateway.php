@@ -1654,10 +1654,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	public function payment_fields() {
 		$description = $this->get_option('description');
+
+		// 1. Determine the correct subtitle/description to display
 		if (is_array($this->selected_account_for_display) && !empty($this->selected_account_for_display['checkout_subtitle'])) {
 			$description = $this->selected_account_for_display['checkout_subtitle'];
 		} elseif (WC()->cart) {
-			
 			$accounts = $this->get_all_accounts();
 			$sorted   = $this->get_routing_sorted_accounts($accounts);
 			if (!empty($sorted) && !empty($sorted[0]['checkout_subtitle'])) {
@@ -1665,17 +1666,29 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 		}
 
+		// 2. Wrap the output cleanly in a standard WooCommerce description container
+		// This wrapper forces the theme to treat it as a styling block, not a credit card input grid
+		echo '<div class="bytenft-gateway-description-container">';
+
 		if ($description) {
-			echo wp_kses_post(wpautop(wptexturize(trim($description))));
+			// Trim and strip broken inline tags if they were pulled from old DB settings
+			$clean_description = trim($description);
+			echo wp_kses_post(wpautop(wptexturize($clean_description)));
 		}
+
+		// 3. Render the consent checkbox cleanly separated from the text
 		if ('yes' === $this->get_option('show_consent_checkbox')) {
-			echo '<p class="form-row form-row-wide">
-                <label for="bytenft_consent">
-                    <input type="checkbox" id="bytenft_consent" name="bytenft_consent" /> ' .
+			echo '<p class="form-row form-row-wide bytenft-consent-wrapper" style="margin-top: 15px;">
+				<label for="bytenft_consent" style="display: inline-flex; align-items: center; gap: 8px;">
+					<input type="checkbox" id="bytenft_consent" name="bytenft_consent" value="1" /> ' .
 				esc_html__('I consent to the collection of my data to process this payment', 'bytenft-payment-gateway') .
 				'</label></p>';
-			wp_nonce_field('bytenft_payment', 'bytenft_nonce');
 		}
+
+		// Always keep the nonce inside the form container, regardless of the checkbox condition
+		wp_nonce_field('bytenft_payment', 'bytenft_nonce');
+
+		echo '</div>';
 	}
 
 	public function validate_fields() {
