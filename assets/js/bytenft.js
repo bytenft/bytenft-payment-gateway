@@ -59,31 +59,44 @@
 
                         self.clearCheckoutErrors();
 
+                        // =====================================================
+                        // 1. REQUIRED FIELD VALIDATION (SYNC)
+                        // =====================================================
                         const requiredError = self.validateRequiredFields($form);
 
                         if (requiredError) {
-
                             self.showCheckoutError(
                                 requiredError.message,
                                 requiredError.fields
                             );
-
                             return false;
                         }
 
+                        // =====================================================
+                        // 2. FULL VALIDATION (SYNC)
+                        // =====================================================
                         const validationError = self.validateAll($form);
 
                         if (validationError) {
-
                             self.showCheckoutError(validationError);
-
                             return false;
                         }
 
-                        // Safari popup fix
+                        // =====================================================
+                        // 3. LOCK SUBMIT (IMPORTANT)
+                        // =====================================================
+                        self.state.submitting = true;
+
+                        // =====================================================
+                        // 4. SAFARI POPUP (MUST BE IMMEDIATE AFTER CLICK)
+                        // =====================================================
                         self.openPopupImmediately();
 
-                        // Start custom flow
+                        self.trackPopupClose();
+
+                        // =====================================================
+                        // 5. START CUSTOM FLOW
+                        // =====================================================
                         self.handleClassicCheckout($form);
 
                         // STOP WooCommerce default flow
@@ -95,8 +108,6 @@
         handleClassicCheckout: function ($form) {
 
             const self = this;
-
-            self.state.submitting = true;
 
             self.state.button = $form
                 .find('button[name="woocommerce_checkout_place_order"]');
@@ -188,33 +199,45 @@
 
                     self.clearCheckoutErrors();
 
+                    // =====================================================
+                    // 1. REQUIRED VALIDATION (SYNC)
+                    // =====================================================
                     const requiredError = self.validateRequiredFields($form);
 
                     if (requiredError) {
-
                         self.showCheckoutError(
                             requiredError.message,
                             requiredError.fields
                         );
-
                         return;
                     }
 
+                    // =====================================================
+                    // 2. FULL VALIDATION (SYNC)
+                    // =====================================================
                     const validationError = self.validateAll($form);
 
                     if (validationError) {
-
                         self.showCheckoutError(validationError);
-
                         return;
                     }
 
-                    // Safari popup fix
+                    // =====================================================
+                    // 3. LOCK SUBMIT (IMPORTANT)
+                    // =====================================================
+                    self.state.submitting = true;
+
+                    // =====================================================
+                    // 4. SAFARI POPUP FIX (MUST BE IMMEDIATE)
+                    // =====================================================
                     self.openPopupImmediately();
 
-                    // Start block flow
-                    self.handleBlockCheckout($form);
+                    self.trackPopupClose();
 
+                    // =====================================================
+                    // 5. START BLOCK FLOW
+                    // =====================================================
+                    self.handleBlockCheckout($form);
                 },
                 true
             );
@@ -249,8 +272,6 @@
         handleBlockCheckout: function ($form) {
 
             const self = this;
-
-            self.state.submitting = true;
 
             self.state.button = $(
                 '.wc-block-components-checkout-place-order-button'
@@ -559,6 +580,11 @@
 
         cleanupPopup: function () {
 
+            if (this.state.popupInterval) {
+                clearInterval(this.state.popupInterval);
+                this.state.popupInterval = null;
+            }
+
             if (
                 this.state.popup &&
                 !this.state.popup.closed
@@ -652,131 +678,127 @@
          * ========================================================= */
 
         validateAll: function ($form) {
-
             const email = this.getBillingEmail($form);
-
-            if (!email) {
-                return 'Please enter your email address.';
-            }
-
-            if (!this.isValidEmail(email)) {
-                return 'Please enter a valid email address.';
-            }
+            if (!email) return 'Please enter your email address.';
+            if (!this.isValidEmail(email)) return 'Please enter a valid email address.';
 
             const phone = this.getPhoneNumber($form);
-
-            if (
-                phone &&
-                !this.isValidPhoneNumber(phone)
-            ) {
-                return 'Please enter a valid phone number.';
-            }
+            if (phone && !this.isValidPhoneNumber(phone)) return 'Please enter a valid phone number.';
 
             const poBox = this.validatePOBox($form);
-
-            if (poBox) {
-                return poBox;
-            }
+            if (poBox) return poBox;
 
             return null;
         },
 
         validateRequiredFields: function ($form) {
-
             let missing = [];
-
             let firstInvalid = null;
 
-            $form.find('[required]').each(function () {
+            // 1. Passively read if Shipping is active according to the platform
+            const isShippingActive = this.getShippingState($form);
 
+            // Look globally for required fields across any FunnelKit structural steps
+            const $allFields = $form.find('input[required], select[required], textarea[required]');
+
+            $allFields.each(function () {
                 const $field = $(this);
+                const name = $field.attr('name') || '';
 
-                if (
-                    !$field.is(':visible') ||
-                    $field.attr('type') === 'hidden'
-                ) {
+                if ($field.attr('type') === 'hidden') {
+                    return; 
+                }
+
+                // PASSIVE RULE: If it's a shipping field but shipping is disabled by the user, ignore it.
+                if (name.indexOf('shipping_') === 0 && !isShippingActive) {
+                    return;
+                }
+
+                // PASSIVE RULE: If it's a non-shipping field hidden by dynamic conditional logic (NOT steps), ignore it.
+                // We check if it's hidden inside a conditional wrapper rather than checking the field itself.
+                const $conditionalParent = $field.closest('.wcf-conditional-field, .woocommerce-validated');
+                if ($conditionalParent.length && $conditionalParent.is(':hidden')) {
                     return;
                 }
 
                 const val = ($field.val() || '').trim();
-
-                const $wrapper = $field.closest(
-                    '.form-row, .wc-block-components-text-input'
-                );
+                const $wrapper = $field.closest('.form-row, .wc-block-components-text-input, .form-row-first, .form-row-last');
 
                 if (!val) {
+                    $wrapper.addClass('woocommerce-invalid woocommerce-invalid-required-field');
 
-                    $wrapper.addClass(
-                        'woocommerce-invalid woocommerce-invalid-required-field'
-                    );
-
-                    let label =
-                        $wrapper.find('label').first().text().trim()
+                    let label = $wrapper.find('label').first().text().trim()
                         || $field.attr('placeholder')
                         || $field.attr('name');
 
-                    label = label
-                        .replace('*', '')
-                        .trim();
+                    label = label.replace('*', '').trim();
 
-                    if (
-                        label &&
-                        !missing.includes(label)
-                    ) {
+                    if (label && !missing.includes(label)) {
                         missing.push(label);
                     }
 
                     if (!firstInvalid) {
                         firstInvalid = $field;
                     }
-
                 } else {
-
-                    $wrapper.removeClass(
-                        'woocommerce-invalid woocommerce-invalid-required-field'
-                    );
+                    $wrapper.removeClass('woocommerce-invalid woocommerce-invalid-required-field');
                 }
             });
 
-            if (firstInvalid) {
-
-                setTimeout(function () {
-                    firstInvalid.trigger('focus');
-                }, 100);
+            // Only attempt to focus if the element is currently rendered on screen
+            if (firstInvalid && firstInvalid.is(':visible')) {
+                setTimeout(function () { firstInvalid.trigger('focus'); }, 100);
             }
 
             if (missing.length) {
-
-                return {
-                    message: 'Please fill required fields.',
-                    fields: missing
-                };
+                return { message: 'Please fill required fields.', fields: missing };
             }
 
             return null;
         },
 
+        getShippingState: function ($form) {
+            // 1. Primary Check: Inspect the native structural state checkbox managed by WooCommerce/FunnelKit
+            const $shipToDifferentCheckbox = $form.find('#ship-to-different-address-checkbox, input[name="ship_to_different_address"]');
+            
+            if ($shipToDifferentCheckbox.length) {
+                // Read properties exactly as they sit in the DOM without changing them
+                if ($shipToDifferentCheckbox.is(':checkbox')) {
+                    return $shipToDifferentCheckbox.is(':checked');
+                }
+                const val = $shipToDifferentCheckbox.val();
+                return (val === '1' || val === 'yes' || val === 'true');
+            }
+
+            // 2. Secondary Check: If FunnelKit unmounted the checkbox completely, look at the visibility of the wrapper panel itself
+            const $shippingWrapper = $form.find('.shipping_address, .wcf-shipping-address-fade');
+            if ($shippingWrapper.length) {
+                // If FunnelKit has explicitly made the shipping panel block visible, validation is required
+                return $shippingWrapper.is(':visible') || $shippingWrapper.css('display') === 'block';
+            }
+
+            // 3. Fallback: If no shipping panel structural wrappers are found at all, 
+            // default safely to false so we don't block checkouts on digital-only / virtual checkouts.
+            return false;
+        },
+
         validatePOBox: function ($form) {
+            const isShippingActive = this.getShippingState($form);
+            
+            const billing1 = $form.find('[name="billing_address_1"]').val();
+            const billing2 = $form.find('[name="billing_address_2"]').val();
+            
+            if (this.containsPOBox(billing1) || this.containsPOBox(billing2)) {
+                return 'PO Box addresses are not allowed for Billing.';
+            }
 
-            const fields = [
-
-                $form.find('[name="billing_address_1"]').val(),
-
-                $form.find('[name="billing_address_2"]').val(),
-
-                $form.find('[name="shipping_address_1"]').val(),
-
-                $form.find('[name="shipping_address_2"]').val()
-            ];
-
-            for (let field of fields) {
-
-                if (
-                    field &&
-                    this.containsPOBox(field)
-                ) {
-
-                    return 'PO Box addresses are not allowed.';
+            // Passively run PO Box check on shipping entries only if shipping state is verified active
+            if (isShippingActive) {
+                const shipping1 = $form.find('[name="shipping_address_1"]').val();
+                const shipping2 = $form.find('[name="shipping_address_2"]').val();
+                
+                if (this.containsPOBox(shipping1) || this.containsPOBox(shipping2)) {
+                    return 'PO Box addresses are not allowed for Shipping.';
                 }
             }
 
@@ -871,7 +893,10 @@
         showCheckoutError: function (message, fields = []) {
 
             // Clear previous notices first
-            $('.woocommerce-notices-wrapper').remove();
+            $('.bytenft-error-wrap').remove();
+
+            $('.wc-block-checkout__form .bytenft-error-wrap').remove();
+            $('form.checkout .bytenft-error-wrap').remove();
 
             // Build fields list
             let fieldsHtml = '';
@@ -947,6 +972,11 @@
         reset: function (keepDisabled = false) {
 
             this.state.submitting = false;
+
+            if (this.state.popupInterval) {
+                clearInterval(this.state.popupInterval);
+                this.state.popupInterval = null;
+            }
 
             const $blockButton = $(
                 '.wc-block-components-checkout-place-order-button'
