@@ -1678,8 +1678,72 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 	}
 
+	/**
+	 * Restricted states where Byte payment gateway should be hidden.
+	 *
+	 * @return array
+	 */
+	private function get_restricted_states() {
+		return array( 'NY', 'AK' , 'MN');
+	}
+
+	/**
+	 * Check if current customer state is restricted.
+	 *
+	 * @return bool
+	 */
+	private function is_restricted_state() {
+
+		$restricted_states = $this->get_restricted_states();
+
+		$billing_state  = '';
+		$shipping_state = '';
+
+		// Checkout posted data (AJAX checkout updates)
+		if ( isset( $_POST['post_data'] ) ) {
+			parse_str( wp_unslash( $_POST['post_data'] ), $posted_data );
+
+			$billing_state  = isset( $posted_data['billing_state'] ) ? wc_clean( $posted_data['billing_state'] ) : '';
+			$shipping_state = isset( $posted_data['shipping_state'] ) ? wc_clean( $posted_data['shipping_state'] ) : '';
+		} else {
+
+			// Standard checkout/customer session
+			$customer = WC()->customer;
+
+			if ( $customer ) {
+				$billing_state  = $customer->get_billing_state();
+				$shipping_state = $customer->get_shipping_state();
+			}
+
+			// Direct POST fallback
+			if ( isset( $_POST['billing_state'] ) ) {
+				$billing_state = wc_clean( wp_unslash( $_POST['billing_state'] ) );
+			}
+
+			if ( isset( $_POST['shipping_state'] ) ) {
+				$shipping_state = wc_clean( wp_unslash( $_POST['shipping_state'] ) );
+			}
+		}
+
+		$billing_state  = strtoupper( trim( $billing_state ) );
+		$shipping_state = strtoupper( trim( $shipping_state ) );
+
+		return (
+			in_array( $billing_state, $restricted_states, true ) ||
+			in_array( $shipping_state, $restricted_states, true )
+		);
+	}
+
 	public function validate_fields() {
 		if (!$this->check_for_sql_injection()) return false;
+		/**
+		 * Block restricted states.
+		 * Prevent direct checkout submission even if gateway is forced.
+		 */
+		if ( $this->is_restricted_state() ) {
+			wc_add_notice(__('Bytenft payment is not available in your state.', 'bytenft-payment-gateway'), 'error');
+			return false;
+		}
 
 		if ($this->get_option('show_consent_checkbox') === 'yes') {
 			$nonce = isset($_POST['bytenft_nonce']) ? sanitize_text_field(wp_unslash($_POST['bytenft_nonce'])) : '';
@@ -1760,6 +1824,23 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$flow = 'Checkout (Blocks)';
 		} elseif ($is_ajax) {
 			$flow = 'Checkout (AJAX)';
+		}
+
+		// =====================================================
+		// STEP 3A: RESTRICTED STATES CHECK
+		// =====================================================
+		if ( $this->is_restricted_state() ) {
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				'ByteNFT Gateway Decision',
+				[
+					'result' => 'HIDDEN',
+					'reason' => 'Restricted billing/shipping state',
+					'flow'   => $flow,
+				]
+			);
+
+			return $this->hide_gateway( $available_gateways, $gateway_id );
 		}
 
 		// =====================================================
