@@ -51,6 +51,19 @@ add_filter('woocommerce_get_checkout_order_received_url', function($url, $order)
         return $url;
     }
 
+	/**
+     * Only validate orders created by ByteNFT
+     */
+    $has_bytenft_payment = $order->meta_exists('_bytenft_payment_success');
+
+    /**
+     * If this is NOT a ByteNFT order,
+     * do not modify WooCommerce behavior.
+     */
+    if (!$has_bytenft_payment) {
+        return $url;
+    }
+
     $status = $order->get_status();
 
     // allow only real successful states
