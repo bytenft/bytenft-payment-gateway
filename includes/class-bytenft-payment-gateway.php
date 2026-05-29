@@ -1684,7 +1684,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * @return array
 	 */
 	private function get_restricted_states() {
-		return array( 'NY', 'AK' );
+		return array( 'NY', 'AK' , 'MN');
 	}
 
 	/**
