@@ -47,24 +47,20 @@ add_action('woocommerce_order_status_changed', 'bytenft_cancel_unpaid_order_acti
 
 add_filter('woocommerce_get_checkout_order_received_url', function($url, $order) {
 
-    if (!$order) {
+    if (!$order || !is_a($order, 'WC_Order')) {
         return $url;
     }
 
-    $status = $order->get_status();
-
-    // allow only real successful states
-    $allowed_statuses = ['processing', 'completed'];
-
-    $is_valid =
-        in_array($status, $allowed_statuses, true) &&
-        $order->get_meta('_bytenft_payment_success') === 'yes';
-
-    if (!$is_valid) {
-        return wc_get_checkout_url();
+    // Only police ByteNFT orders
+    if ($order->get_payment_method() !== 'bytenft') {
+        return $url;
     }
 
-    return $url;
+    $is_valid =
+        in_array($order->get_status(), ['processing', 'completed'], true) &&
+        $order->get_meta('_bytenft_payment_success') === 'yes';
+
+    return $is_valid ? $url : wc_get_checkout_url();
 
 }, 10, 2);
 
