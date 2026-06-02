@@ -652,7 +652,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			wp_send_json([
 				'success' => false,
-				'message' => 'Payment is being verified.',
 				'data' => [
 					'state'          => 'processing',
 					'payment_status' => 'processing',
@@ -669,13 +668,38 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		$order = wc_get_order($order_id);
 
-		// 🔥 PRIMARY STATE = ENGINE STORED STATE ONLY
-		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order);
+		// Resolve using engine state first, with current API status fallback.
+		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state(
+			$order,
+			$payment_status
+		);
+
+		// -------------------------------------------------
+		// FALLBACK: use engine state if resolved state empty
+		// -------------------------------------------------
+		$state = trim((string) $state);
+		if (
+			!in_array(
+				$state,
+				['success', 'failed', 'cancelled', 'processing', 'expired'],
+				true
+			)
+			&& !empty($result['state'])
+		) {
+
+			$state = $result['state'];
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix .
+				' PopupClose | Using engine state fallback: ' .
+				$state
+			);
+		}
 
 		// -------------------------
-		// HARD OVERRIDE SAFETY (ONLY ONE SOURCE)
+		// SUCCESS OVERRIDE SAFETY
 		// -------------------------
-		if ($order->get_meta('_bytenft_state') === 'success') {
+		if (in_array($order->get_status(), ['processing', 'completed'], true)) {
 			$state = 'success';
 		}
 
@@ -723,6 +747,16 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			$redirect = null; // processing → no redirect
 		}
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			$log_prefix .
+			' PopupClose FINAL | State=' .
+			($state ?: 'EMPTY') .
+			' | Success=' .
+			($is_success ? 'yes' : 'no') .
+			' | Redirect=' .
+			($redirect ?: 'NULL')
+		);
 
 		// -------------------------
 		// RESPONSE
