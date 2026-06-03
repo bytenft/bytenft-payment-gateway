@@ -22,13 +22,13 @@
         state: {
             status: 'idle', // idle | validating | popup | processing | done
             submitting: false,
-            lock: false, // GLOBAL MUTEX
             popup: null,
             popupInterval: null,
             orderId: null,
             button: null,
             buttonText: '',
-            requestInFlight: false,
+            requestInFlightClassic: false,
+            requestInFlightBlock: false,
             responseHandled: false
         },
 
@@ -51,26 +51,34 @@
             console.log('[Bytenft] bank-grade initialized');
         },
 
-        /* =========================================================
-         * GLOBAL LOCK HELPERS (CRITICAL)
-         * ========================================================= */
-
-        acquireLock: function () {
-            if (this.state.lock) return false;
-            this.state.lock = true;
-            return true;
-        },
-
-        releaseLock: function () {
-            this.state.lock = false;
-        },
-
         setStatus: function (status) {
             this.state.status = status;
         },
 
-        canProceed: function () {
-            return !this.state.lock && this.state.status !== 'processing';
+        canProceed: function (type) {
+            if (type === 'Classic') {
+                return !this.state.requestInFlightClassic;
+            }
+            if (type === 'Block') {
+                return !this.state.requestInFlightBlock;
+            }
+            return true;
+        },
+
+        releaseLock: function (type) {
+            if (!type) {
+                this.state.requestInFlightClassic = false;
+                this.state.requestInFlightBlock = false;
+                return;
+            }
+
+            if (type === 'Classic') {
+                this.state.requestInFlightClassic = false;
+            }
+
+            if (type === 'Block') {
+                this.state.requestInFlightBlock = false;
+            }
         },
 
         /* =========================================================
@@ -86,32 +94,46 @@
 
                     const $form = $(this);
 
-                    if (!self.canProceed()) return false;
-                    if (!self.acquireLock()) return false;
+                    if (!self.canProceed('Classic')) return false;
+                    if (self.state.requestInFlightClassic) return false;
+
+                    self.state.requestInFlightClassic = true;
 
                     self.setStatus('validating');
                     self.clearCheckoutErrors();
 
                     const requiredError = self.validateRequiredFields($form);
                     if (requiredError) {
-                        self.releaseLock();
+                        self.releaseLock('Classic');
                         self.setStatus('idle');
+                        self.reset();
                         self.showCheckoutError(requiredError.message, requiredError.fields);
                         return false;
                     }
 
                     const validationError = self.validateAll($form);
                     if (validationError) {
-                        self.releaseLock();
+                        self.releaseLock('Classic');
                         self.setStatus('idle');
+                        self.reset();
                         self.showCheckoutError(validationError);
                         return false;
                     }
 
                     self.setStatus('popup');
-                    self.openPopupImmediately();
+
+                   const popup = self.openPopupImmediately();
+
+                    if (!popup) {
+                        self.releaseLock('Classic');
+                        self.setStatus('idle');
+                        return false;
+                    }
+
+                    // 3. NOW move to processing
                     self.setStatus('processing');
 
+                    // 4. Start AJAX AFTER popup exists
                     self.handleClassicCheckout($form);
                     return false;
                 });
@@ -143,9 +165,6 @@
         handleClassicCheckout: function ($form) {
             const self = this;
 
-            if (self.state.requestInFlight) return;
-            self.state.requestInFlight = true;
-
             self.state.button = $('body').find('button[name="woocommerce_checkout_place_order"], #wcf-order-place-btn').first();
             self.state.buttonText = self.state.button.text();
 
@@ -160,11 +179,11 @@
                 data: dataPayload,
                 dataType: 'json',
                 success: function (response) {
-                    self.state.requestInFlight = false;
+                    self.state.requestInFlightClassic = false;
                     self.handleResponse(response);
                 },
                 error: function (xhr) {
-                    self.state.requestInFlight = false;
+                    self.state.requestInFlightClassic = false;
                     console.log('[Bytenft] checkout network error:', xhr.responseText);
                     self.failSafe('There was an error processing your order.');
                 }
@@ -194,32 +213,42 @@
                 e.preventDefault();
                 e.stopImmediatePropagation();
 
-                if (!self.canProceed()) return;
-                if (!self.acquireLock()) return;
+                if (!self.canProceed('Block')) return;
+                if (self.state.requestInFlightBlock) return;
+
+                self.state.requestInFlightBlock = true;
 
                 self.setStatus('validating');
                 self.clearCheckoutErrors();
 
                 const requiredError = self.validateRequiredFields($form);
                 if (requiredError) {
-                    self.releaseLock();
+                    self.releaseLock('Block');
                     self.setStatus('idle');
+                    self.reset();
                     self.showCheckoutError(requiredError.message, requiredError.fields);
                     return;
                 }
 
                 const validationError = self.validateAll($form);
                 if (validationError) {
-                    self.releaseLock();
+                    self.releaseLock('Block');
                     self.setStatus('idle');
+                    self.reset();
                     self.showCheckoutError(validationError);
                     return;
                 }
 
                 self.setStatus('popup');
-                self.openPopupImmediately();
-                self.setStatus('processing');
+                const popup = self.openPopupImmediately();
 
+                if (!popup) {
+                    self.releaseLock('Block');
+                    self.setStatus('idle');
+                    return;
+                }
+
+                self.setStatus('processing');
                 self.handleBlockCheckout($form);
             }, true);
 
@@ -242,9 +271,6 @@
         handleBlockCheckout: function ($form) {
             const self = this;
 
-            if (self.state.requestInFlight) return;
-            self.state.requestInFlight = true;
-
             self.state.button = $('.wc-block-components-checkout-place-order-button');
             self.state.buttonText = self.state.button.text();
 
@@ -259,11 +285,11 @@
                 url: bytenft_params.ajax_url,
                 data: data,
                 success: function (response) {
-                    self.state.requestInFlight = false;
+                    self.state.requestInFlightBlock = false;
                     self.handleResponse(response);
                 },
                 error: function (xhr) {
-                    self.state.requestInFlight = false;
+                    self.state.requestInFlightBlock = false;
                     console.log('[Bytenft] block checkout error:', xhr.responseText);
                     self.failSafe('There was an error processing your order.');
                 }
@@ -346,18 +372,20 @@
          * ========================================================= */
 
         failSafe: function (message) {
+            this.releaseLock();
             this.cleanupPopup();
             this.showCheckoutError(message);
+            this.reset(false); // IMPORTANT: restore button immediately
             this.finish();
         },
 
         finish: function () {
             this.setStatus('done');
             this.reset(true);
-            this.releaseLock();
 
             this.state.responseHandled = false;
-            this.state.requestInFlight = false;
+            this.state.requestInFlightClassic = false;
+            this.state.requestInFlightBlock = false;
 
             setTimeout(() => {
                 this.setStatus('idle');
@@ -369,19 +397,14 @@
          * ========================================================= */
 
         openPopupImmediately: function () {
-            if (this.state.popup && !this.state.popup.closed) return;
 
             if (
                 this.state.popup &&
                 !this.state.popup.closed
             ) {
-                return;
+                return this.state.popup;
             }
 
-            // NOTE: window.open() only takes 3 arguments — the 4th is ignored
-            // by all browsers. noopener/noreferrer do NOT go here when opening
-            // about:blank because we need to keep the popup reference to write
-            // into it. Referrer stripping is handled by navigateWithoutReferrer().
             this.state.popup = window.open(
                 '',
                 '_blank',
@@ -390,13 +413,13 @@
 
             if (!this.state.popup) {
                 alert('Popup blocked. Please allow popups for your payment.');
-                return;
+                return null;
             }
 
-            const logoUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
+            const logoUrl = bytenft_params.bytenft_loader
+                ? encodeURI(bytenft_params.bytenft_loader)
+                : '';
 
-            // FIX: Add <meta name="referrer" content="no-referrer"> so that
-            // even this loading page does not leak referrer on any resource loads.
             this.state.popup.document.write(`
                 <!DOCTYPE html>
                 <html>
@@ -404,7 +427,6 @@
                     <title>Secure Payment</title>
                     <meta name="referrer" content="no-referrer">
                 </head>
-
                 <body style="
                     margin:0;
                     display:flex;
@@ -415,7 +437,6 @@
                     background:#fff;
                     text-align:center;
                 ">
-
                     <div>
                         ${logoUrl ? `<img src="${logoUrl}" style="max-width:120px;margin-bottom:20px;" />` : ''}
                         <h3>Connecting to secure payment...</h3>
@@ -424,9 +445,11 @@
                 </body>
                 </html>
             `);
-            this.state.popup.document.close();
-        },
 
+            this.state.popup.document.close();
+
+            return this.state.popup;
+        },
         /* =========================================================
          * NAVIGATE WITHOUT REFERRER
          * ========================================================= */
@@ -661,17 +684,24 @@
 
         reset: function (keepDisabled = false) {
             this.state.submitting = false;
+            this.state.status = 'idle';
 
-            if (this.state.popupInterval) {
-                clearInterval(this.state.popupInterval);
-                this.state.popupInterval = null;
-            }
+            this.state.popup = null;
+            this.state.popupInterval = null;
+            this.state.orderId = null;
+            this.state.button = null;
+            this.state.responseHandled = false;
+            this.state.requestInFlightClassic = false;
+            this.state.requestInFlightBlock = false;
 
             const $button = $('.wc-block-components-checkout-place-order-button, button[name="woocommerce_checkout_place_order"], #wcf-order-place-btn');
+
             if (!$button.length) return;
 
             if (keepDisabled) {
-                $button.prop('disabled', true).addClass('loading').text('Processing...');
+                $button.prop('disabled', false)   // IMPORTANT FIX
+                    .removeClass('loading')
+                    .text(this.state.buttonText || 'Place order');
                 return;
             }
 
