@@ -121,9 +121,19 @@
                     }
 
                     self.setStatus('popup');
-                    self.openPopupImmediately();
+
+                   const popup = self.openPopupImmediately();
+
+                    if (!popup) {
+                        self.releaseLock('Classic');
+                        self.setStatus('idle');
+                        return false;
+                    }
+
+                    // 3. NOW move to processing
                     self.setStatus('processing');
 
+                    // 4. Start AJAX AFTER popup exists
                     self.handleClassicCheckout($form);
                     return false;
                 });
@@ -154,9 +164,6 @@
 
         handleClassicCheckout: function ($form) {
             const self = this;
-
-            if (self.state.requestInFlightClassic) return;
-            self.state.requestInFlightClassic = true;
 
             self.state.button = $('body').find('button[name="woocommerce_checkout_place_order"], #wcf-order-place-btn').first();
             self.state.buttonText = self.state.button.text();
@@ -233,9 +240,15 @@
                 }
 
                 self.setStatus('popup');
-                self.openPopupImmediately();
-                self.setStatus('processing');
+                const popup = self.openPopupImmediately();
 
+                if (!popup) {
+                    self.releaseLock('Block');
+                    self.setStatus('idle');
+                    return;
+                }
+
+                self.setStatus('processing');
                 self.handleBlockCheckout($form);
             }, true);
 
@@ -257,9 +270,6 @@
 
         handleBlockCheckout: function ($form) {
             const self = this;
-
-            if (self.state.requestInFlightBlock) return;
-            self.state.requestInFlightBlock = true;
 
             self.state.button = $('.wc-block-components-checkout-place-order-button');
             self.state.buttonText = self.state.button.text();
@@ -365,6 +375,7 @@
             this.releaseLock();
             this.cleanupPopup();
             this.showCheckoutError(message);
+            this.reset(false); // IMPORTANT: restore button immediately
             this.finish();
         },
 
@@ -386,19 +397,14 @@
          * ========================================================= */
 
         openPopupImmediately: function () {
-            if (this.state.popup && !this.state.popup.closed) return;
 
             if (
                 this.state.popup &&
                 !this.state.popup.closed
             ) {
-                return;
+                return this.state.popup;
             }
 
-            // NOTE: window.open() only takes 3 arguments — the 4th is ignored
-            // by all browsers. noopener/noreferrer do NOT go here when opening
-            // about:blank because we need to keep the popup reference to write
-            // into it. Referrer stripping is handled by navigateWithoutReferrer().
             this.state.popup = window.open(
                 '',
                 '_blank',
@@ -407,13 +413,13 @@
 
             if (!this.state.popup) {
                 alert('Popup blocked. Please allow popups for your payment.');
-                return;
+                return null;
             }
 
-            const logoUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
+            const logoUrl = bytenft_params.bytenft_loader
+                ? encodeURI(bytenft_params.bytenft_loader)
+                : '';
 
-            // FIX: Add <meta name="referrer" content="no-referrer"> so that
-            // even this loading page does not leak referrer on any resource loads.
             this.state.popup.document.write(`
                 <!DOCTYPE html>
                 <html>
@@ -421,7 +427,6 @@
                     <title>Secure Payment</title>
                     <meta name="referrer" content="no-referrer">
                 </head>
-
                 <body style="
                     margin:0;
                     display:flex;
@@ -432,7 +437,6 @@
                     background:#fff;
                     text-align:center;
                 ">
-
                     <div>
                         ${logoUrl ? `<img src="${logoUrl}" style="max-width:120px;margin-bottom:20px;" />` : ''}
                         <h3>Connecting to secure payment...</h3>
@@ -441,9 +445,11 @@
                 </body>
                 </html>
             `);
-            this.state.popup.document.close();
-        },
 
+            this.state.popup.document.close();
+
+            return this.state.popup;
+        },
         /* =========================================================
          * NAVIGATE WITHOUT REFERRER
          * ========================================================= */
@@ -678,17 +684,24 @@
 
         reset: function (keepDisabled = false) {
             this.state.submitting = false;
+            this.state.status = 'idle';
 
-            if (this.state.popupInterval) {
-                clearInterval(this.state.popupInterval);
-                this.state.popupInterval = null;
-            }
+            this.state.popup = null;
+            this.state.popupInterval = null;
+            this.state.orderId = null;
+            this.state.button = null;
+            this.state.responseHandled = false;
+            this.state.requestInFlightClassic = false;
+            this.state.requestInFlightBlock = false;
 
             const $button = $('.wc-block-components-checkout-place-order-button, button[name="woocommerce_checkout_place_order"], #wcf-order-place-btn');
+
             if (!$button.length) return;
 
             if (keepDisabled) {
-                $button.prop('disabled', true).addClass('loading').text('Processing...');
+                $button.prop('disabled', false)   // IMPORTANT FIX
+                    .removeClass('loading')
+                    .text(this.state.buttonText || 'Place order');
                 return;
             }
 
