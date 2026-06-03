@@ -117,6 +117,29 @@
                 });
         },
 
+        buildCheckoutPayload: function () {
+            const $form = $('form.checkout, form.wc-block-checkout__form, #order_review').first();
+
+            let data = $form.serialize();
+
+            // =====================================================
+            // CRITICAL WOOCOMMERCE STATE ENFORCEMENT
+            // =====================================================
+
+            const shipToDifferent = $(
+                '#ship-to-different-address-checkbox, input[name="ship_to_different_address"]'
+            ).is(':checked') ? 1 : 0;
+
+            data += '&ship_to_different_address=' + shipToDifferent;
+
+            // Optional safety: force billing/shipping sync flag consistency
+            if (!shipToDifferent) {
+                data += '&wfacp_billing_same_as_shipping=1';
+            }
+
+            return data;
+        },
+
         handleClassicCheckout: function ($form) {
             const self = this;
 
@@ -129,7 +152,7 @@
             self.state.button.prop('disabled', true).addClass('loading').text('Processing...');
 
             // Form payload compilation handles scattered form fields elegantly
-            const dataPayload = $('form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form, #order_review').serialize();
+            const dataPayload = self.buildCheckoutPayload();
 
             $.ajax({
                 type: 'POST',
@@ -227,7 +250,7 @@
 
             self.state.button.prop('disabled', true).addClass('loading').text('Processing...');
 
-            let data = $('form.wc-block-checkout__form, form.checkout, #order_review').serialize();
+            let data = self.buildCheckoutPayload();
             data += '&action=bytenft_block_gateway_process';
             data += '&nonce=' + encodeURIComponent(bytenft_params.bytenft_nonce);
 
@@ -279,10 +302,8 @@
                     return;
                 }
 
-                // =====================================================
-                // ✅ SUCCESS — navigate popup WITHOUT sending referrer
-                // =====================================================
                 if (redirect && typeof redirect === 'string' && redirect.length > 5) {
+                    self.state.responseHandled = true;
 
                     if (self.state.popup && !self.state.popup.closed) {
                         try {
@@ -451,6 +472,7 @@
         },
 
         trackPopupClose: function () {
+
             const self = this;
 
             if (!self.state.orderId) {
@@ -465,7 +487,6 @@
             }
 
             self.state.popupInterval = setInterval(function () {
-                if (redirected) return;
 
                 const popupStillOpen =
                     self.state.popup &&
@@ -495,7 +516,9 @@
                             response?.data?.payment_status === 'success' ||
                             response?.data?.payment_status === 'paid';
 
-                        const redirectUrl = response?.data?.redirect || response?.redirect;
+                        const redirectUrl =
+                            response?.data?.redirect ||
+                            response?.redirect;
 
                         if (success && redirectUrl) {
 
