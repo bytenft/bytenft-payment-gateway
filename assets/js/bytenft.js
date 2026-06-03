@@ -576,24 +576,33 @@
 
             const self = this;
 
-            let redirected = false;
+            if (!self.state.orderId) {
+                console.log('[Bytenft] No order ID for popup tracking');
+                return;
+            }
 
-            clearInterval(self.state.popupInterval);
+            // clear any previous interval (important safety)
+            if (self.state.popupInterval) {
+                clearInterval(self.state.popupInterval);
+                self.state.popupInterval = null;
+            }
 
             self.state.popupInterval = setInterval(function () {
 
-                // Prevent duplicate execution
-                if (redirected) {
-                    return;
-                }
-
-                const popupExists =
+                const popupStillOpen =
                     self.state.popup &&
                     !self.state.popup.closed;
 
-                // =========================================
-                // SAFARI + CHROME PAYMENT CHECK
-                // =========================================
+                // 👉 wait until popup closes
+                if (popupStillOpen) {
+                    return;
+                }
+
+                clearInterval(self.state.popupInterval);
+                self.state.popupInterval = null;
+
+                console.log('[Bytenft] Popup closed → single final check');
+
                 $.post(
                     bytenft_params.ajax_url,
                     {
@@ -603,16 +612,7 @@
                     },
                     function (response) {
 
-                        if (redirected) {
-                            return;
-                        }
-
-                        console.log(
-                            '[Bytenft] popup status response',
-                            response
-                        );
-
-                        const paymentSuccess =
+                        const success =
                             response?.success === true ||
                             response?.data?.payment_status === 'success' ||
                             response?.data?.payment_status === 'paid';
@@ -621,67 +621,30 @@
                             response?.data?.redirect ||
                             response?.redirect;
 
-                        // =========================================
-                        // PAYMENT SUCCESS
-                        // =========================================
-                        if (paymentSuccess && redirectUrl) {
+                        if (success && redirectUrl) {
 
-                            redirected = true;
+                            console.log('[Bytenft] Payment success → redirect');
 
-                            clearInterval(self.state.popupInterval);
-
-                            try {
-
-                                if (
-                                    self.state.popup &&
-                                    !self.state.popup.closed
-                                ) {
-                                    self.state.popup.close();
-                                }
-
-                            } catch (e) {
-                                console.log(
-                                    '[Bytenft] popup close blocked'
-                                );
-                            }
-
-                            self.state.popup = null;
-
-                            console.log(
-                                '[Bytenft] redirect success page'
-                            );
-
+                            self.cleanupPopup();
                             window.location.replace(redirectUrl);
-
                             return;
                         }
 
-                        // =========================================
-                        // USER MANUALLY CLOSED POPUP
-                        // =========================================
-                        if (!popupExists) {
+                        console.log('[Bytenft] Payment failed / incomplete');
 
-                            redirected = true;
+                        self.cleanupPopup();
+                        self.showCheckoutError(
+                            response?.message ||
+                            'Your payment was not completed.'
+                        );
 
-                            clearInterval(self.state.popupInterval);
-
-                            const failedMessage =
-                                response?.message ||
-                                response?.data?.message ||
-                                'Your payment could not be completed. Please try again.';
-
-                            self.cleanupPopup();
-
-                            self.showCheckoutError(failedMessage);
-
-                            self.reset();
-                        }
+                        self.reset();
 
                     },
                     'json'
                 );
 
-            }, 1500);
+            }, 800); // small check ONLY for popup close detection
         },
 
         /* =========================================================
