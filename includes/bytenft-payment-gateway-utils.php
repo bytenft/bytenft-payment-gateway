@@ -40,16 +40,6 @@ function bytenft_check_system_requirements()
 		);
 	}
 
-	// Check if WooCommerce plugin version and database version are different
-	if ($wc_plugin_version && $wc_db_version && $wc_plugin_version !== $wc_db_version) {
-		return sprintf(
-			// translators: %1$s is the WooCommerce plugin version, %2$s is the WooCommerce database version
-			__('Warning: The WooCommerce plugin version (%1$s) and database version (%2$s) do not match. Please ensure both are synchronized.', 'bytenft-payment-gateway'),
-			$wc_plugin_version,
-			$wc_db_version
-		);
-	}
-
 	return false;
 }
 
