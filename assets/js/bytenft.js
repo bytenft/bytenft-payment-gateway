@@ -303,13 +303,13 @@
          * RESPONSE HANDLER
          * ========================================================= */
 
-       handleResponse: function (response) {
+        handleResponse: function (response) {
 
-        const self = this;
+            const self = this;
 
-        try {
+            try {
 
-            if (typeof response === 'string') {
+                if (typeof response === 'string') {
 
                     try {
                         response = JSON.parse(response);
@@ -359,7 +359,7 @@
                 self.state.orderId = orderId;
 
                 // =====================================================
-                // ❌ FAILURE (FIXED - ERROR DISPLAY STABLE)
+                // ❌ FAILURE
                 // =====================================================
                 if (!success) {
 
@@ -369,12 +369,10 @@
 
                     self.cleanupPopup();
 
-                    // 🔥 IMPORTANT
                     setTimeout(function () {
 
                         self.showCheckoutError(msg);
 
-                        // force scroll after Woo rerender
                         const $notice = $('.woocommerce-notices-wrapper');
 
                         if ($notice.length) {
@@ -385,7 +383,6 @@
 
                     }, 50);
 
-                    // 🔥 IMPORTANT
                     setTimeout(function () {
                         self.reset();
                     }, 400);
@@ -394,23 +391,31 @@
                 }
 
                 // =====================================================
-                // ✅ SUCCESS
+                // ✅ SUCCESS — navigate popup WITHOUT sending referrer
                 // =====================================================
                 if (redirect && typeof redirect === 'string' && redirect.length > 5) {
 
                     if (self.state.popup && !self.state.popup.closed) {
 
                         try {
-
-                            self.state.popup.location.href = redirect;
+                            // FIX: Use navigateWithoutReferrer instead of
+                            // directly setting location.href, which would
+                            // send the WP checkout URL as Referer header
+                            // to the Laravel payment page.
+                            self.navigateWithoutReferrer(self.state.popup, redirect);
 
                         } catch (e) {
 
-                            // Safari fallback
-                            self.state.popup = window.open(
-                                redirect,
-                                '_blank'
-                            );
+                            // Safari fallback — re-open popup and use same method
+                            if (!self.state.popup || self.state.popup.closed) {
+                                self.state.popup = window.open(
+                                    '',
+                                    '_blank',
+                                    'width=700,height=700'
+                                );
+                            }
+
+                            self.navigateWithoutReferrer(self.state.popup, redirect);
                         }
 
                         self.trackPopupClose();
@@ -455,6 +460,10 @@
                 return;
             }
 
+            // NOTE: window.open() only takes 3 arguments — the 4th is ignored
+            // by all browsers. noopener/noreferrer do NOT go here when opening
+            // about:blank because we need to keep the popup reference to write
+            // into it. Referrer stripping is handled by navigateWithoutReferrer().
             this.state.popup = window.open(
                 '',
                 '_blank',
@@ -472,11 +481,14 @@
                 ? encodeURI(bytenft_params.bytenft_loader)
                 : '';
 
+            // FIX: Add <meta name="referrer" content="no-referrer"> so that
+            // even this loading page does not leak referrer on any resource loads.
             this.state.popup.document.write(`
                 <!DOCTYPE html>
                 <html>
                 <head>
                     <title>Secure Payment</title>
+                    <meta name="referrer" content="no-referrer">
                 </head>
 
                 <body style="
@@ -509,6 +521,38 @@
             `);
 
             this.state.popup.document.close();
+        },
+
+        /* =========================================================
+         * NAVIGATE WITHOUT REFERRER
+         * ========================================================= */
+
+        navigateWithoutReferrer: function (popup, url) {
+
+            // The popup is still on about:blank so we own its document.
+            // We write a new page into it that has:
+            //   1. <meta name="referrer" content="no-referrer">  — referrer policy
+            //   2. <meta http-equiv="refresh" content="0;url=..."> — immediate redirect
+            //
+            // The browser navigates from THIS intermediate page to the payment URL,
+            // so document.referrer on the Laravel payment page will be empty string.
+            // The SDK will see no referrer.
+            try {
+                popup.document.open();
+                popup.document.write(
+                    '<!DOCTYPE html><html><head>' +
+                    '<meta name="referrer" content="no-referrer">' +
+                    '<meta http-equiv="refresh" content="0;url=' + url + '">' +
+                    '</head><body></body></html>'
+                );
+                popup.document.close();
+
+            } catch (e) {
+
+                // Last resort fallback — referrer may leak but payment still works
+                console.log('[Bytenft] navigateWithoutReferrer fallback', e);
+                popup.location.href = url;
+            }
         },
 
         cleanupPopup: function () {
@@ -861,10 +905,8 @@
 
         showCheckoutError: function (message, fields = []) {
 
-            // Clear previous notices first
             $('.woocommerce-notices-wrapper').remove();
 
-            // Build fields list
             let fieldsHtml = '';
 
             if (fields.length) {
@@ -892,26 +934,22 @@
                 </div>
             `;
 
-            // Block checkout
             const blockTarget = $('.wc-block-checkout__form');
 
             if (blockTarget.length) {
                 blockTarget.prepend(html);
             }
 
-            // Classic checkout fallback
             const classicTarget = $('form.checkout');
 
             if (classicTarget.length) {
                 classicTarget.prepend(html);
             }
 
-            // Fallback
             if (!blockTarget.length && !classicTarget.length) {
                 $('body').prepend(html);
             }
 
-            // Scroll to top notice
             const $notice = $('.woocommerce-notices-wrapper');
 
             if ($notice.length) {
@@ -978,6 +1016,7 @@
          * ========================================================= */
 
         bindInputSanitization: function () {
+
             const selectors = `
                 #billing_first_name,
                 #billing-first_name,
@@ -1018,7 +1057,6 @@
                     }, 0);
                 }
             );
-            
 
             $('#billing_address_1')
                 .on('input', function () {
