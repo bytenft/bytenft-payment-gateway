@@ -644,19 +644,21 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		if (
 			is_array($result) &&
 			(($result['reason'] ?? '') === 'locked_skip')
-		) {
+		)
+		{
+			$order = wc_get_order($order_id);
 
-			ByteNFT_Payment_Gateway_Logger::info(
-				$log_prefix . ' PopupClose | LOCKED_SKIP ignored'
-			);
+			$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order);
 
 			wp_send_json([
-				'success' => false,
-				'message' => 'Payment is being verified.',
+				'success' => ($state === 'success'),
+				'message' => '',
 				'data' => [
-					'state'          => 'processing',
-					'payment_status' => 'processing',
-					'redirect'       => null,
+					'state'          => $state ?: 'processing',
+					'payment_status' => $payment_status,
+					'redirect'       => $state === 'success'
+						? $order->get_checkout_order_received_url()
+						: null,
 					'order_id'       => $order_id,
 				],
 			]);

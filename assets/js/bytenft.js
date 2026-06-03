@@ -614,6 +614,7 @@
 
                         const paymentSuccess =
                             response?.success === true ||
+                            response?.data?.state === 'success' ||
                             response?.data?.payment_status === 'success' ||
                             response?.data?.payment_status === 'paid';
 
@@ -661,18 +662,46 @@
                         // =========================================
                         if (!popupExists) {
 
+                            const state = response?.data?.state || '';
+
+                            // Success
+                            if (
+                                state === 'success' &&
+                                redirectUrl
+                            ) {
+
+                                redirected = true;
+
+                                clearInterval(self.state.popupInterval);
+
+                                window.location.replace(redirectUrl);
+
+                                return;
+                            }
+
+                            // Still processing -> continue polling
+                            if (
+                                state === 'processing'
+                            ) {
+
+                                console.log(
+                                    '[Bytenft] waiting for final payment state'
+                                );
+
+                                return;
+                            }
+
+                            // Failed/cancelled/expired
                             redirected = true;
 
                             clearInterval(self.state.popupInterval);
 
-                            const failedMessage =
-                                response?.message ||
-                                response?.data?.message ||
-                                'Your payment could not be completed. Please try again.';
-
                             self.cleanupPopup();
 
-                            self.showCheckoutError(failedMessage);
+                            self.showCheckoutError(
+                                response?.message ||
+                                'Your payment could not be completed.'
+                            );
 
                             self.reset();
                         }
