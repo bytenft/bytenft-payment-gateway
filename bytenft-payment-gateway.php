@@ -7,7 +7,7 @@
  * Author URI: https://pay.bytenft.xyz/
  * Text Domain: bytenft-payment-gateway
  * Plugin URI: https://github.com/bytenft/bytenft-payment-gateway
- * Version: 1.0.15
+ * Version: 1.0.16
  * License: GPLv3 or later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  *
@@ -47,24 +47,51 @@ add_action('woocommerce_order_status_changed', 'bytenft_cancel_unpaid_order_acti
 
 add_filter('woocommerce_get_checkout_order_received_url', function($url, $order) {
 
-    if (!$order) {
+    if (!$order || !is_a($order, 'WC_Order')) {
         return $url;
     }
 
-    $status = $order->get_status();
-
-    // allow only real successful states
-    $allowed_statuses = ['processing', 'completed'];
-
-    $is_valid =
-        in_array($status, $allowed_statuses, true) &&
-        $order->get_meta('_bytenft_payment_success') === 'yes';
-
-    if (!$is_valid) {
-        return wc_get_checkout_url();
+    // Only police ByteNFT orders
+    if ($order->get_payment_method() !== 'bytenft') {
+        return $url;
     }
 
-    return $url;
+	$wc_status    = $order->get_status();
+	$engine_state = $order->get_meta('_bytenft_state');
+	$success_meta = $order->get_meta('_bytenft_payment_success');
+	
+	ByteNFT_Payment_Gateway_Logger::info(	
+		sprintf(
+			"[Order #%d] ThankYou Filter | WC=%s | Engine=%s | Success=%s",
+			$order->get_id(),
+			$wc_status,
+			$engine_state,
+			$success_meta ?: 'EMPTY'
+		)
+	);
+
+    $is_valid =	in_array($wc_status, ['processing', 'completed'], true) && $success_meta === 'yes';
+
+	if (!$is_valid) {
+		ByteNFT_Payment_Gateway_Logger::info(
+			sprintf(
+				'[Order #%d] ThankYou Filter BLOCKED -> %s',
+				$order->get_id(),
+				wc_get_checkout_url()
+				)
+			);
+		return wc_get_checkout_url();
+	}
+
+   	ByteNFT_Payment_Gateway_Logger::info(
+		sprintf(
+			'[Order #%d] ThankYou Filter ALLOWED -> %s',
+			$order->get_id(),
+			$url
+		)
+	);
+
+	return $url;
 
 }, 10, 2);
 

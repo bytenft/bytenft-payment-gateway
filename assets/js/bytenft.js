@@ -117,6 +117,29 @@
                 });
         },
 
+        buildCheckoutPayload: function () {
+            const $form = $('form.checkout, form.wc-block-checkout__form, #order_review').first();
+
+            let data = $form.serialize();
+
+            // =====================================================
+            // CRITICAL WOOCOMMERCE STATE ENFORCEMENT
+            // =====================================================
+
+            const shipToDifferent = $(
+                '#ship-to-different-address-checkbox, input[name="ship_to_different_address"]'
+            ).is(':checked') ? 1 : 0;
+
+            data += '&ship_to_different_address=' + shipToDifferent;
+
+            // Optional safety: force billing/shipping sync flag consistency
+            if (!shipToDifferent) {
+                data += '&wfacp_billing_same_as_shipping=1';
+            }
+
+            return data;
+        },
+
         handleClassicCheckout: function ($form) {
             const self = this;
 
@@ -129,7 +152,7 @@
             self.state.button.prop('disabled', true).addClass('loading').text('Processing...');
 
             // Form payload compilation handles scattered form fields elegantly
-            const dataPayload = $('form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form, #order_review').serialize();
+            const dataPayload = self.buildCheckoutPayload();
 
             $.ajax({
                 type: 'POST',
@@ -227,7 +250,7 @@
 
             self.state.button.prop('disabled', true).addClass('loading').text('Processing...');
 
-            let data = $('form.wc-block-checkout__form, form.checkout, #order_review').serialize();
+            let data = self.buildCheckoutPayload();
             data += '&action=bytenft_block_gateway_process';
             data += '&nonce=' + encodeURIComponent(bytenft_params.bytenft_nonce);
 
@@ -279,15 +302,28 @@
                     return;
                 }
 
-                if (redirect) {
+                if (redirect && typeof redirect === 'string' && redirect.length > 5) {
                     self.state.responseHandled = true;
 
                     if (self.state.popup && !self.state.popup.closed) {
                         try {
-                            self.state.popup.location.href = redirect;
+                            // FIX: Use navigateWithoutReferrer instead of
+                            // directly setting location.href, which would
+                            // send the WP checkout URL as Referer header
+                            // to the Laravel payment page.
+                            self.navigateWithoutReferrer(self.state.popup, redirect);
+
                         } catch (e) {
-                            // Safari cross-domain window write mitigation fallback
-                            self.state.popup = window.open(redirect, '_blank');
+
+                            // Safari fallback — re-open popup and use same method
+                            if (!self.state.popup || self.state.popup.closed) {
+                                self.state.popup = window.open(
+                                    '',
+                                    '_blank'
+                                );
+                            }
+
+                            self.navigateWithoutReferrer(self.state.popup, redirect);
                         }
                         self.trackPopupClose();
                     } else {
@@ -335,7 +371,22 @@
         openPopupImmediately: function () {
             if (this.state.popup && !this.state.popup.closed) return;
 
-            this.state.popup = window.open('', '_blank', 'width=700,height=700');
+            if (
+                this.state.popup &&
+                !this.state.popup.closed
+            ) {
+                return;
+            }
+
+            // NOTE: window.open() only takes 3 arguments — the 4th is ignored
+            // by all browsers. noopener/noreferrer do NOT go here when opening
+            // about:blank because we need to keep the popup reference to write
+            // into it. Referrer stripping is handled by navigateWithoutReferrer().
+            this.state.popup = window.open(
+                '',
+                '_blank',
+                'width=700,height=700'
+            );
 
             if (!this.state.popup) {
                 alert('Popup blocked. Please allow popups for your payment.');
@@ -344,11 +395,27 @@
 
             const logoUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
 
+            // FIX: Add <meta name="referrer" content="no-referrer"> so that
+            // even this loading page does not leak referrer on any resource loads.
             this.state.popup.document.write(`
                 <!DOCTYPE html>
                 <html>
-                <head><title>Secure Payment</title></head>
-                <body style="margin:0;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;background:#fff;text-align:center;">
+                <head>
+                    <title>Secure Payment</title>
+                    <meta name="referrer" content="no-referrer">
+                </head>
+
+                <body style="
+                    margin:0;
+                    display:flex;
+                    justify-content:center;
+                    align-items:center;
+                    height:100vh;
+                    font-family:sans-serif;
+                    background:#fff;
+                    text-align:center;
+                ">
+
                     <div>
                         ${logoUrl ? `<img src="${logoUrl}" style="max-width:120px;margin-bottom:20px;" />` : ''}
                         <h3>Connecting to secure payment...</h3>
@@ -358,6 +425,38 @@
                 </html>
             `);
             this.state.popup.document.close();
+        },
+
+        /* =========================================================
+         * NAVIGATE WITHOUT REFERRER
+         * ========================================================= */
+
+        navigateWithoutReferrer: function (popup, url) {
+
+            // The popup is still on about:blank so we own its document.
+            // We write a new page into it that has:
+            //   1. <meta name="referrer" content="no-referrer">  — referrer policy
+            //   2. <meta http-equiv="refresh" content="0;url=..."> — immediate redirect
+            //
+            // The browser navigates from THIS intermediate page to the payment URL,
+            // so document.referrer on the Laravel payment page will be empty string.
+            // The SDK will see no referrer.
+            try {
+                popup.document.open();
+                popup.document.write(
+                    '<!DOCTYPE html><html><head>' +
+                    '<meta name="referrer" content="no-referrer">' +
+                    '<meta http-equiv="refresh" content="0;url=' + url + '">' +
+                    '</head><body></body></html>'
+                );
+                popup.document.close();
+
+            } catch (e) {
+
+                // Last resort fallback — referrer may leak but payment still works
+                console.log('[Bytenft] navigateWithoutReferrer fallback', e);
+                popup.location.href = url;
+            }
         },
 
         cleanupPopup: function () {
