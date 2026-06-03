@@ -581,60 +581,71 @@
                 return;
             }
 
-            const popupStillOpen =
-                self.state.popup &&
-                !self.state.popup.closed;
-
-            // If popup still open → do nothing
-            if (popupStillOpen) {
-                return;
+            // clear any previous interval (important safety)
+            if (self.state.popupInterval) {
+                clearInterval(self.state.popupInterval);
+                self.state.popupInterval = null;
             }
 
-            console.log('[Bytenft] Popup closed, checking final status once');
+            self.state.popupInterval = setInterval(function () {
 
-            $.post(
-                bytenft_params.ajax_url,
-                {
-                    action: 'bytenft_popup_closed_event',
-                    order_id: self.state.orderId,
-                    security: bytenft_params.bytenft_nonce
-                },
-                function (response) {
+                const popupStillOpen =
+                    self.state.popup &&
+                    !self.state.popup.closed;
 
-                    console.log('[Bytenft] final popup status', response);
+                // 👉 wait until popup closes
+                if (popupStillOpen) {
+                    return;
+                }
 
-                    const success =
-                        response?.success === true ||
-                        response?.data?.payment_status === 'success' ||
-                        response?.data?.payment_status === 'paid';
+                clearInterval(self.state.popupInterval);
+                self.state.popupInterval = null;
 
-                    const redirectUrl =
-                        response?.data?.redirect ||
-                        response?.redirect;
+                console.log('[Bytenft] Popup closed → single final check');
 
-                    if (success && redirectUrl) {
+                $.post(
+                    bytenft_params.ajax_url,
+                    {
+                        action: 'bytenft_popup_closed_event',
+                        order_id: self.state.orderId,
+                        security: bytenft_params.bytenft_nonce
+                    },
+                    function (response) {
 
-                        console.log('[Bytenft] Payment success → redirect');
+                        const success =
+                            response?.success === true ||
+                            response?.data?.payment_status === 'success' ||
+                            response?.data?.payment_status === 'paid';
+
+                        const redirectUrl =
+                            response?.data?.redirect ||
+                            response?.redirect;
+
+                        if (success && redirectUrl) {
+
+                            console.log('[Bytenft] Payment success → redirect');
+
+                            self.cleanupPopup();
+                            window.location.replace(redirectUrl);
+                            return;
+                        }
+
+                        console.log('[Bytenft] Payment failed / incomplete');
 
                         self.cleanupPopup();
-                        window.location.replace(redirectUrl);
-                        return;
-                    }
+                        self.showCheckoutError(
+                            response?.message ||
+                            'Your payment was not completed.'
+                        );
 
-                    console.log('[Bytenft] Payment not completed or failed');
+                        self.reset();
 
-                    self.cleanupPopup();
+                    },
+                    'json'
+                );
 
-                    self.showCheckoutError(
-                        response?.message ||
-                        'Your payment was not completed.'
-                    );
-
-                    self.reset();
-                },
-                'json'
-            );
-        },
+            }, 800); // small check ONLY for popup close detection
+        }
 
         /* =========================================================
          * VALIDATIONS
