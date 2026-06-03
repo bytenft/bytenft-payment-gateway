@@ -645,7 +645,7 @@
                 );
 
             }, 800); // small check ONLY for popup close detection
-        }
+        },
 
         /* =========================================================
          * VALIDATIONS
