@@ -27,6 +27,11 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 == Changelog ==
 
+= 1.0.16 =
+* Added validation for restricted states: NY, MN, and AK.
+* Fixed order received URL validation affecting other WooCommerce payment gateways.
+* Fixed PO Box validation incorrectly triggering for other payment gateways.
+
 = 1.0.15 =
 * Resolved the WooCommerce database version mismatch issue.
 
@@ -88,6 +93,9 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.16 =
+This update improves checkout validation isolation, fixes PO Box validation conflicts with other payment gateways, and adds restricted state validation support for NY, MN, and AK.
 
 = 1.0.15 =
 Resolved the WooCommerce database version mismatch issue.

@@ -637,8 +637,34 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// ❌ REMOVE locked_skip handling completely
 
 		ByteNFT_Payment_Gateway_Logger::info(
-			$log_prefix . " PopupClose | Engine result: " . json_encode($result)
+			$log_prefix . ' PopupClose | Engine result: ' . wp_json_encode($result)
 		);
+
+		// Ignore lock races and wait for next poll
+		if (
+			is_array($result) &&
+			(($result['reason'] ?? '') === 'locked_skip')
+		)
+		{
+			$order = wc_get_order($order_id);
+
+			$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order);
+
+			wp_send_json([
+				'success' => ($state === 'success'),
+				'message' => '',
+				'data' => [
+					'state'          => $state ?: 'processing',
+					'payment_status' => $payment_status,
+					'redirect'       => $state === 'success'
+						? $order->get_checkout_order_received_url()
+						: null,
+					'order_id'       => $order_id,
+				],
+			]);
+
+			wp_die();
+		}
 
 		// -------------------------
 		// ALWAYS RELOAD ORDER AFTER ENGINE
