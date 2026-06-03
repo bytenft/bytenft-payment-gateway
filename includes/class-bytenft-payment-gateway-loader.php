@@ -640,6 +640,30 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$log_prefix . " PopupClose | Engine result: " . json_encode($result)
 		);
 
+		// Ignore lock races and wait for next poll
+		if (
+			is_array($result) &&
+			($result['reason'] ?? '') === 'locked_skip'
+		) {
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' PopupClose | LOCKED_SKIP ignored'
+			);
+
+			wp_send_json([
+				'success' => false,
+				'message' => 'Payment is being verified.',
+				'data' => [
+					'state'          => 'processing',
+					'payment_status' => 'processing',
+					'redirect'       => null,
+					'order_id'       => $order_id,
+				]
+			]);
+
+			wp_die();
+		}
+
 		// -------------------------
 		// ALWAYS RELOAD ORDER AFTER ENGINE
 		// -------------------------
@@ -699,6 +723,16 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			$redirect = null; // processing → no redirect
 		}
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			sprintf(
+				'[Order #%d] PopupClose FINAL | State=%s | Success=%s | Redirect=%s',
+				$order_id,
+				$state,
+				$is_success ? 'yes' : 'no',
+				$redirect ?: 'NULL'
+			)
+		);
 
 		// -------------------------
 		// RESPONSE
