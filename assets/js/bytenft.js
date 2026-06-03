@@ -303,13 +303,13 @@
          * RESPONSE HANDLER
          * ========================================================= */
 
-        handleResponse: function (response) {
+       handleResponse: function (response) {
 
-            const self = this;
+        const self = this;
 
-            try {
+        try {
 
-                if (typeof response === 'string') {
+            if (typeof response === 'string') {
 
                     try {
                         response = JSON.parse(response);
@@ -359,7 +359,7 @@
                 self.state.orderId = orderId;
 
                 // =====================================================
-                // ❌ FAILURE
+                // ❌ FAILURE (FIXED - ERROR DISPLAY STABLE)
                 // =====================================================
                 if (!success) {
 
@@ -369,10 +369,12 @@
 
                     self.cleanupPopup();
 
+                    // 🔥 IMPORTANT
                     setTimeout(function () {
 
                         self.showCheckoutError(msg);
 
+                        // force scroll after Woo rerender
                         const $notice = $('.woocommerce-notices-wrapper');
 
                         if ($notice.length) {
@@ -383,6 +385,7 @@
 
                     }, 50);
 
+                    // 🔥 IMPORTANT
                     setTimeout(function () {
                         self.reset();
                     }, 400);
@@ -410,8 +413,7 @@
                             if (!self.state.popup || self.state.popup.closed) {
                                 self.state.popup = window.open(
                                     '',
-                                    '_blank',
-                                    'width=700,height=700'
+                                    '_blank'
                                 );
                             }
 
@@ -905,8 +907,10 @@
 
         showCheckoutError: function (message, fields = []) {
 
+            // Clear previous notices first
             $('.woocommerce-notices-wrapper').remove();
 
+            // Build fields list
             let fieldsHtml = '';
 
             if (fields.length) {
@@ -934,22 +938,26 @@
                 </div>
             `;
 
+            // Block checkout
             const blockTarget = $('.wc-block-checkout__form');
 
             if (blockTarget.length) {
                 blockTarget.prepend(html);
             }
 
+            // Classic checkout fallback
             const classicTarget = $('form.checkout');
 
             if (classicTarget.length) {
                 classicTarget.prepend(html);
             }
 
+            // Fallback
             if (!blockTarget.length && !classicTarget.length) {
                 $('body').prepend(html);
             }
 
+            // Scroll to top notice
             const $notice = $('.woocommerce-notices-wrapper');
 
             if ($notice.length) {
@@ -1016,7 +1024,6 @@
          * ========================================================= */
 
         bindInputSanitization: function () {
-
             const selectors = `
                 #billing_first_name,
                 #billing-first_name,
@@ -1057,6 +1064,7 @@
                     }, 0);
                 }
             );
+            
 
             $('#billing_address_1')
                 .on('input', function () {
