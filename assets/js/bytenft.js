@@ -420,6 +420,8 @@
                             self.navigateWithoutReferrer(self.state.popup, redirect);
                         }
 
+                        self.trackPopupClose();
+
                     } else {
 
                         window.location.href = redirect;
@@ -568,6 +570,70 @@
             }
 
             this.state.popup = null;
+        },
+
+        trackPopupClose: function () {
+
+            const self = this;
+
+            if (!self.state.orderId) {
+                console.log('[Bytenft] No order ID for popup tracking');
+                return;
+            }
+
+            const popupStillOpen =
+                self.state.popup &&
+                !self.state.popup.closed;
+
+            // If popup still open → do nothing
+            if (popupStillOpen) {
+                return;
+            }
+
+            console.log('[Bytenft] Popup closed, checking final status once');
+
+            $.post(
+                bytenft_params.ajax_url,
+                {
+                    action: 'bytenft_popup_closed_event',
+                    order_id: self.state.orderId,
+                    security: bytenft_params.bytenft_nonce
+                },
+                function (response) {
+
+                    console.log('[Bytenft] final popup status', response);
+
+                    const success =
+                        response?.success === true ||
+                        response?.data?.payment_status === 'success' ||
+                        response?.data?.payment_status === 'paid';
+
+                    const redirectUrl =
+                        response?.data?.redirect ||
+                        response?.redirect;
+
+                    if (success && redirectUrl) {
+
+                        console.log('[Bytenft] Payment success → redirect');
+
+                        self.cleanupPopup();
+                        window.location.replace(redirectUrl);
+                        return;
+                    }
+
+                    console.log('[Bytenft] Payment not completed or failed');
+
+                    self.cleanupPopup();
+
+                    self.showCheckoutError(
+                        response?.message ||
+                        'Your payment was not completed.'
+                    );
+
+                    self.reset();
+                },
+                'json'
+            );
         },
 
         /* =========================================================
