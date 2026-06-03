@@ -104,16 +104,18 @@
 
                     const requiredError = self.validateRequiredFields($form);
                     if (requiredError) {
-                        self.releaseLock();
+                        self.releaseLock('Classic');
                         self.setStatus('idle');
+                        self.reset();
                         self.showCheckoutError(requiredError.message, requiredError.fields);
                         return false;
                     }
 
                     const validationError = self.validateAll($form);
                     if (validationError) {
-                        self.releaseLock();
+                        self.releaseLock('Classic');
                         self.setStatus('idle');
+                        self.reset();
                         self.showCheckoutError(validationError);
                         return false;
                     }
@@ -214,15 +216,18 @@
 
                 const requiredError = self.validateRequiredFields($form);
                 if (requiredError) {
-                    self.releaseLock();
+                    self.releaseLock('Block');
                     self.setStatus('idle');
+                    self.reset();
                     self.showCheckoutError(requiredError.message, requiredError.fields);
                     return;
                 }
 
                 const validationError = self.validateAll($form);
                 if (validationError) {
+                    self.releaseLock('Block');
                     self.setStatus('idle');
+                    self.reset();
                     self.showCheckoutError(validationError);
                     return;
                 }
