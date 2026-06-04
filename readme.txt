@@ -3,7 +3,7 @@ Contributors: ByteNFT
 Tags: woocommerce, payment gateway, fiat, ByteNFT
 Requires at least: 5.0
 Tested up to: 6.9
-Stable tag: 1.0.15
+Stable tag: 1.0.16
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -26,6 +26,11 @@ This plugin integrates ByteNFT Payment Gateway with WooCommerce, enabling you to
 Visit the DFin website and log in to your account. Navigate to Developer Settings to generate or retrieve API keys.
 
 == Changelog ==
+
+= 1.0.16 =
+* Updated referrer URL handling in the payment flow.
+* Improved popup redirect behavior using referrer URL enhancements.
+* PO Box Address Validation and Redirection Conflict with Other Payment Gateways.
 
 = 1.0.15 =
 * Resolved the WooCommerce database version mismatch issue.
@@ -88,6 +93,9 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.0.16 =
+Improved compatibility with merchant sites by enhancing referrer URL management and resolving PO Box address validation and redirection conflicts with other payment gateways.
 
 = 1.0.15 =
 Resolved the WooCommerce database version mismatch issue.

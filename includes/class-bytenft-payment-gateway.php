@@ -105,6 +105,18 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 */
 	public function bytenft_validate_checkout_fields($data, $errors)
 	{
+		$selected_gateway = wc_clean(
+			wp_unslash($_POST['payment_method'] ?? '')
+		);
+
+		if (empty($selected_gateway)) {
+			return;
+		}
+
+		if ($selected_gateway !== $this->id) {
+			return;
+		}
+
 		/*
 		|--------------------------------------------------------------------------
 		| PHONE VALIDATION
@@ -257,6 +269,16 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	public function bytenft_validate_blocks_checkout($order, $request)
 	{
+		$payment_method = $request['payment_method'] ?? '';
+
+		if (empty($payment_method)) {
+			return;
+		}
+
+		if ($payment_method !== $this->id) {
+			return;
+		}
+
 		/*
 		|--------------------------------------------------------------------------
 		| PHONE VALIDATION
