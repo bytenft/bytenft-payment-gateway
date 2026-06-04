@@ -541,13 +541,45 @@
             // so document.referrer on the Laravel payment page will be empty string.
             // The SDK will see no referrer.
             try {
+                var logoUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
                 popup.document.open();
-                popup.document.write(
-                    '<!DOCTYPE html><html><head>' +
-                    '<meta name="referrer" content="no-referrer">' +
-                    '<meta http-equiv="refresh" content="0;url=' + url + '">' +
-                    '</head><body></body></html>'
-                );
+                popup.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Secure Payment</title>
+                    <meta name="referrer" content="no-referrer">
+                    <meta http-equiv="refresh" content="0;url=` + url + `">
+                </head>
+
+                <body style="
+                    margin:0;
+                    display:flex;
+                    justify-content:center;
+                    align-items:center;
+                    height:100vh;
+                    font-family:sans-serif;
+                    background:#fff;
+                    text-align:center;
+                ">
+
+                    <div>
+
+                        ${
+                            logoUrl
+                                ? `<img src="${logoUrl}" style="max-width:120px;margin-bottom:20px;" />`
+                                : ''
+                        }
+
+                        <h3>Connecting to secure payment...</h3>
+
+                        <p>Please do not close this window.</p>
+
+                    </div>
+
+                </body>
+                </html>
+            `);
                 popup.document.close();
 
             } catch (e) {
