@@ -145,6 +145,7 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 ### Version 1.0.16
 - Updated referrer URL handling in the payment flow.
 - Improved popup redirect behavior using referrer URL enhancements.
+- PO Box Address Validation and Redirection Conflict with Other Payment Gateways.
 
 ### Version 1.0.15
 - Resolved the WooCommerce database version mismatch issue.

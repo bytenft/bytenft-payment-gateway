@@ -30,6 +30,7 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 = 1.0.16 =
 * Updated referrer URL handling in the payment flow.
 * Improved popup redirect behavior using referrer URL enhancements.
+* PO Box Address Validation and Redirection Conflict with Other Payment Gateways.
 
 = 1.0.15 =
 * Resolved the WooCommerce database version mismatch issue.
@@ -94,7 +95,7 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 == Upgrade Notice ==
 
 = 1.0.16 =
-Enhanced compatibility with merchant sites by updating referrer URL management in the plugin.
+Improved compatibility with merchant sites by enhancing referrer URL management and resolving PO Box address validation and redirection conflicts with other payment gateways.
 
 = 1.0.15 =
 Resolved the WooCommerce database version mismatch issue.
