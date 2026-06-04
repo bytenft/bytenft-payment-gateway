@@ -394,23 +394,31 @@
                 }
 
                 // =====================================================
-                // ✅ SUCCESS
-                // =====================================================
+                // ✅ SUCCESS — navigate popup WITHOUT sending referrer
+                // =====================================================    
                 if (redirect && typeof redirect === 'string' && redirect.length > 5) {
 
                     if (self.state.popup && !self.state.popup.closed) {
 
                         try {
 
-                            self.state.popup.location.href = redirect;
+                            // FIX: Use navigateWithoutReferrer instead of
+                            // directly setting location.href, which would
+                            // send the WP checkout URL as Referer header
+                            // to the Laravel payment page.
+                            self.navigateWithoutReferrer(self.state.popup, redirect);
 
                         } catch (e) {
 
-                            // Safari fallback
-                            self.state.popup = window.open(
-                                redirect,
-                                '_blank'
-                            );
+                            // Safari fallback — re-open popup and use same method
+                            if (!self.state.popup || self.state.popup.closed) {
+                                self.state.popup = window.open(
+                                    '',
+                                    '_blank'
+                                );
+                            }
+
+                            self.navigateWithoutReferrer(self.state.popup, redirect);
                         }
 
                         self.trackPopupClose();
@@ -455,6 +463,10 @@
                 return;
             }
 
+            // NOTE: window.open() only takes 3 arguments — the 4th is ignored
+            // by all browsers. noopener/noreferrer do NOT go here when opening
+            // about:blank because we need to keep the popup reference to write
+            // into it. Referrer stripping is handled by navigateWithoutReferrer().
             this.state.popup = window.open(
                 '',
                 '_blank',
@@ -472,11 +484,14 @@
                 ? encodeURI(bytenft_params.bytenft_loader)
                 : '';
 
+            // FIX: Add <meta name="referrer" content="no-referrer"> so that
+            // even this loading page does not leak referrer on any resource loads.
             this.state.popup.document.write(`
                 <!DOCTYPE html>
                 <html>
                 <head>
                     <title>Secure Payment</title>
+                    <meta name="referrer" content="no-referrer">
                 </head>
 
                 <body style="
@@ -509,6 +524,38 @@
             `);
 
             this.state.popup.document.close();
+        },
+
+        /* =========================================================
+         * NAVIGATE WITHOUT REFERRER
+         * ========================================================= */
+
+        navigateWithoutReferrer: function (popup, url) {
+
+            // The popup is still on about:blank so we own its document.
+            // We write a new page into it that has:
+            //   1. <meta name="referrer" content="no-referrer">  — referrer policy
+            //   2. <meta http-equiv="refresh" content="0;url=..."> — immediate redirect
+            //
+            // The browser navigates from THIS intermediate page to the payment URL,
+            // so document.referrer on the Laravel payment page will be empty string.
+            // The SDK will see no referrer.
+            try {
+                popup.document.open();
+                popup.document.write(
+                    '<!DOCTYPE html><html><head>' +
+                    '<meta name="referrer" content="no-referrer">' +
+                    '<meta http-equiv="refresh" content="0;url=' + url + '">' +
+                    '</head><body></body></html>'
+                );
+                popup.document.close();
+
+            } catch (e) {
+
+                // Last resort fallback — referrer may leak but payment still works
+                console.log('[Bytenft] navigateWithoutReferrer fallback', e);
+                popup.location.href = url;
+            }
         },
 
         cleanupPopup: function () {
