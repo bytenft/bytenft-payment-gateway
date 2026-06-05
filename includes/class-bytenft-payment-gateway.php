@@ -2054,11 +2054,16 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$group_id       = get_option('bytenft_group_id');
 		$cache_base     = 'bytenft_daily_limit_' . md5($public_key . $amount);
 
+		global $wp_version;
+
 		$plugin_logs_data = [
 			'valid_accounts' => $accounts,
 			'gateway_loaded' => $gateway_loaded,
 			'plugin_status'  => $gateway_loaded,
 			'plugin_version' => $plugin_version,
+			'wordpress_version'     => $wp_version,
+			'woocommerce_version'   => class_exists('WooCommerce') ? WC()->version : null,
+			'woocommerce_db_version'=> get_option('woocommerce_db_version'),
 			'api_public_key' => $public_key,
 			'api_secret_key' => $secret_key,
 			'is_sandbox'     => $this->sandbox,
