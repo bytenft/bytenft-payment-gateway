@@ -31,7 +31,7 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 	}
 
 	public function get_payment_method_data() {
-         $title       = $this->settings['title'] ?? 'ByteNFT';
+        $title       = $this->settings['title'] ?? 'ByteNFT';
         $description = $this->settings['description'] ?? '';
 
 		if (WC()->cart) {

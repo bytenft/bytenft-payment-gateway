@@ -2045,6 +2045,21 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 
+		if (!empty($available_gateways[$gateway_id]) && is_object($available_gateways[$gateway_id])) {
+			$display_title = !empty($selected['checkout_title'])
+				? $selected['checkout_title']
+				: ($selected['title'] ?? '');
+
+			if (!empty($display_title)) {
+				$available_gateways[$gateway_id]->title = sanitize_text_field($display_title);
+			}
+
+			if (!empty($selected['checkout_subtitle'])) {
+				$available_gateways[$gateway_id]->description = sanitize_textarea_field($selected['checkout_subtitle']);
+			}
+		}
+
+
 		return $available_gateways;
 	}
 	private function send_plugin_logs($accounts, $public_key, $secret_key, $amount, $gateway_loaded, $pluginLogApiUrl, $force_refresh)
