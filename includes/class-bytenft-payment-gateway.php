@@ -1558,19 +1558,19 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$billing_state     = sanitize_text_field($order->get_billing_state());
 
 		if (strlen(trim($first_name)) < 3) {
-			wc_add_notice(__('First name must contain at least 3 characters.', 'text-domain'), 'error');
+			wc_add_notice(__('First name must contain at least 3 characters.', 'bytenft-payment-gateway'), 'error');
 		}
 
 		if (strlen(trim($last_name)) < 3) {
-			wc_add_notice(__('Last name must contain at least 3 characters.', 'text-domain'), 'error');
+			wc_add_notice(__('Last name must contain at least 3 characters.', 'bytenft-payment-gateway'), 'error');
 		}
 
 		if (strlen(trim($billing_address_1)) < 3) {
-			wc_add_notice(__('Please enter a valid address (minimum 3 characters).', 'text-domain'), 'error');
+			wc_add_notice(__('Please enter a valid address (minimum 3 characters).', 'bytenft-payment-gateway'), 'error');
 		}
 
 		if (strlen(trim($billing_city)) < 3) {
-			wc_add_notice(__('Please enter a valid city name (minimum 3 characters).', 'text-domain'), 'error');
+			wc_add_notice(__('Please enter a valid city name (minimum 3 characters).', 'bytenft-payment-gateway'), 'error');
 		}
 
 		$redirect_url = esc_url_raw(add_query_arg([
