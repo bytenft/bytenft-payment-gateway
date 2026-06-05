@@ -9,15 +9,27 @@
 
     const BytenftCheckout = {
 
+        /* =========================================================
+         * CONFIG
+         * ========================================================= */
+
         PAYMENT_METHOD: bytenft_params.payment_method,
 
+        /* =========================================================
+         * BANK-GRADE STATE MACHINE
+         * ========================================================= */
+
         state: {
+            status: 'idle', // idle | validating | popup | processing | done
             submitting: false,
             popup: null,
             popupInterval: null,
             orderId: null,
             button: null,
-            buttonText: ''
+            buttonText: '',
+            requestInFlightClassic: false,
+            requestInFlightBlock: false,
+            responseHandled: false
         },
 
         /* =========================================================
@@ -25,14 +37,48 @@
          * ========================================================= */
 
         init: function () {
+            const self = this;
 
             this.bindClassicCheckout();
-
             this.bindBlockCheckout();
-
             this.bindInputSanitization();
 
-            console.log('[Bytenft] initialized');
+            // Re-bind events if layout structures refresh via multi-step AJAX changes
+            $(document.body).on('updated_checkout updated_shipping_method fragments_refreshed fragments_loaded', function () {
+                self.bindClassicCheckout();
+            });
+
+            console.log('[Bytenft] bank-grade initialized');
+        },
+
+        setStatus: function (status) {
+            this.state.status = status;
+        },
+
+        canProceed: function (type) {
+            if (type === 'Classic') {
+                return !this.state.requestInFlightClassic;
+            }
+            if (type === 'Block') {
+                return !this.state.requestInFlightBlock;
+            }
+            return true;
+        },
+
+        releaseLock: function (type) {
+            if (!type) {
+                this.state.requestInFlightClassic = false;
+                this.state.requestInFlightBlock = false;
+                return;
+            }
+
+            if (type === 'Classic') {
+                this.state.requestInFlightClassic = false;
+            }
+
+            if (type === 'Block') {
+                this.state.requestInFlightBlock = false;
+            }
         },
 
         /* =========================================================
@@ -40,103 +86,106 @@
          * ========================================================= */
 
         bindClassicCheckout: function () {
-
             const self = this;
 
-            $('form.checkout')
+            $('form.checkout, form#wcf-embed-checkout-form, form.wcf-embed-checkout-form-steps')
                 .off('checkout_place_order_' + self.PAYMENT_METHOD)
-                .on(
-                    'checkout_place_order_' + self.PAYMENT_METHOD,
-                    function () {
+                .on('checkout_place_order_' + self.PAYMENT_METHOD, function () {
 
-                        console.log('[Bytenft] classic checkout');
+                    const $form = $(this);
 
-                        const $form = $(this);
+                    if (!self.canProceed('Classic')) return false;
+                    if (self.state.requestInFlightClassic) return false;
 
-                        if (self.state.submitting) {
-                            return false;
-                        }
+                    self.state.requestInFlightClassic = true;
 
-                        self.clearCheckoutErrors();
+                    self.setStatus('validating');
+                    self.clearCheckoutErrors();
 
-                        const requiredError = self.validateRequiredFields($form);
-
-                        if (requiredError) {
-
-                            self.showCheckoutError(
-                                requiredError.message,
-                                requiredError.fields
-                            );
-
-                            return false;
-                        }
-
-                        const validationError = self.validateAll($form);
-
-                        if (validationError) {
-
-                            self.showCheckoutError(validationError);
-
-                            return false;
-                        }
-
-                        // Safari popup fix
-                        self.openPopupImmediately();
-
-                        // Start custom flow
-                        self.handleClassicCheckout($form);
-
-                        // STOP WooCommerce default flow
+                    const requiredError = self.validateRequiredFields($form);
+                    if (requiredError) {
+                        self.releaseLock('Classic');
+                        self.setStatus('idle');
+                        self.reset();
+                        self.showCheckoutError(requiredError.message, requiredError.fields);
                         return false;
                     }
-                );
+
+                    const validationError = self.validateAll($form);
+                    if (validationError) {
+                        self.releaseLock('Classic');
+                        self.setStatus('idle');
+                        self.reset();
+                        self.showCheckoutError(validationError);
+                        return false;
+                    }
+
+                    self.setStatus('popup');
+
+                   const popup = self.openPopupImmediately();
+
+                    if (!popup) {
+                        self.releaseLock('Classic');
+                        self.setStatus('idle');
+                        return false;
+                    }
+
+                    // 3. NOW move to processing
+                    self.setStatus('processing');
+
+                    // 4. Start AJAX AFTER popup exists
+                    self.handleClassicCheckout($form);
+                    return false;
+                });
+        },
+
+        buildCheckoutPayload: function () {
+            const $form = $('form.checkout, form.wc-block-checkout__form, #order_review').first();
+
+            let data = $form.serialize();
+
+            // =====================================================
+            // CRITICAL WOOCOMMERCE STATE ENFORCEMENT
+            // =====================================================
+
+            const shipToDifferent = $(
+                '#ship-to-different-address-checkbox, input[name="ship_to_different_address"]'
+            ).is(':checked') ? 1 : 0;
+
+            data += '&ship_to_different_address=' + shipToDifferent;
+
+            // Optional safety: force billing/shipping sync flag consistency
+            if (!shipToDifferent) {
+                data += '&wfacp_billing_same_as_shipping=1';
+            }
+
+            return data;
         },
 
         handleClassicCheckout: function ($form) {
-
             const self = this;
 
-            self.state.submitting = true;
-
-            self.state.button = $form
-                .find('button[name="woocommerce_checkout_place_order"]');
-
+            self.state.button = $('body').find('button[name="woocommerce_checkout_place_order"], #wcf-order-place-btn').first();
             self.state.buttonText = self.state.button.text();
 
-            self.state.button
-                .prop('disabled', true)
-                .addClass('loading')
-                .text('Processing...');
+            self.state.button.prop('disabled', true).addClass('loading').text('Processing...');
+
+            // Form payload compilation handles scattered form fields elegantly
+            const dataPayload = self.buildCheckoutPayload();
 
             $.ajax({
-
                 type: 'POST',
-
                 url: wc_checkout_params.checkout_url,
-
-                data: $form.serialize(),
-
+                data: dataPayload,
                 dataType: 'json',
-
                 success: function (response) {
-
-                    console.log('[Bytenft] classic response', response);
-
+                    self.state.requestInFlightClassic = false;
                     self.handleResponse(response);
                 },
-
-                error: function (xhr, status, error) {
-
-                    console.log('[Bytenft] classic ajax error');
-                    console.log(xhr.responseText);
-
-                    self.showCheckoutError(
-                        'There was an error processing your order.'
-                    );
-
-                    self.cleanupPopup();
-
-                    self.reset();
+                error: function (xhr) {
+                    self.state.requestInFlightClassic = false;
+                    console.log('[Bytenft] checkout network error:', xhr.responseText);
+                    self.failSafe('There was an error processing your order.');
                 }
             });
         },
@@ -146,155 +195,103 @@
          * ========================================================= */
 
         bindBlockCheckout: function () {
-
             const self = this;
 
-            document.addEventListener(
-                'click',
-                function (e) {
+            document.addEventListener('click', function (e) {
+                const btn = e.target.closest('.wc-block-components-checkout-place-order-button');
+                if (!btn) return;
 
-                    const btn = e.target.closest(
-                        '.wc-block-components-checkout-place-order-button'
-                    );
+                const $form = $('form.wc-block-checkout__form');
+                if (!$form.length) return;
 
-                    if (!btn) {
-                        return;
-                    }
+                const selected = $form.find(
+                    'input[name="radio-control-wc-payment-method-options"]:checked'
+                ).val();
 
-                    const $form = $('form.wc-block-checkout__form');
+                if (selected !== self.PAYMENT_METHOD) return;
 
-                    if (!$form.length) {
-                        return;
-                    }
+                e.preventDefault();
+                e.stopImmediatePropagation();
 
-                    const selected = $form
-                        .find(
-                            'input[name="radio-control-wc-payment-method-options"]:checked'
-                        )
-                        .val();
+                if (!self.canProceed('Block')) return;
+                if (self.state.requestInFlightBlock) return;
 
-                    if (selected !== self.PAYMENT_METHOD) {
-                        return;
-                    }
+                self.state.requestInFlightBlock = true;
 
-                    console.log('[Bytenft] block checkout');
+                self.setStatus('validating');
+                self.clearCheckoutErrors();
 
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
+                const requiredError = self.validateRequiredFields($form);
+                if (requiredError) {
+                    self.releaseLock('Block');
+                    self.setStatus('idle');
+                    self.reset();
+                    self.showCheckoutError(requiredError.message, requiredError.fields);
+                    return;
+                }
 
-                    if (self.state.submitting) {
-                        return;
-                    }
+                const validationError = self.validateAll($form);
+                if (validationError) {
+                    self.releaseLock('Block');
+                    self.setStatus('idle');
+                    self.reset();
+                    self.showCheckoutError(validationError);
+                    return;
+                }
 
-                    self.clearCheckoutErrors();
+                self.setStatus('popup');
+                const popup = self.openPopupImmediately();
 
-                    const requiredError = self.validateRequiredFields($form);
+                if (!popup) {
+                    self.releaseLock('Block');
+                    self.setStatus('idle');
+                    return;
+                }
 
-                    if (requiredError) {
+                self.setStatus('processing');
+                self.handleBlockCheckout($form);
+            }, true);
 
-                        self.showCheckoutError(
-                            requiredError.message,
-                            requiredError.fields
-                        );
+            // Prevent native block context from bypassing validation filters
+            document.addEventListener('submit', function (e) {
+                const form = e.target;
+                if (!form.classList.contains('wc-block-checkout__form')) return;
 
-                        return;
-                    }
+                const selected = form.querySelector(
+                    'input[name="radio-control-wc-payment-method-options"]:checked'
+                )?.value;
 
-                    const validationError = self.validateAll($form);
+                if (selected !== self.PAYMENT_METHOD) return;
 
-                    if (validationError) {
-
-                        self.showCheckoutError(validationError);
-
-                        return;
-                    }
-
-                    // Safari popup fix
-                    self.openPopupImmediately();
-
-                    // Start block flow
-                    self.handleBlockCheckout($form);
-
-                },
-                true
-            );
-
-            // Prevent Woo block native submit
-            document.addEventListener(
-                'submit',
-                function (e) {
-
-                    const form = e.target;
-
-                    if (!form.classList.contains('wc-block-checkout__form')) {
-                        return;
-                    }
-
-                    const selected = form.querySelector(
-                        'input[name="radio-control-wc-payment-method-options"]:checked'
-                    )?.value;
-
-                    if (selected !== self.PAYMENT_METHOD) {
-                        return;
-                    }
-
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-
-                },
-                true
-            );
+                e.preventDefault();
+                e.stopImmediatePropagation();
+            }, true);
         },
 
         handleBlockCheckout: function ($form) {
-
             const self = this;
 
-            self.state.submitting = true;
-
-            self.state.button = $(
-                '.wc-block-components-checkout-place-order-button'
-            );
-
+            self.state.button = $('.wc-block-components-checkout-place-order-button');
             self.state.buttonText = self.state.button.text();
 
-            self.state.button
-                .prop('disabled', true)
-                .addClass('loading')
-                .text('Processing...');
+            self.state.button.prop('disabled', true).addClass('loading').text('Processing...');
 
-            let data = $form.serialize();
-
+            let data = self.buildCheckoutPayload();
             data += '&action=bytenft_block_gateway_process';
             data += '&nonce=' + encodeURIComponent(bytenft_params.bytenft_nonce);
 
             $.ajax({
-
                 type: 'POST',
-
                 url: bytenft_params.ajax_url,
-
                 data: data,
-
                 success: function (response) {
-
-                    console.log('[Bytenft] block response', response);
-
+                    self.state.requestInFlightBlock = false;
                     self.handleResponse(response);
                 },
-
-                error: function (xhr, status, error) {
-
-                    console.log('[Bytenft] block ajax error');
-                    console.log(xhr.responseText);
-
-                    self.showCheckoutError(
-                        'There was an error processing your order.'
-                    );
-
-                    self.cleanupPopup();
-
-                    self.reset();
+                error: function (xhr) {
+                    self.state.requestInFlightBlock = false;
+                    console.log('[Bytenft] block checkout error:', xhr.responseText);
+                    self.failSafe('There was an error processing your order.');
                 }
             });
         },
@@ -303,30 +300,14 @@
          * RESPONSE HANDLER
          * ========================================================= */
 
-       handleResponse: function (response) {
+        handleResponse: function (response) {
+            const self = this;
 
-        const self = this;
+            if (self.state.responseHandled) return;
 
-        try {
-
-            if (typeof response === 'string') {
-
-                    try {
-                        response = JSON.parse(response);
-                    } catch (e) {
-
-                        console.log('[Bytenft] invalid json');
-
-                        self.showCheckoutError(
-                            'Invalid server response.'
-                        );
-
-                        self.cleanupPopup();
-
-                        self.reset();
-
-                        return;
-                    }
+            try {
+                if (typeof response === 'string') {
+                    response = JSON.parse(response);
                 }
 
                 console.log('[Bytenft] parsed response', response);
@@ -337,71 +318,21 @@
                     response?.data?.payment_status === 'success' ||
                     response?.data?.payment_status === 'paid';
 
-                const redirect =
-                    response.redirect ||
-                    response.data?.redirect ||
-                    null;
-
-                const orderId =
-                    response.order_id ||
-                    response.data?.order_id ||
-                    null;
-
-                const errorMessage =
-                    response?.message ||
-                    response?.messages ||
-                    response?.data?.message ||
-                    response?.data?.messages ||
-                    response?.data?.error ||
-                    response?.error ||
-                    'Your payment could not be completed. Please try again.';
+                const redirect = response?.redirect || response?.data?.redirect;
+                const orderId = response?.order_id || response?.data?.order_id;
 
                 self.state.orderId = orderId;
 
-                // =====================================================
-                // ❌ FAILURE (FIXED - ERROR DISPLAY STABLE)
-                // =====================================================
                 if (!success) {
-
-                    const msg = errorMessage || 'Your payment could not be completed. Please try again.';
-
-                    console.log('[Bytenft] showing failed message:', msg);
-
-                    self.cleanupPopup();
-
-                    // 🔥 IMPORTANT
-                    setTimeout(function () {
-
-                        self.showCheckoutError(msg);
-
-                        // force scroll after Woo rerender
-                        const $notice = $('.woocommerce-notices-wrapper');
-
-                        if ($notice.length) {
-                            $('html, body').animate({
-                                scrollTop: $notice.offset().top - 80
-                            }, 300);
-                        }
-
-                    }, 50);
-
-                    // 🔥 IMPORTANT
-                    setTimeout(function () {
-                        self.reset();
-                    }, 400);
-
+                    self.failSafe(response?.message || response?.data?.message || 'Payment failed. Please try again.');
                     return;
                 }
 
-                // =====================================================
-                // ✅ SUCCESS — navigate popup WITHOUT sending referrer
-                // =====================================================    
                 if (redirect && typeof redirect === 'string' && redirect.length > 5) {
+                    self.state.responseHandled = true;
 
                     if (self.state.popup && !self.state.popup.closed) {
-
                         try {
-
                             // FIX: Use navigateWithoutReferrer instead of
                             // directly setting location.href, which would
                             // send the WP checkout URL as Referer header
@@ -420,38 +351,49 @@
 
                             self.navigateWithoutReferrer(self.state.popup, redirect);
                         }
-
                         self.trackPopupClose();
-
                     } else {
-
                         window.location.href = redirect;
+                        self.finish();
                     }
-
-                    self.reset(true);
                     return;
                 }
 
-                self.cleanupPopup();
-
-                self.showCheckoutError('Missing redirect URL.');
-
-                self.reset();
+                self.failSafe('Missing redirect URL.');
 
             } catch (e) {
-
-                console.log('[Bytenft] handleResponse exception', e);
-
-                self.cleanupPopup();
-
-                self.showCheckoutError('Unexpected checkout error.');
-
-                self.reset();
+                console.log('[Bytenft] response processing exception', e);
+                self.failSafe('Unexpected checkout error.');
             }
         },
 
         /* =========================================================
-         * POPUP
+         * FAIL SAFE & STATE TERMINATION
+         * ========================================================= */
+
+        failSafe: function (message) {
+            this.releaseLock();
+            this.cleanupPopup();
+            this.showCheckoutError(message);
+            this.reset(false); // IMPORTANT: restore button immediately
+            this.finish();
+        },
+
+        finish: function () {
+            this.setStatus('done');
+            this.reset(true);
+
+            this.state.responseHandled = false;
+            this.state.requestInFlightClassic = false;
+            this.state.requestInFlightBlock = false;
+
+            setTimeout(() => {
+                this.setStatus('idle');
+            }, 500);
+        },
+
+        /* =========================================================
+         * POPUP HANDLERS
          * ========================================================= */
 
         openPopupImmediately: function () {
@@ -460,13 +402,9 @@
                 this.state.popup &&
                 !this.state.popup.closed
             ) {
-                return;
+                return this.state.popup;
             }
 
-            // NOTE: window.open() only takes 3 arguments — the 4th is ignored
-            // by all browsers. noopener/noreferrer do NOT go here when opening
-            // about:blank because we need to keep the popup reference to write
-            // into it. Referrer stripping is handled by navigateWithoutReferrer().
             this.state.popup = window.open(
                 '',
                 '_blank',
@@ -474,18 +412,14 @@
             );
 
             if (!this.state.popup) {
-
-                alert('Popup blocked. Please allow popups.');
-
-                return;
+                alert('Popup blocked. Please allow popups for your payment.');
+                return null;
             }
 
             const logoUrl = bytenft_params.bytenft_loader
                 ? encodeURI(bytenft_params.bytenft_loader)
                 : '';
 
-            // FIX: Add <meta name="referrer" content="no-referrer"> so that
-            // even this loading page does not leak referrer on any resource loads.
             this.state.popup.document.write(`
                 <!DOCTYPE html>
                 <html>
@@ -493,7 +427,6 @@
                     <title>Secure Payment</title>
                     <meta name="referrer" content="no-referrer">
                 </head>
-
                 <body style="
                     margin:0;
                     display:flex;
@@ -504,28 +437,19 @@
                     background:#fff;
                     text-align:center;
                 ">
-
                     <div>
-
-                        ${
-                            logoUrl
-                                ? `<img src="${logoUrl}" style="max-width:120px;margin-bottom:20px;" />`
-                                : ''
-                        }
-
+                        ${logoUrl ? `<img src="${logoUrl}" style="max-width:120px;margin-bottom:20px;" />` : ''}
                         <h3>Connecting to secure payment...</h3>
-
                         <p>Please do not close this window.</p>
-
                     </div>
-
                 </body>
                 </html>
             `);
 
             this.state.popup.document.close();
-        },
 
+            return this.state.popup;
+        },
         /* =========================================================
          * NAVIGATE WITHOUT REFERRER
          * ========================================================= */
@@ -591,17 +515,14 @@
         },
 
         cleanupPopup: function () {
-
-            if (
-                this.state.popup &&
-                !this.state.popup.closed
-            ) {
-
-                try {
-                    this.state.popup.close();
-                } catch (e) {}
+            if (this.state.popupInterval) {
+                clearInterval(this.state.popupInterval);
+                this.state.popupInterval = null;
             }
 
+            if (this.state.popup && !this.state.popup.closed) {
+                try { this.state.popup.close(); } catch (e) {}
+            }
             this.state.popup = null;
         },
 
@@ -609,24 +530,33 @@
 
             const self = this;
 
-            let redirected = false;
+            if (!self.state.orderId) {
+                console.log('[Bytenft] No order ID for popup tracking');
+                return;
+            }
 
-            clearInterval(self.state.popupInterval);
+            // clear any previous interval (important safety)
+            if (self.state.popupInterval) {
+                clearInterval(self.state.popupInterval);
+                self.state.popupInterval = null;
+            }
 
             self.state.popupInterval = setInterval(function () {
 
-                // Prevent duplicate execution
-                if (redirected) {
-                    return;
-                }
-
-                const popupExists =
+                const popupStillOpen =
                     self.state.popup &&
                     !self.state.popup.closed;
 
-                // =========================================
-                // SAFARI + CHROME PAYMENT CHECK
-                // =========================================
+                // 👉 wait until popup closes
+                if (popupStillOpen) {
+                    return;
+                }
+
+                clearInterval(self.state.popupInterval);
+                self.state.popupInterval = null;
+
+                console.log('[Bytenft] Popup closed → single final check');
+
                 $.post(
                     bytenft_params.ajax_url,
                     {
@@ -636,16 +566,7 @@
                     },
                     function (response) {
 
-                        if (redirected) {
-                            return;
-                        }
-
-                        console.log(
-                            '[Bytenft] popup status response',
-                            response
-                        );
-
-                        const paymentSuccess =
+                        const success =
                             response?.success === true ||
                             response?.data?.payment_status === 'success' ||
                             response?.data?.payment_status === 'paid';
@@ -654,347 +575,211 @@
                             response?.data?.redirect ||
                             response?.redirect;
 
-                        // =========================================
-                        // PAYMENT SUCCESS
-                        // =========================================
-                        if (paymentSuccess && redirectUrl) {
+                        if (success && redirectUrl) {
 
-                            redirected = true;
+                            console.log('[Bytenft] Payment success → redirect');
 
-                            clearInterval(self.state.popupInterval);
-
-                            try {
-
-                                if (
-                                    self.state.popup &&
-                                    !self.state.popup.closed
-                                ) {
-                                    self.state.popup.close();
-                                }
-
-                            } catch (e) {
-                                console.log(
-                                    '[Bytenft] popup close blocked'
-                                );
-                            }
-
-                            self.state.popup = null;
-
-                            console.log(
-                                '[Bytenft] redirect success page'
-                            );
-
+                            self.cleanupPopup();
                             window.location.replace(redirectUrl);
-
                             return;
                         }
 
-                        // =========================================
-                        // USER MANUALLY CLOSED POPUP
-                        // =========================================
-                        if (!popupExists) {
+                        console.log('[Bytenft] Payment failed / incomplete');
 
-                            redirected = true;
+                        self.cleanupPopup();
+                        self.showCheckoutError(
+                            response?.message ||
+                            'Your payment was not completed.'
+                        );
 
-                            clearInterval(self.state.popupInterval);
-
-                            const failedMessage =
-                                response?.message ||
-                                response?.data?.message ||
-                                'Your payment could not be completed. Please try again.';
-
-                            self.cleanupPopup();
-
-                            self.showCheckoutError(failedMessage);
-
-                            self.reset();
-                        }
+                        self.reset();
 
                     },
                     'json'
                 );
 
-            }, 1500);
+            }, 800); // small check ONLY for popup close detection
         },
 
         /* =========================================================
-         * VALIDATIONS
+         * DATA FILTERS & VALIDATIONS
          * ========================================================= */
 
         validateAll: function ($form) {
-
             const email = this.getBillingEmail($form);
-
-            if (!email) {
-                return 'Please enter your email address.';
-            }
-
-            if (!this.isValidEmail(email)) {
-                return 'Please enter a valid email address.';
-            }
+            if (!email) return 'Please enter your email address.';
+            if (!this.isValidEmail(email)) return 'Please enter a valid email address.';
 
             const phone = this.getPhoneNumber($form);
-
-            if (
-                phone &&
-                !this.isValidPhoneNumber(phone)
-            ) {
-                return 'Please enter a valid phone number.';
-            }
+            if (phone && !this.isValidPhoneNumber(phone)) return 'Please enter a valid phone number.';
 
             const poBox = this.validatePOBox($form);
-
-            if (poBox) {
-                return poBox;
-            }
+            if (poBox) return poBox;
 
             return null;
         },
 
         validateRequiredFields: function ($form) {
-
             let missing = [];
-
             let firstInvalid = null;
+            const isShippingActive = this.getShippingState($form);
 
-            $form.find('[required]').each(function () {
+            const $allFields = $('form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form').find('[required]');
 
+            $allFields.each(function () {
                 const $field = $(this);
+                const name = $field.attr('name') || '';
 
-                if (
-                    !$field.is(':visible') ||
-                    $field.attr('type') === 'hidden'
-                ) {
-                    return;
-                }
+                if ($field.attr('type') === 'hidden') return;
+
+                if (name.indexOf('shipping_') === 0 && !isShippingActive) return;
+
+                const $conditionalParent = $field.closest('.wcf-conditional-field, .woocommerce-validated');
+                if ($conditionalParent.length && $conditionalParent.is(':hidden')) return;
 
                 const val = ($field.val() || '').trim();
-
-                const $wrapper = $field.closest(
-                    '.form-row, .wc-block-components-text-input'
-                );
+                const $wrapper = $field.closest('.form-row, .wc-block-components-text-input, .form-row-first, .form-row-last');
 
                 if (!val) {
+                    $wrapper.addClass('woocommerce-invalid woocommerce-invalid-required-field');
 
-                    $wrapper.addClass(
-                        'woocommerce-invalid woocommerce-invalid-required-field'
-                    );
+                    let label = $wrapper.find('label').first().text().trim() || $field.attr('placeholder') || name;
+                    label = label.replace('*', '').trim();
 
-                    let label =
-                        $wrapper.find('label').first().text().trim()
-                        || $field.attr('placeholder')
-                        || $field.attr('name');
-
-                    label = label
-                        .replace('*', '')
-                        .trim();
-
-                    if (
-                        label &&
-                        !missing.includes(label)
-                    ) {
+                    if (label && !missing.includes(label)) {
                         missing.push(label);
                     }
-
-                    if (!firstInvalid) {
-                        firstInvalid = $field;
-                    }
-
+                    if (!firstInvalid) firstInvalid = $field;
                 } else {
-
-                    $wrapper.removeClass(
-                        'woocommerce-invalid woocommerce-invalid-required-field'
-                    );
+                    $wrapper.removeClass('woocommerce-invalid woocommerce-invalid-required-field');
                 }
             });
 
-            if (firstInvalid) {
-
-                setTimeout(function () {
-                    firstInvalid.trigger('focus');
-                }, 100);
+            if (firstInvalid && firstInvalid.is(':visible')) {
+                setTimeout(function () { firstInvalid.trigger('focus'); }, 100);
             }
 
-            if (missing.length) {
+            return missing.length ? { message: 'Please fill required fields.', fields: missing } : null;
+        },
 
-                return {
-                    message: 'Please fill required fields.',
-                    fields: missing
-                };
+        getShippingState: function ($form) {
+            const $root = $('body');
+            const $shipToDifferentCheckbox = $root.find('#ship-to-different-address-checkbox, input[name="ship_to_different_address"]');
+            
+            if ($shipToDifferentCheckbox.length) {
+                if ($shipToDifferentCheckbox.is(':checkbox')) {
+                    return $shipToDifferentCheckbox.is(':checked');
+                }
+                const val = $shipToDifferentCheckbox.val();
+                return (val === '1' || val === 'yes' || val === 'true');
             }
 
-            return null;
+            const $shippingWrapper = $root.find('.shipping_address, .wcf-shipping-address-fade');
+            if ($shippingWrapper.length) {
+                return $shippingWrapper.is(':visible') || $shippingWrapper.css('display') === 'block';
+            }
+
+            return false;
         },
 
         validatePOBox: function ($form) {
-
-            const fields = [
-
-                $form.find('[name="billing_address_1"]').val(),
-
-                $form.find('[name="billing_address_2"]').val(),
-
-                $form.find('[name="shipping_address_1"]').val(),
-
-                $form.find('[name="shipping_address_2"]').val()
-            ];
-
-            for (let field of fields) {
-
-                if (
-                    field &&
-                    this.containsPOBox(field)
-                ) {
-
-                    return 'PO Box addresses are not allowed.';
-                }
+            const isShippingActive = this.getShippingState($form);
+            const $root = $('body');
+            
+            const billing1 = $root.find('[name="billing_address_1"]').val();
+            const billing2 = $root.find('[name="billing_address_2"]').val();
+            
+            if (this.containsPOBox(billing1) || this.containsPOBox(billing2)) {
+                return 'PO Box addresses are not allowed for Billing.';
             }
 
+            if (isShippingActive) {
+                const shipping1 = $root.find('[name="shipping_address_1"]').val();
+                const shipping2 = $root.find('[name="shipping_address_2"]').val();
+                
+                if (this.containsPOBox(shipping1) || this.containsPOBox(shipping2)) {
+                    return 'PO Box addresses are not allowed for Shipping.';
+                }
+            }
             return null;
         },
 
         containsPOBox: function (value) {
-
-            if (!value) {
-                return false;
-            }
-
-            const cleaned = value
-                .toLowerCase()
-                .replace(/[^a-z0-9]/g, '');
-
-            return (
-                cleaned.includes('pobox')
-                || cleaned.includes('postofficebox')
-            );
-        },
-
-        getPhoneNumber: function ($form) {
-
-            const selectors = [
-                'input[name="billing_phone"]',
-                'input[name="shipping_phone"]',
-                'input[type="tel"]',
-                'input[autocomplete="tel"]'
-            ];
-
-            for (let selector of selectors) {
-
-                const val = $form.find(selector).first().val();
-
-                if (val && val.trim()) {
-                    return val.trim();
-                }
-            }
-
-            return '';
-        },
-
-        getBillingEmail: function ($form) {
-
-            const selectors = [
-                '#billing_email',
-                '#email',
-                'input[type="email"]',
-                'input[name="billing_email"]'
-            ];
-
-            for (let selector of selectors) {
-
-                const val = $form.find(selector).first().val();
-
-                if (val && val.trim()) {
-                    return val.trim();
-                }
-            }
-
-            return '';
-        },
-
-        isValidEmail: function (email) {
-
-            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-        },
-
-        isValidPhoneNumber: function (phone) {
-
-            if (!phone) {
-                return true;
-            }
-
-            const cleaned = phone.replace(
-                /[\s\-().]/g,
-                ''
-            );
-
-            return (
-                /^(\+1|1)?\d{10}$/.test(cleaned)
-                || /^(\+|00)[1-9]\d{6,14}$/.test(cleaned)
-                || /^\+?\d{5,15}$/.test(cleaned)
-            );
+            if (!value) return false;
+            const cleaned = value.toLowerCase().replace(/[^a-z0-9]/g, '');
+            return (cleaned.includes('pobox') || cleaned.includes('postofficebox'));
         },
 
         /* =========================================================
-         * UI
+         * RESET & INTERFACE MANAGERS
          * ========================================================= */
 
+        reset: function (keepDisabled = false) {
+            this.state.submitting = false;
+            this.state.status = 'idle';
+
+            this.state.popup = null;
+            this.state.popupInterval = null;
+            this.state.orderId = null;
+            this.state.button = null;
+            this.state.responseHandled = false;
+            this.state.requestInFlightClassic = false;
+            this.state.requestInFlightBlock = false;
+
+            const $button = $('.wc-block-components-checkout-place-order-button, button[name="woocommerce_checkout_place_order"], #wcf-order-place-btn');
+
+            if (!$button.length) return;
+
+            if (keepDisabled) {
+                $button.prop('disabled', false)   // IMPORTANT FIX
+                    .removeClass('loading')
+                    .text(this.state.buttonText || 'Place order');
+                return;
+            }
+
+            $button
+                .prop('disabled', false)
+                .removeClass('loading')
+                .text(this.state.buttonText || 'Place order');
+        },
+
         showCheckoutError: function (message, fields = []) {
+            $('.bytenft-error-wrap, .woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper').remove();
 
-            // Clear previous notices first
-            $('.woocommerce-notices-wrapper').remove();
-
-            // Build fields list
             let fieldsHtml = '';
-
             if (fields.length) {
-
                 fieldsHtml = `
-                    <ul class="bytenft-error-fields">
+                    <ul class="bytenft-error-fields" style="margin-top: 5px; padding-left: 20px;">
                         ${fields.map(field => `<li>${field}</li>`).join('')}
-                    </ul>
-                `;
+                    </ul>`;
             }
 
             const html = `
-                <div class="woocommerce-notices-wrapper bytenft-error-wrap">
-
-                    <div class="woocommerce-error bytenft-error-box" role="alert">
-
-                        <div class="bytenft-error-header">
-                            <strong>${message}</strong>
-                        </div>
-
+                <div class="woocommerce-notices-wrapper wcf-woocommerce-notices-wrapper bytenft-error-wrap">
+                    <div class="woocommerce-error bytenft-error-box" role="alert" style="border-left: 3px solid #cc0000; padding: 1em; background: #fff1f1;">
+                        <div class="bytenft-error-header"><strong>${message}</strong></div>
                         ${fieldsHtml}
-
                     </div>
+                </div>`;
 
-                </div>
-            `;
+            const targets = ['.wc-block-checkout__form', 'form.checkout', 'form#wcf-embed-checkout-form', '.wcf-embed-checkout-form-steps'];
+            let inserted = false;
 
-            // Block checkout
-            const blockTarget = $('.wc-block-checkout__form');
-
-            if (blockTarget.length) {
-                blockTarget.prepend(html);
+            for (let target of targets) {
+                const $el = $(target);
+                if ($el.length) {
+                    $el.prepend(html);
+                    inserted = true;
+                    break;
+                }
             }
 
-            // Classic checkout fallback
-            const classicTarget = $('form.checkout');
-
-            if (classicTarget.length) {
-                classicTarget.prepend(html);
-            }
-
-            // Fallback
-            if (!blockTarget.length && !classicTarget.length) {
+            if (!inserted) {
                 $('body').prepend(html);
             }
 
-            // Scroll to top notice
-            const $notice = $('.woocommerce-notices-wrapper');
-
+            const $notice = $('.woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper');
             if ($notice.length) {
-
                 $('html, body').animate({
                     scrollTop: $notice.offset().top - 80
                 }, 300);
@@ -1002,116 +787,56 @@
         },
 
         clearCheckoutErrors: function () {
-
-            $('.woocommerce-notices-wrapper').remove();
-
-            $('.woocommerce-error').remove();
-
-            $('.wc-block-components-notice-banner').remove();
-
-            $('.woocommerce-message').remove();
-
-            $('.woocommerce-info').remove();
+            $('.woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper, .woocommerce-error, .wc-block-components-notice-banner, .woocommerce-message, .woocommerce-info, .bytenft-error-wrap').remove();
         },
 
-        reset: function (keepDisabled = false) {
-
-            this.state.submitting = false;
-
-            const $blockButton = $(
-                '.wc-block-components-checkout-place-order-button'
-            );
-
-            const $classicButton = $(
-                'button[name="woocommerce_checkout_place_order"]'
-            );
-
-            const $button = $blockButton.length
-                ? $blockButton
-                : $classicButton;
-
-            if (!$button.length) {
-                return;
-            }
-
-            if (keepDisabled) {
-
-                $button
-                    .prop('disabled', true)
-                    .addClass('loading')
-                    .text('Processing...');
-
-                return;
-            }
-
-            $button
-                .prop('disabled', false)
-                .removeClass('loading')
-                .text(
-                    this.state.buttonText || 'Place order'
-                );
+        getBillingEmail: function ($f) {
+            return $('body').find('#billing_email, #email, input[type="email"]').first().val();
         },
 
-        /* =========================================================
-         * SANITIZATION
-         * ========================================================= */
+        getPhoneNumber: function ($f) {
+            return $('body').find('input[name="billing_phone"], input[type="tel"]').first().val();
+        },
+
+        isValidEmail: function (e) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+        },
+
+        isValidPhoneNumber: function (p) {
+            if (!p) return true;
+            const cleaned = p.replace(/[\s\-().]/g, '');
+            return (/^(\+1|1)?\d{10}$/.test(cleaned) || /^(\+|00)[1-9]\d{6,14}$/.test(cleaned) || /^\+?\d{5,15}$/.test(cleaned));
+        },
 
         bindInputSanitization: function () {
             const selectors = `
-                #billing_first_name,
-                #billing-first_name,
-                #billing_last_name,
-                #billing-last_name,
-                #billing_city,
-                #billing-city,
-                input[name="billing_first_name"],
-                input[name="billing_last_name"],
-                input[name="billing_city"]
+                #bytenft_card_holder, #billing_first_name, #billing_last_name, #billing_city,
+                input[name="billing_first_name"], input[name="billing_last_name"], input[name="billing_city"],
+                input[name="shipping_first_name"], input[name="shipping_last_name"], input[name="shipping_city"]
             `;
 
-            const sanitizeInput = (input) => {
-                const clean = input.value.replace(
-                    /[^A-Za-z\s]/g,
-                    ''
-                );
-
-                if (input.value !== clean) {
-                    Object.getOwnPropertyDescriptor(
-                        HTMLInputElement.prototype,
-                        'value'
-                    ).set.call(input, clean);
-
-                    input.dispatchEvent(
-                        new Event('input', { bubbles: true })
-                    );
-                }
-            };
-
-            $(document).on(
+            $(document).off('input keyup blur change paste', selectors).on(
                 'input keyup blur change paste',
                 selectors,
                 function () {
-                    const input = this;
-                    setTimeout(() => {
-                        sanitizeInput(input);
-                    }, 0);
+                    const clean = this.value.replace(/[^A-Za-z\s\-']/g, '');
+                    if (this.value !== clean) {
+                        this.value = clean;
+                    }
                 }
             );
-            
 
-            $('#billing_address_1')
-                .on('input', function () {
-
-                    this.value = this.value.replace(
-                        /[^A-Za-z0-9\s,.\-#]/g,
-                        ''
-                    );
-                });
+            $(document).off('input', '#billing_address_1, #shipping_address_1').on(
+                'input',
+                '#billing_address_1, #shipping_address_1',
+                function () {
+                    this.value = this.value.replace(/[^A-Za-z0-9\s,.\-#]/g, '');
+                }
+            );
         }
     };
 
     $(document).ready(function () {
-
         BytenftCheckout.init();
     });
 
