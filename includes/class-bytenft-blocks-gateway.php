@@ -31,7 +31,7 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 	}
 
 	public function get_payment_method_data() {
-         $title       = $this->settings['title'] ?? 'ByteNFT';
+		$title       = $this->settings['title'] ?? 'ByteNFT';
         $description = $this->settings['description'] ?? '';
 
 		if (WC()->cart) {
@@ -44,8 +44,12 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 			$gateway  = $gateways['bytenft'] ?? null;
 			if ($gateway && method_exists($gateway, 'get_checkout_info_for_amount')) {
 				$info = $gateway->get_checkout_info_for_amount($amount);
-				if (!empty($info['title']))    $title       = $info['title'];
-				if (!empty($info['subtitle'])) $description = $info['subtitle'];
+				if (!empty($info['title'])) {
+					$title = sanitize_text_field($info['title']);
+				}
+				if (!empty($info['subtitle'])) {
+					$description = sanitize_textarea_field($info['subtitle']);
+				}
 			}
 		}
 		return [
