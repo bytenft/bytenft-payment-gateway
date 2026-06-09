@@ -29,6 +29,7 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 = 1.0.17 =
 * Enables merchants using multiple ByteNFT accounts to track sales separately.
+* Fix FunnelKit Compatibility Issue Causing Shipping Address Override
 
 = 1.0.16 =
 * Updated referrer URL handling in the payment flow.
@@ -98,7 +99,8 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 == Upgrade Notice ==
 
 = 1.0.17 =
-Restores account-specific payment titles on checkout, allowing sales and reporting tools to distinguish transactions by ByteNFT account. Update recommended for merchants using multiple accounts.
+* Restores account-specific payment titles on checkout, allowing sales and reporting tools to distinguish transactions by ByteNFT account. Update recommended for merchants using multiple accounts.
+* Fix FunnelKit Compatibility Issue Causing Shipping Address Override
 
 = 1.0.16 =
 Improved compatibility with merchant sites by enhancing referrer URL management and resolving PO Box address validation and redirection conflicts with other payment gateways.

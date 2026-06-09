@@ -144,6 +144,7 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 
 ### Version 1.0.17
 - Enables merchants to track sales separately for individual ByteNFT accounts.
+- Fix FunnelKit Compatibility Issue Causing Shipping Address Override
 
 ### Version 1.0.16
 - Updated referrer URL handling in the payment flow.
