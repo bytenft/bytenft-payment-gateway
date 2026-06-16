@@ -686,6 +686,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		$is_success = ($state === 'success');
 
+		if ($response_data['transaction_status'] && $response_data['transaction_status'] == 'processing') {
+			$state = 'processing';
+		}
 		// -------------------------
 		// MESSAGE
 		// -------------------------
