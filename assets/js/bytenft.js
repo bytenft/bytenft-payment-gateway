@@ -381,6 +381,12 @@
         },
 
         finish: function () {
+
+            if (this.state.popupInterval) {
+                clearInterval(this.state.popupInterval);
+                this.state.popupInterval = null;
+            }
+
             this.setStatus('done');
             this.reset(true);
 
@@ -612,7 +618,7 @@
                     'json'
                 );
 
-            }, 800); // small check ONLY for popup close detection
+            }, 1000); // small check ONLY for popup close detection
         },
 
         /* =========================================================
@@ -729,11 +735,16 @@
          * ========================================================= */
 
         reset: function (keepDisabled = false) {
+
+            if (this.state.popupInterval) {
+                clearInterval(this.state.popupInterval);
+                this.state.popupInterval = null;
+            }
+
             this.state.submitting = false;
             this.state.status = 'idle';
 
             this.state.popup = null;
-            this.state.popupInterval = null;
             this.state.orderId = null;
             this.state.button = null;
             this.state.responseHandled = false;
