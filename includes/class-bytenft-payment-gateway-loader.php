@@ -549,7 +549,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		// API CALL
 		// -------------------------
-		$payment_token = $order->get_meta('_bytenft_pay_id');
+		$payment_token = $order->get_meta('_bytenft_active_pay_id');
+
+		if (empty($payment_token)) {
+			$payment_token = $order->get_meta('_bytenft_pay_id');
+		}
 
 		$response = wp_remote_post(
 			$this->get_api_url('/api/update-txn-status'),

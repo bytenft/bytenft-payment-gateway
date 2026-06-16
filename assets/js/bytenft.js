@@ -29,7 +29,8 @@
             buttonText: '',
             requestInFlightClassic: false,
             requestInFlightBlock: false,
-            responseHandled: false
+            responseHandled: false,
+            finalSuccess: false
         },
 
         /* =========================================================
@@ -386,6 +387,7 @@
             this.state.responseHandled = false;
             this.state.requestInFlightClassic = false;
             this.state.requestInFlightBlock = false;
+            this.state.finalSuccess = false;
 
             setTimeout(() => {
                 this.setStatus('idle');
@@ -543,6 +545,12 @@
 
             self.state.popupInterval = setInterval(function () {
 
+                 if (self.state.finalSuccess) {
+                    clearInterval(self.state.popupInterval);
+                    self.state.popupInterval = null;
+                    return;
+                }
+
                 const popupStillOpen =
                     self.state.popup &&
                     !self.state.popup.closed;
@@ -579,7 +587,13 @@
 
                             console.log('[Bytenft] Payment success → redirect');
 
+                            self.state.finalSuccess = true;
+
+                            clearInterval(self.state.popupInterval);
+                            self.state.popupInterval = null;
+
                             self.cleanupPopup();
+
                             window.location.replace(redirectUrl);
                             return;
                         }
@@ -725,6 +739,7 @@
             this.state.responseHandled = false;
             this.state.requestInFlightClassic = false;
             this.state.requestInFlightBlock = false;
+            this.state.finalSuccess = false;
 
             const $button = $('.wc-block-components-checkout-place-order-button, button[name="woocommerce_checkout_place_order"], #wcf-order-place-btn');
 
