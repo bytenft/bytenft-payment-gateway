@@ -1110,37 +1110,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			// -------------------------------------------------
-			// 5.1 ACTIVE PAYMENT LINK PROTECTION
-			// -------------------------------------------------
-
-			$existing_pay_id = $order->get_meta('_bytenft_active_pay_id');
-			$pay_id_updated  = (int) $order->get_meta('_bytenft_pay_id_updated_at');
-
-			if (
-				!empty($existing_pay_id)
-				&& in_array($status, ['pending', 'on-hold'], true)
-				&& $pay_id_updated > 0
-				&& (time() - $pay_id_updated) < (5 * HOUR_IN_SECONDS)
-			) {
-
-				ByteNFT_Payment_Gateway_Logger::warning(
-					$log_prefix . ' Existing active payment link detected',
-					[
-						'order_id' => $order_id,
-						'pay_id'   => $existing_pay_id,
-					]
-				);
-
-				return $this->build_response(
-					'fail',
-					'A payment request already exists for this order. Please complete the existing payment.',
-					[],
-					409,
-					$order_id
-				);
-			}
-
-			// -------------------------------------------------
 			// 6. SANDBOX FLAG (UNCHANGED)
 			// -------------------------------------------------
 			if ($this->sandbox) {
