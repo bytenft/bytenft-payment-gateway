@@ -70,7 +70,10 @@ add_filter('woocommerce_get_checkout_order_received_url', function($url, $order)
 		)
 	);
 
-    $is_valid =	in_array($wc_status, ['processing', 'completed'], true) && $success_meta === 'yes';
+    $is_valid =
+	in_array($wc_status, ['processing', 'completed'], true)
+	|| $success_meta === 'yes'
+	|| $engine_state === 'success';
 
 	if (!$is_valid) {
 		ByteNFT_Payment_Gateway_Logger::info(
