@@ -95,6 +95,7 @@ function bytenft_on_plugin_activate() {
 	// Activate cron
 	if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
 		BYTENFT_PAYMENT_GATEWAY_Loader::get_instance()->activate_cron_job();
+		BYTENFT_PAYMENT_GATEWAY_Loader::get_instance()->bytenft_send_plugin_status(1, 0);
 	}
 }
 
@@ -102,6 +103,7 @@ function bytenft_on_plugin_deactivate() {
 	// Deactivate cron
 	if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
 		BYTENFT_PAYMENT_GATEWAY_Loader::get_instance()->deactivate_cron_job();
+		BYTENFT_PAYMENT_GATEWAY_Loader::get_instance()->bytenft_send_plugin_status(0, 0);
 	}
 }
 
