@@ -572,6 +572,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$api_url       = esc_url($this->base_url . '/api/plugin/check/plugin');
 			$plugin_version = BYTENFT_PLUGIN_VERSION;
 
+			global $wp_version;
+
 			$body = [
 				'valid_accounts' => $valid_accounts,
 				'plugin_status'  => $enabled === 'yes' ? 1 : 0,
@@ -579,6 +581,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'gateway_loaded' => 0,
 				'group_id'       => get_option('bytenft_group_id'),
 				'domain_name'    => parse_url(home_url(), PHP_URL_HOST),
+				'valid_accounts'        => $valid_accounts,
+				'plugin_status'         => $enabled === 'yes' ? 1 : 0,
+				'plugin_version'        => $plugin_version,
+				'wordpress_version'     => $wp_version,
+				'woocommerce_version'   => class_exists('WooCommerce') ? WC()->version : null,
+				'woocommerce_db_version'=> get_option('woocommerce_db_version'),
+				'gateway_loaded'        => 0,
+				'group_id'              => get_option('bytenft_group_id'),
+				'domain_name'           => parse_url(home_url(), PHP_URL_HOST),
 			];
 
 			wp_remote_post($api_url, [
@@ -1546,6 +1557,22 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$billing_country   = sanitize_text_field($order->get_billing_country());
 		$billing_state     = sanitize_text_field($order->get_billing_state());
 
+		if (strlen(trim($first_name)) < 3) {
+			wc_add_notice(__('First name must contain at least 3 characters.', 'bytenft-payment-gateway'), 'error');
+		}
+
+		if (strlen(trim($last_name)) < 3) {
+			wc_add_notice(__('Last name must contain at least 3 characters.', 'bytenft-payment-gateway'), 'error');
+		}
+
+		if (strlen(trim($billing_address_1)) < 3) {
+			wc_add_notice(__('Please enter a valid address (minimum 3 characters).', 'bytenft-payment-gateway'), 'error');
+		}
+
+		if (strlen(trim($billing_city)) < 3) {
+			wc_add_notice(__('Please enter a valid city name (minimum 3 characters).', 'bytenft-payment-gateway'), 'error');
+		}
+
 		$redirect_url = esc_url_raw(add_query_arg([
 			'order_id' => $order_id,
 			'key'      => $order->get_order_key(),
@@ -1700,8 +1727,73 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 	}
 
+	/**
+	 * Restricted states where Byte payment gateway should be hidden.
+	 *
+	 * @return array
+	 */
+	private function get_restricted_states() {
+		return array( 'NY', 'AK' , 'MN');
+	}
+
+	/**
+	 * Check if current customer state is restricted.
+	 *
+	 * @return bool
+	 */
+	private function is_restricted_state() {
+
+		$restricted_states = $this->get_restricted_states();
+
+		$billing_state  = '';
+		$shipping_state = '';
+
+		// Checkout posted data (AJAX checkout updates)
+		if ( isset( $_POST['post_data'] ) ) {
+			parse_str( wp_unslash( $_POST['post_data'] ), $posted_data );
+
+			$billing_state  = isset( $posted_data['billing_state'] ) ? wc_clean( $posted_data['billing_state'] ) : '';
+			$shipping_state = isset( $posted_data['shipping_state'] ) ? wc_clean( $posted_data['shipping_state'] ) : '';
+		} else {
+
+			// Standard checkout/customer session
+			$customer = WC()->customer;
+
+			if ( $customer ) {
+				$billing_state  = $customer->get_billing_state();
+				$shipping_state = $customer->get_shipping_state();
+			}
+
+			// Direct POST fallback
+			if ( isset( $_POST['billing_state'] ) ) {
+				$billing_state = wc_clean( wp_unslash( $_POST['billing_state'] ) );
+			}
+
+			if ( isset( $_POST['shipping_state'] ) ) {
+				$shipping_state = wc_clean( wp_unslash( $_POST['shipping_state'] ) );
+			}
+		}
+
+		$billing_state  = strtoupper( trim( $billing_state ) );
+		$shipping_state = strtoupper( trim( $shipping_state ) );
+
+		return (
+			in_array( $billing_state, $restricted_states, true ) ||
+			in_array( $shipping_state, $restricted_states, true )
+		);
+	}
+
 	public function validate_fields() {
 		if (!$this->check_for_sql_injection()) return false;
+
+		/**
+		 * Block restricted states.
+		 * Prevent direct checkout submission even if gateway is forced.
+		 */
+		if ( $this->is_restricted_state() ) {
+			wc_add_notice(__('Bytenft payment is not available in your state.', 'bytenft-payment-gateway'), 'error');
+			return false;
+		}
 
 		if ($this->get_option('show_consent_checkbox') === 'yes') {
 			$nonce = isset($_POST['bytenft_nonce']) ? sanitize_text_field(wp_unslash($_POST['bytenft_nonce'])) : '';
@@ -1782,6 +1874,23 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$flow = 'Checkout (Blocks)';
 		} elseif ($is_ajax) {
 			$flow = 'Checkout (AJAX)';
+		}
+
+		// =====================================================
+		// STEP 3A: RESTRICTED STATES CHECK
+		// =====================================================
+		if ( $this->is_restricted_state() ) {
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				'ByteNFT Gateway Decision',
+				[
+					'result' => 'HIDDEN',
+					'reason' => 'Restricted billing/shipping state',
+					'flow'   => $flow,
+				]
+			);
+
+			return $this->hide_gateway( $available_gateways, $gateway_id );
 		}
 
 		// =====================================================
@@ -1952,6 +2061,21 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 
+		if (!empty($available_gateways[$gateway_id]) && is_object($available_gateways[$gateway_id])) {
+			$display_title = !empty($selected['checkout_title'])
+				? $selected['checkout_title']
+				: ($selected['title'] ?? '');
+
+			if (!empty($display_title)) {
+				$available_gateways[$gateway_id]->title = sanitize_text_field($display_title);
+			}
+
+			if (!empty($selected['checkout_subtitle'])) {
+				$available_gateways[$gateway_id]->description = sanitize_textarea_field($selected['checkout_subtitle']);
+			}
+		}
+
+
 		return $available_gateways;
 	}
 	private function send_plugin_logs($accounts, $public_key, $secret_key, $amount, $gateway_loaded, $pluginLogApiUrl, $force_refresh)
@@ -1961,11 +2085,16 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$group_id       = get_option('bytenft_group_id');
 		$cache_base     = 'bytenft_daily_limit_' . md5($public_key . $amount);
 
+		global $wp_version;
+
 		$plugin_logs_data = [
 			'valid_accounts' => $accounts,
 			'gateway_loaded' => $gateway_loaded,
 			'plugin_status'  => $gateway_loaded,
 			'plugin_version' => $plugin_version,
+			'wordpress_version'     => $wp_version,
+			'woocommerce_version'   => class_exists('WooCommerce') ? WC()->version : null,
+			'woocommerce_db_version'=> get_option('woocommerce_db_version'),
 			'api_public_key' => $public_key,
 			'api_secret_key' => $secret_key,
 			'is_sandbox'     => $this->sandbox,

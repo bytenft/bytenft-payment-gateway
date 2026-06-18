@@ -153,9 +153,7 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function apply($order, $state, $event_type, $payload)
     {
-        if (self::get_state($order) === 'success') {
-            return;
-        }
+        if (self::get_state($order) === 'success') { return; }
 
         $order_id = $order->get_id();
         $payment_token = $payload['payment_token'] ?? '';
@@ -171,18 +169,7 @@ class BYTENFT_PAYMENT_ENGINE
 
         $order->update_meta_data('_bytenft_state_lock', $state_lock_key);
 
-        $wc_status = match ($state) {
-            'success'    => self::get_success_wc_status(),
-            'failed'     => 'failed',
-            'cancelled'  => 'cancelled',
-            'expired'    => 'failed',
-            default      => null
-        };
-
-        if (!$wc_status) return;
-
-        $order->update_status($wc_status, '');
-
+        // Always save engine state
         $order->update_meta_data('_bytenft_state', $state);
         $order->update_meta_data('_bytenft_last_event', $event_type);
         $order->update_meta_data('_bytenft_last_event_time', current_time('mysql'));
@@ -193,6 +180,18 @@ class BYTENFT_PAYMENT_ENGINE
 
         if ($state === 'success') {
             $order->update_meta_data('_bytenft_payment_success', 'yes');
+        }
+
+        $wc_status = match ($state) {
+            'success'    => self::get_success_wc_status(),
+            'failed'     => 'failed',
+            'cancelled'  => 'cancelled',
+            'expired'    => 'failed',
+            default      => null
+        };
+
+        if ($wc_status) {
+            $order->update_status($wc_status, '');
         }
 
         $order->save();
@@ -426,13 +425,13 @@ class BYTENFT_PAYMENT_ENGINE
     private static function can_transition($from, $to)
     {
         if ($from === 'success') return false;
-        if ($from === 'processing') return false;
 
         $map = [
-            'pending' => ['cancelled','processing','success','failed'],
+            'pending' => ['processing','cancelled','success','failed'],
             'failed' => ['failed','success','processing','cancelled'],
             'cancelled' => ['success'],
             'expired' => ['failed','cancelled','success'],
+            'processing' => ['success', 'failed', 'cancelled', 'expired'],
         ];
 
         return in_array($to, $map[$from] ?? [], true);
@@ -443,6 +442,14 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function get_state($order)
     {
+        // Get the merchant's chosen success status from settings (processing or completed)
+        $success_wc_status = self::get_success_wc_status();
+        
+        // If WooCommerce is already sitting on the successful status, force 'success' state
+        if ($order->has_status([$success_wc_status, 'processing', 'completed'])) {
+            return 'success';
+        }
+
         return $order->get_meta('_bytenft_state') ?: 'pending';
     }
 
