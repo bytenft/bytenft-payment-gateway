@@ -55,6 +55,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$this->load_gateway_settings();
 
 		$this->register_hooks();
+
+		add_action('admin_notices', [$this->admin_notices, 'display_notices']);
 	}
 
 	/**
@@ -619,8 +621,39 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				ByteNFT_Payment_Gateway_Logger::info("Admin settings error: {$error}");
 			}
 		}
+	}
 
-		add_action('admin_notices', [$this->admin_notices, 'display_notices']);
+	public function is_available()
+	{
+		// 1. Must be enabled in WooCommerce settings
+		if ($this->enabled !== 'yes') {
+			return false;
+		}
+
+		// 2. Load accounts
+		$accounts = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
+
+		if (is_string($accounts)) {
+			$accounts = maybe_unserialize($accounts);
+		}
+
+		if (empty($accounts) || !is_array($accounts)) {
+			return false;
+		}
+
+		// 3. Check if ANY account is ACTIVE
+		foreach ($accounts as $account) {
+
+			$live_status    = strtolower($account['live_status'] ?? '');
+			$sandbox_status = strtolower($account['sandbox_status'] ?? '');
+
+			if ($live_status === 'active' || $sandbox_status === 'active') {
+				return true;
+			}
+		}
+
+		// 4. No active accounts → hide gateway
+		return false;
 	}
 
 	public function get_updated_account() {

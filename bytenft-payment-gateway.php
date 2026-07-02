@@ -39,7 +39,23 @@ spl_autoload_register(function ($class) {
 	}
 });
 
-BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
+add_filter('woocommerce_payment_gateways', function ($methods) {
+
+	if (!class_exists('WC_Payment_Gateway')) {
+		return $methods;
+	}
+
+	if (class_exists('BYTENFT_PAYMENT_GATEWAY')) {
+		$methods[] = 'BYTENFT_PAYMENT_GATEWAY';
+	}
+
+	return $methods;
+
+}, 1);
+
+add_action('plugins_loaded', function () {
+	BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
+}, 1);
 
 add_action('woocommerce_cancel_unpaid_order', 'bytenft_cancel_unpaid_order_action');
 add_action('woocommerce_order_status_cancelled', 'bytenft_cancel_unpaid_order_action');
