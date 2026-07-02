@@ -1,0 +1,162 @@
+=== ByteNFT Payment Gateway ===
+Contributors: ByteNFT
+Tags: woocommerce, payment gateway, fiat, ByteNFT
+Requires at least: 5.0
+Tested up to: 7.0
+Stable tag: 1.0.17
+License: GPLv3 or later
+License URI: https://www.gnu.org/licenses/gpl-3.0.html
+
+The ByteNFT Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fiat payments to sell products on your WooCommerce store.
+
+== Description ==
+
+This plugin integrates ByteNFT Payment Gateway with WooCommerce, enabling you to accept fiat payments. 
+
+== Installation ==
+
+1. Download the plugin ZIP file from GitHub.
+2. Extract the ZIP file and upload it to the `wp-content/plugins` directory.
+3. Activate the plugin through the 'Plugins' menu in WordPress.
+
+== Frequently Asked Questions ==
+
+= How do I obtain API keys? =
+
+Visit the DFin website and log in to your account. Navigate to Developer Settings to generate or retrieve API keys.
+
+== Changelog ==
+
+= 1.0.17 =
+* Enables merchants using multiple ByteNFT accounts to track sales separately.
+* Fix FunnelKit Compatibility Issue Causing Shipping Address Override
+
+= 1.0.16 =
+* Updated referrer URL handling in the payment flow.
+* Improved popup redirect behavior using referrer URL enhancements.
+* PO Box Address Validation and Redirection Conflict with Other Payment Gateways.
+
+= 1.0.15 =
+* Resolved the WooCommerce database version mismatch issue.
+
+= 1.0.14 =
+* Improved payment order synchronization logic for better reliability and consistency between payment gateway and WooCommerce orders.
+* Optimized payment status handling to reduce race conditions and ensure accurate final order states.
+* Minor code improvements for enhanced stability and maintainability.
+* W provider support
+
+= 1.0.13 =
+* Payment Gateway Visibility Fix: Resolved an issue where when the payment limit was reached, other available payment methods were not displayed correctly.
+* PO Box Validation Improvements: Enhanced billing address validation to prevent PO Box entries where restricted, improving address accuracy and reducing failed or unsupported transactions.
+
+= 1.0.12 =
+* Enhanced phone number normalization and validation with improved error messages.
+* Ensured failed, cancelled, or expired orders now update their status correctly in WordPress/WooCommerce.
+
+= 1.0.11 =
+* Hide plugin Fix: Hide Plugin Fix
+
+= 1.0.10 =
+* Update: Removed transaction limit check logic so the plugin remains available regardless of transaction limits.
+
+= 1.0.9 =
+* Blank Page Fix: Resolved a white screen issue caused by improper initialization and unexpected output.
+
+= 1.0.8 =
+* Fatal Error Fix: Wrapped wc_clear_notices() with function existence checks to prevent PHP fatal errors when WooCommerce is not loaded.
+
+= 1.0.7 =
+* Removed country-based phone number restrictions to support international customers.
+* Added compatibility with WooCommerce block-based checkout.
+* Minor internal optimizations and validation refinements.
+
+= 1.0.6 =
+* Fixed expired and manually cancelled order redirection to the Success Page with correct status in the portal.
+* Improved validation messages to specify exactly what needs to be corrected (email, address, etc.).
+* Updated the default plugin title for better clarity.
+* Added validation to prevent PO Box addresses during checkout.
+
+= 1.0.5 =
+* Updated plugin initialization hook priority on `plugins_loaded` from 11 to 10 for improved load order.
+* Updated the default plugin title.
+
+= 1.0.4 =
+* Enhanced phone number normalization and validation with improved error messages.
+
+= 1.0.3 =
+* Added **Sardine payment support** to enhance security, compliance, and fraud protection for transactions.
+
+= 1.0.2 =
+* Added support for multiple currencies to enhance payment flexibility.
+
+= 1.0.1 =
+* Adjusted the default plugin title for improved clarity.
+* Resolved an issue where payment links were not functioning correctly on iOS devices.
+
+= 1.0.0 =
+* Initial release.
+
+== Upgrade Notice ==
+
+= 1.0.17 =
+* Restores account-specific payment titles on checkout, allowing sales and reporting tools to distinguish transactions by ByteNFT account. Update recommended for merchants using multiple accounts.
+* Fix FunnelKit Compatibility Issue Causing Shipping Address Override
+
+= 1.0.16 =
+Improved compatibility with merchant sites by enhancing referrer URL management and resolving PO Box address validation and redirection conflicts with other payment gateways.
+
+= 1.0.15 =
+Resolved the WooCommerce database version mismatch issue.
+
+= 1.0.14 =
+This update improves payment synchronization, enhances order status reliability, and adds support for the W payment provider. It also fixes potential inconsistencies in order status updates to ensure more reliable payment processing and accurate order tracking.
+
+= 1.0.13 =
+This update fixes a critical issue where available payment methods were not displayed when limits were reached and improves billing address validation by blocking unsupported PO Box entries. It is recommended to update immediately for improved checkout reliability.
+
+= 1.0.12 =
+* Update to this version for improved phone number validation and better error messages during checkout.
+* Ensured failed, cancelled, or expired orders now update their status correctly in WordPress/WooCommerce.
+
+= 1.0.11 =
+* Hide plugin Fix: Hide Plugin Fix
+
+= 1.0.10 =
+* Removed the transaction limit check logic from the plugin so it remains available regardless of transaction limits.
+
+= 1.0.9 =
+* Fixed a blank page (white screen) issue that could occur due to unexpected output or initialization conflicts. Update recommended for improved stability.
+
+= 1.0.8 =
+* Fixed a PHP fatal error caused by wc_clear_notices() in non-checkout or admin pages.
+
+= 1.0.7 =
+* Improves global phone number support and adds compatibility with WooCommerce block-based checkout. Recommended update.
+
+= 1.0.6 =
+* Expired and manually cancelled orders now redirect correctly with proper status.
+* Validation messages now specify exactly what needs to be corrected.
+* Default plugin title updated for clarity.
+* Added validation to prevent PO Box addresses during checkout.
+
+= 1.0.5 =
+* Recommended update to ensure correct plugin load order and updated default title.
+
+= 1.0.4 =
+* Update to this version for improved phone number validation and better error messages during checkout.
+
+= 1.0.3 =
+* Update to this version to enable Sardine integration for improved fraud prevention and secure transaction processing.
+
+= 1.0.2 =
+* Introduces multi-currency support, allowing greater flexibility and a smoother checkout experience for international customers.
+
+= 1.0.1 =
+* This update refines the default plugin title and resolves iOS payment link issues to ensure smoother checkout experiences.
+
+= 1.0.0 =
+Initial release.
+
+== Support ==
+
+For support, visit: [https://pay.bytenft.xyz/contact-us](https://pay.bytenft.xyz/contact-us)

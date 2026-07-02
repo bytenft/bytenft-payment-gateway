@@ -1,0 +1,223 @@
+# ByteNFT Payment Gateway
+
+The ByteNFT Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fiat payments to sell products on your WooCommerce store.
+
+## Plugin Information
+
+**Contributors:** ByteNFT  
+**Tags:** woocommerce, payment gateway, fiat, ByteNFT  
+**Requires at least:** 6.2  
+**Tested up to:** 6.9  
+**Stable tag:** 1.0.17  
+**License:** GPLv3 or later  
+**License URI:** [GPLv3 License](https://www.gnu.org/licenses/gpl-3.0.html)
+
+## Support
+
+For any issues or enhancement requests with this plugin, please contact the ByteNFT support team. Ensure you provide your plugin, WooCommerce, and WordPress version where applicable to expedite troubleshooting.
+
+## Getting Started
+
+1. Obtain your API keys from your ByteNFT dashboard in your Developer Settings - API Keys.
+2. Follow the plugin installation instructions below.
+3. You are ready to take payments in your WooCommerce store!
+
+## Installation
+
+### Minimum Requirements
+
+- WooCommerce 8.9 or greater
+- PHP version 8.0 or greater
+
+### Steps
+
+## 1. Download Plugin from GitHub
+
+- Visit the GitHub repository for the ByteNFT Payment Gateway plugin at [GitHub Repository URL](https://github.com/bytenft/bytenft-payment-gateway).
+- Download the plugin ZIP file to your local machine.
+
+## 2. Install the Plugin in WordPress
+
+- **Extract the Downloaded ZIP file to your Local Machine:**
+  Extract the ZIP file containing the plugin files.
+
+- **Upload via FTP or File Manager:**
+  - Connect to your WordPress site via FTP or use File Manager in your hosting control panel.
+  - Navigate to `wp-content/plugins` directory.
+  - Upload the extracted plugin folder to the plugins directory on your server.
+
+## 3. Activate the Plugin
+
+- **Log in to WordPress Admin Dashboard:**
+  Log in to your WordPress Admin Dashboard.
+- **Navigate to Installed Plugins:**
+  Go to `Plugins` > `Installed Plugins`.
+- **Activate ByteNFT Payment Gateway:**
+  - Locate the ByteNFT Payment Gateway plugin in the list.
+  - Click `Activate` to enable the plugin.
+
+## 4. Obtain API Keys from ByteNFT Developer Settings Dashboard
+
+- **Log in to ByteNFT Account:**
+  Visit the ByteNFT website and log in to your account.
+- **Navigate to Developer Settings to get API Keys:**
+  Once logged in, find and access the Developer Settings.
+- **Generate or Retrieve API Keys:**
+  If API keys are not already generated, you can create new ones.
+  Locate the API Keys or Credentials section.
+  Generate or retrieve the required API keys (e.g., Public Key, Secret Key) needed for integration with the ByteNFT Payment Gateway plugin.
+
+## 5. Update API Keys in WooCommerce Settings
+
+- **Navigate to WooCommerce Settings:**
+  Log in to your WordPress Admin Dashboard.
+  Go to `WooCommerce` > `Settings`.
+- **Access the Payments Tab:**
+  Click on the `Payments` tab at the top of the settings page.
+- **Select ByteNFT Payment Gateway:**
+  Scroll down to find and select the ByteNFT Payment Gateway among the available payment methods.
+
+- **Add Plugin General Details:**
+
+  - **Title** : ByteNFT Payment Gateway
+    Description
+  - **Description** : Secure payments with ByteNFT Payment Gateway.
+  - **Enable/Disable Sandbox Mode** : Toggle sandbox mode per account.
+  - **Payment Accounts (Add Multiple Accounts)** :
+    - **Adding a New Account**
+      1. Click on **Add Account** to create a new account.
+      2. Enter a **unique account title**.
+      3. Provide details for each account:
+         - _Account Title_
+         - _Priority:_ Set an order for the accounts.
+         - _Live Mode:_ Public & Secret Keys (mandatory)
+         - _Sandbox Mode:_ Public & Secret Keys (optional)
+  - **Order Status** : Select Processing or Completed.
+  - **Show Consent Checkbox** : Enabling this option will display a consent checkbox on the checkout page.
+
+- **Save Changes:**
+  Click `Save changes` at the bottom of the page to update and save your API key settings.
+
+## 6. Place Order via ByteNFT Payment Option
+
+- **Visit Your Store Page and Add Products to Cart:**
+  Navigate to your WordPress site's store page.
+  Browse and add desired products to the cart.
+
+- **Proceed to Checkout:**
+  Go to your WordPress site's checkout page to review your order details.
+
+- **Check Available Payment Methods:**
+  Ensure that the ByteNFT Payment Gateway option is visible among the available payment methods listed on the checkout page.
+
+- **Verify Integration:**
+  Confirm that customers can select the ByteNFT Payment Gateway as a payment option when placing their orders.
+
+## 7. Popup Window for Payment
+
+- **Secure Payment Processing:**
+  Upon selecting ByteNFT, a secure popup window will open for payment processing.
+
+## 8. Complete the Payment Process
+
+- **Follow Instructions:**
+  Follow the instructions provided in the popup window to securely complete the payment.
+
+## 9. Redirect to WordPress Website with Order Status
+
+- **After Successful Payment:**
+  Once the payment is successfully processed, the popup window will automatically close.
+  Customers will be redirected back to your WordPress site.
+
+## 10. Check Orders in WordPress
+
+- **Verify Order Status:**
+  Log in to your WordPress Admin Dashboard.
+  Navigate to `WooCommerce` > `Orders` to view all orders.
+  Check for the latest orders placed using the ByteNFT Payment Gateway to verify their status.
+
+## Documentation
+
+The official documentation for this plugin is available at: [https://pay.bytenft.xyz/docs/wordpress-plugin](https://pay.bytenft.xyz/docs/wordpress-plugin)
+
+## Changelog
+
+### Version 1.0.17
+- Enables merchants to track sales separately for individual ByteNFT accounts.
+- Fix FunnelKit Compatibility Issue Causing Shipping Address Override
+
+### Version 1.0.16
+- Updated referrer URL handling in the payment flow.
+- Improved popup redirect behavior using referrer URL enhancements.
+- PO Box Address Validation and Redirection Conflict with Other Payment Gateways.
+
+### Version 1.0.15
+- Resolved the WooCommerce database version mismatch issue.
+
+### Version 1.0.14
+- Improved payment order synchronization logic for better reliability and consistency between payment gateway and WooCommerce orders.
+- Optimized handling of payment status updates to reduce race conditions and ensure accurate final order states.
+- Minor code improvements for better stability and maintainability.
+- W provider support
+
+### Version 1.0.13
+- **Payment Gateway Visibility Fix:** Resolved an issue where when the payment limit was reached, other available payment methods were not displayed correctly.
+- **PO Box Validation Improvements:** Enhanced billing address validation to prevent PO Box entries where restricted, improving address accuracy and reducing failed or unsupported transactions.
+
+### Version 1.0.12
+- **Phone Number Validation:** Enhanced phone number normalization and validation with improved error messages.
+- **Order Status Handling:** Ensured failed, cancelled, or expired orders now update their status correctly in WordPress/WooCommerce.
+
+### Version 1.0.11
+- **Hide plugin Fix:** Hide Plugin Fix
+
+### Version 1.0.10
+- **Transaction Limit Check Removed:** Removed the transaction limit validation logic so the plugin remains available without restrictions based on transaction limits.
+
+### Version 1.0.9
+- **Blank Page (White Screen) Fix:** Resolved an issue causing a blank white screen in certain environments due to unexpected output and initialization conflicts.
+
+### Version 1.0.8
+- **Fatal Error Fix:** Wrapped `wc_clear_notices()` with function existence checks to prevent PHP fatal errors when WooCommerce is not loaded.
+
+### Version 1.0.7
+- **Global Phone Support:** Removed country-based phone number restrictions to allow international customers during checkout.
+- **Block-Based Checkout Support:** Added compatibility with WooCommerce block-based checkout for seamless integration with the new checkout experience.
+- **Stability Improvements:** Minor internal optimizations and validation refinements for improved reliability.
+
+### Version 1.0.6
+- **Redirection Fixes:** Fixed expired and manually cancelled order redirection to the Success Page with correct status in the portal.
+- **Validation Improvements:** Validation messages now specify exactly what is incorrect (email, address, etc.) for better customer guidance.
+- **Default Title Updated:** Modified the default plugin title for better clarity and consistency.
+- **PO Box Restriction:** Added validation to prevent PO Box addresses during checkout to ensure compliance with payment processing requirements.
+
+### Version 1.0.5
+- **Initialization Priority Updated:** Adjusted plugin initialization hook priority on `plugins_loaded` from `11` to `10` to ensure proper load order.
+- **Default Title Updated:** Modified the default plugin title for improved clarity and consistency.
+
+### Version 1.0.4
+- **Phone Number Validation:** Enhanced phone number normalization and validation with improved error messages.
+
+### Version 1.0.3
+- **Sardine Integration:** Added support for **Sardine payments**, providing enhanced fraud protection and compliance for secure transactions.
+
+### Version 1.0.2
+
+- **Currency Support:** Added multi-currency support to provide greater flexibility and improve the checkout experience for international customers.
+
+### Version 1.0.1
+
+- **Updated Default Title:** Adjusted the default plugin title for improved clarity.
+- **IOS Payment Link Fix:** Resolved an issue where payment links were not functioning correctly on iOS devices.
+
+### Version 1.0.0 (Initial Release)
+
+- **Initial Release:** Launched the ByteNFT Payment Gateway plugin with core payment integration functionality for WooCommerce.
+
+## Support
+
+For customer support, visit: [https://pay.bytenft.xyz/contact-us](https://pay.bytenft.xyz/contact-us)
+
+## Why Choose ByteNFT Payment Gateway?
+
+With the ByteNFT Payment Gateway, you can easily transfer fiat payments to sell products. Choose ByteNFT Payment Gateway as your WooCommerce payment gateway to access your funds quickly through a powerful and secure payment engine provided by ByteNFT.
