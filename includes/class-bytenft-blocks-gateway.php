@@ -59,8 +59,6 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 			'instructions'=> $this->settings['instructions'] ?? '',
 			'accounts'    => $this->settings['accounts'] ?? '',
 		];
-
-		error_log('ByteNFT Blocks Data: ' . print_r($data, true));
 	}
 }
 
@@ -78,12 +76,12 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
  * ─────────────────────────────────────────────────────────────────────────────
  */
 function bytenft_register_block_ajax_handlers() {
-	add_action('wp_ajax_bytenft_block_gateway_process',        'handle_bytenft_gateway_ajax');
-	add_action('wp_ajax_nopriv_bytenft_block_gateway_process', 'handle_bytenft_gateway_ajax');
+	add_action('wp_ajax_bytenft_block_gateway_process',        'bytenft_handle_block_gateway_ajax');
+	add_action('wp_ajax_nopriv_bytenft_block_gateway_process', 'bytenft_handle_block_gateway_ajax');
 }
 add_action('init', 'bytenft_register_block_ajax_handlers');
 
-function handle_bytenft_gateway_ajax() {
+function bytenft_handle_block_gateway_ajax() {
 
 	// ─────────────────────────────────────────────
 	// CONTEXT + LOG PREFIX (ADDED FOR DEBUGGING)
