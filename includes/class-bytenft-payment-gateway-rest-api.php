@@ -72,7 +72,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	    $general_settings = get_option('woocommerce_bytenft_settings');
 
 	    if (empty($accounts_data)) {
-	        ByteNFT_Payment_Gateway_Logger::warning('No account data found', ['source' => 'bytenft-payment-gateway']);
+	        ByteNFT_Payment_Gateway_Logger::warning('No account data found', ['source' => 'bytenft-payment-gateway-main']);
 	        return false;
 	    }
 
@@ -87,7 +87,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	        // Ensure valid array
 	        if (!is_array($account)) {
 	            ByteNFT_Payment_Gateway_Logger::warning('Skipping invalid account entry', [
-	                'source' => 'bytenft-payment-gateway',
+	                'source' => 'bytenft-payment-gateway-main',
 	                'account_id' => $account_id,
 	                'account_value' => $account
 	            ]);
@@ -99,13 +99,13 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	            : sanitize_text_field($account['live_public_key'] ?? '');
 
 	        ByteNFT_Payment_Gateway_Logger::info('Checking public key :: ' . $public_key, [
-	            'source' => 'bytenft-payment-gateway',
+	            'source' => 'bytenft-payment-gateway-main',
 	            'sandbox' => $sandbox,
 	        ]);
 
 	        if (!empty($public_key) && hash_equals($public_key, $api_key)) {
 	            ByteNFT_Payment_Gateway_Logger::info('Keys matched successfully', [
-	                'source' => 'bytenft-payment-gateway',
+	                'source' => 'bytenft-payment-gateway-main',
 	                'account_id' => $account_id,
 	            ]);
 	            return true;
@@ -125,7 +125,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	{
 		$method      = $request->get_method();
 		$params      = $request->get_params();
-		$log_context = ['source' => 'bytenft-payment-gateway'];
+		$log_context = ['source' => 'bytenft-payment-gateway-main'];
 
 		$data = isset($params['api_data']) ? $params['api_data'] : $params;
 

@@ -59,8 +59,6 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 			'instructions'=> $this->settings['instructions'] ?? '',
 			'accounts'    => $this->settings['accounts'] ?? '',
 		];
-
-		error_log('ByteNFT Blocks Data: ' . print_r($data, true));
 	}
 }
 
@@ -78,17 +76,23 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
  * ─────────────────────────────────────────────────────────────────────────────
  */
 function bytenft_register_block_ajax_handlers() {
-	add_action('wp_ajax_bytenft_block_gateway_process',        'handle_bytenft_gateway_ajax');
-	add_action('wp_ajax_nopriv_bytenft_block_gateway_process', 'handle_bytenft_gateway_ajax');
+	add_action('wp_ajax_bytenft_block_gateway_process',        'bytenft_handle_gateway_ajax');
+	add_action('wp_ajax_nopriv_bytenft_block_gateway_process', 'bytenft_handle_gateway_ajax');
 }
 add_action('init', 'bytenft_register_block_ajax_handlers');
 
-function handle_bytenft_gateway_ajax() {
+function bytenft_handle_gateway_ajax() {
 
 	// ─────────────────────────────────────────────
 	// CONTEXT + LOG PREFIX (ADDED FOR DEBUGGING)
 	// ─────────────────────────────────────────────
-	$orderID = WC()->session ? WC()->session->get('store_api_draft_order') : null;
+	$orderID = 0;
+	if (WC()->session) {
+		$orderID = WC()->session->get('store_api_draft_order');
+		if (!$orderID) {
+			$orderID = WC()->session->get('order_awaiting_payment');
+		}
+	}
 
 	$log_prefix = "[Order #{$orderID}]";
 	$log_ctx    = ['order_id' => $orderID];
