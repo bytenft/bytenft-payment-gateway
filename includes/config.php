@@ -1,3 +1,4 @@
+ 
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 
@@ -7,7 +8,7 @@ if (!defined('BYTENFT_PROTOCOL')) {
 }
 
 if (!defined('BYTENFT_HOST')) {
-    define('BYTENFT_HOST', 'pay.bytenft.xyz');
+    define('BYTENFT_HOST', 'qa.bytenft.xyz');
 }
 
 if (!defined('BYTENFT_BASE_URL')) {
