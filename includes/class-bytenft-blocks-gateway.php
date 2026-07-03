@@ -88,7 +88,13 @@ function bytenft_handle_gateway_ajax() {
 	// ─────────────────────────────────────────────
 	// CONTEXT + LOG PREFIX (ADDED FOR DEBUGGING)
 	// ─────────────────────────────────────────────
-	$orderID = WC()->session ? WC()->session->get('store_api_draft_order') : null;
+	$orderID = 0;
+	if (WC()->session) {
+		$orderID = WC()->session->get('store_api_draft_order');
+		if (!$orderID) {
+			$orderID = WC()->session->get('order_awaiting_payment');
+		}
+	}
 
 	$log_prefix = "[Order #{$orderID}]";
 	$log_ctx    = ['order_id' => $orderID];

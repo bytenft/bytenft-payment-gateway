@@ -18,7 +18,7 @@ class ByteNFT_Payment_Gateway_Logger {
 	private static function format_context($context)
 	{
 		$entry = [
-			'source' => 'bytenft-payment-gateway'
+			'source' => 'bytenft-payment-gateway-main'
 		];
 
 		if (!is_array($context)) {

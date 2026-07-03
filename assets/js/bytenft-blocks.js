@@ -59,3 +59,10 @@ function refreshBlockPaymentMethods() {
 
 // Example: Refresh after a custom event, or after a failed payment, or after a cart update
 // Call refreshBlockPaymentMethods() only in response to relevant events, not on every load.
+
+jQuery(function ($) {
+    $(document.body).on('change', 'input[name="radio-control-wc-payment-method-options"]', function () {
+        console.log("Payment method changed");
+        $(document.body).trigger('update_checkout');
+    });
+});
