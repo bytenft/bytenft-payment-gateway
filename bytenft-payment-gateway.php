@@ -5,7 +5,7 @@
  * Description: Use a Credit Card, Debit Card or Google Pay, Apple Pay to complete your purchase via USDC. The transaction will appear on your bank or card statement as *ByteNFT.
  * Author: ByteNFT
  * Author URI: https://pay.bytenft.xyz/
- * Text Domain: bytenft-payment-gateway-main
+ * Text Domain: bytenft-payment-gateway
  * Plugin URI: https://github.com/bytenft/bytenft-payment-gateway
  * Version: 1.0.17
  * License: GPLv3 or later
@@ -132,12 +132,12 @@ function bytenft_cancel_unpaid_order_action($order_id)
 			$order    = wc_get_order($order_id);
 
 			ByteNFT_Payment_Gateway_Logger::info('Fallback to latest unpaid placeholder order.', [
-				'source'  => 'bytenft-payment-gateway-main',
+				'source'  => 'bytenft-payment-gateway',
 				'context' => ['order_id' => $order_id],
 			]);
 		} else {
 			ByteNFT_Payment_Gateway_Logger::error('No unpaid placeholder orders found.', [
-				'source' => 'bytenft-payment-gateway-main',
+				'source' => 'bytenft-payment-gateway',
 			]);
 			return;
 		}
@@ -145,7 +145,7 @@ function bytenft_cancel_unpaid_order_action($order_id)
 
 	if (!$order) {
 		ByteNFT_Payment_Gateway_Logger::error('Order not found.', [
-			'source'  => 'bytenft-payment-gateway-main',
+			'source'  => 'bytenft-payment-gateway',
 			'context' => ['order_id' => $order_id],
 		]);
 		return;
@@ -158,7 +158,7 @@ function bytenft_cancel_unpaid_order_action($order_id)
 		if ($order->has_status('pending')) {
 			if ((time() - $pending_time) < (30 * 60)) {
 				ByteNFT_Payment_Gateway_Logger::info('Order still within pending timeout. Skipping cancel.', [
-					'source'  => 'bytenft-payment-gateway-main',
+					'source'  => 'bytenft-payment-gateway',
 					'context' => ['order_id' => $order_id],
 				]);
 				return;
@@ -170,7 +170,7 @@ function bytenft_cancel_unpaid_order_action($order_id)
 			wp_cache_delete('bytenft_payment_row_' . $order_id, 'bytenft_payment_gateway'); // Clear row cache
 
 			ByteNFT_Payment_Gateway_Logger::info('Order auto-cancelled due to unpaid timeout.', [
-				'source'  => 'bytenft-payment-gateway-main',
+				'source'  => 'bytenft-payment-gateway',
 				'context' => ['order_id' => $order_id],
 			]);
 		}
@@ -205,7 +205,7 @@ function bytenft_cancel_unpaid_order_action($order_id)
 
 		if (empty($uuid)) {
 			ByteNFT_Payment_Gateway_Logger::error('Missing or invalid UUID in payment link table.', [
-				'source'  => 'bytenft-payment-gateway-main',
+				'source'  => 'bytenft-payment-gateway',
 				'context' => ['order_id' => $order_id, 'uuid' => $uuid],
 			]);
 			return;
@@ -231,7 +231,7 @@ function bytenft_cancel_unpaid_order_action($order_id)
 
 		if (is_wp_error($response)) {
 			ByteNFT_Payment_Gateway_Logger::error("Cancel API call failed. Order ID: {$order_id}", [
-				'source'  => 'bytenft-payment-gateway-main',
+				'source'  => 'bytenft-payment-gateway',
 				'context' => [
 					'order_id' => $order_id,
 					'uuid'     => $uuid,
@@ -243,7 +243,7 @@ function bytenft_cancel_unpaid_order_action($order_id)
 			$decoded_response = json_decode($response_body, true);
 
 			ByteNFT_Payment_Gateway_Logger::info("Cancel API response received for Order ID: {$order_id}.", [
-				'source'  => 'bytenft-payment-gateway-main',
+				'source'  => 'bytenft-payment-gateway',
 				'context' => [
 					'order_id'       => $order_id,
 					'uuid'           => $uuid,
