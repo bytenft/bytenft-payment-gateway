@@ -253,7 +253,20 @@
                 self.handleBlockCheckout($form);
             }, true);
 
+            // Prevent native block context from bypassing validation filters
+            document.addEventListener('submit', function (e) {
+                const form = e.target;
+                if (!form.classList.contains('wc-block-checkout__form')) return;
 
+                const selected = form.querySelector(
+                    'input[name="radio-control-wc-payment-method-options"]:checked'
+                )?.value;
+
+                if (selected !== self.PAYMENT_METHOD) return;
+
+                e.preventDefault();
+                e.stopImmediatePropagation();
+            }, true);
         },
 
         handleBlockCheckout: function ($form) {
@@ -638,7 +651,6 @@
                 const name = $field.attr('name') || '';
 
                 if ($field.attr('type') === 'hidden') return;
-                if (!$field.is(':visible')) return;
 
                 if (name.indexOf('shipping_') === 0 && !isShippingActive) return;
 
