@@ -126,7 +126,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			ByteNFT_Payment_Gateway_Logger::warning(
 				'ByteNFT: gateway not found in WC registry during AJAX — fell back to manual instantiation.',
-				['source' => 'bytenft-payment-gateway-main']
+				['source' => 'bytenft-payment-gateway']
 			);
 		}
 
@@ -147,7 +147,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			if (!$orderID) {
 				$orderID = WC()->session->get('order_awaiting_payment');
 			}
-		}
+	    }
 
 		// Fallback: If it's a draft order OR if no order was found in the session, create/update the order with cart details and customer details
 		if (function_exists('wc_get_order') && !empty(WC()->cart) && !WC()->cart->is_empty()) {
@@ -218,7 +218,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		if($orderID){
 			$status = $bytenftPayment->process_payment($orderID);
 		}else{
-			wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway-main'), 'error');
+			wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
 			$status = ['result' => 'fail','error' => 'Invalid order.'];
 		}
 		
@@ -351,7 +351,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	public function bytenft_plugin_action_links($links)
 	{
 		$plugin_links = [
-			'<a href="' . esc_url(admin_url('admin.php?page=wc-settings&tab=checkout&section=bytenft')) . '">' . esc_html__('Settings', 'bytenft-payment-gateway-main') . '</a>',
+			'<a href="' . esc_url(admin_url('admin.php?page=wc-settings&tab=checkout&section=bytenft')) . '">' . esc_html__('Settings', 'bytenft-payment-gateway') . '</a>',
 		];
 
 		return array_merge($plugin_links, $links);
@@ -367,8 +367,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	{
 		if (plugin_basename(BYTENFT_PAYMENT_GATEWAY_FILE) === $file) {
 			$row_meta = [
-				'docs'    => '<a href="' . esc_url(apply_filters('bytenft_docs_url', 'https://pay.bytenft.xyz/docs/wordpress-plugin')) . '" target="_blank">' . esc_html__('Documentation', 'bytenft-payment-gateway-main') . '</a>',
-				'support' => '<a href="' . esc_url(apply_filters('bytenft_support_url', 'https://pay.bytenft.xyz/contact-us')) . '" target="_blank">' . esc_html__('Support', 'bytenft-payment-gateway-main') . '</a>',
+				'docs'    => '<a href="' . esc_url(apply_filters('bytenft_docs_url', 'https://pay.bytenft.xyz/docs/wordpress-plugin')) . '" target="_blank">' . esc_html__('Documentation', 'bytenft-payment-gateway') . '</a>',
+				'support' => '<a href="' . esc_url(apply_filters('bytenft_support_url', 'https://pay.bytenft.xyz/contact-us')) . '" target="_blank">' . esc_html__('Support', 'bytenft-payment-gateway') . '</a>',
 			];
 
 			$links = array_merge($links, $row_meta);
@@ -400,7 +400,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// Sanitize and validate the order ID from $_POST
 		$order_id = isset($_POST['order_id']) ? intval(sanitize_text_field(wp_unslash($_POST['order_id']))) : null;
 		if (!$order_id) {
-			wp_send_json_error(array('error' => esc_html__('Invalid order ID', 'bytenft-payment-gateway-main')));
+			wp_send_json_error(array('error' => esc_html__('Invalid order ID', 'bytenft-payment-gateway')));
 		}
 
 		// Call the function to check payment status with the validated order ID
@@ -418,7 +418,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if (!$order) {
 			return new WP_REST_Response([
-				'error' => esc_html__('Order not found', 'bytenft-payment-gateway-main')
+				'error' => esc_html__('Order not found', 'bytenft-payment-gateway')
 			], 404);
 		}
 
@@ -576,7 +576,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			ByteNFT_Payment_Gateway_Logger::info(
 				$message,
 				array_merge([
-					'source' => 'bytenft-payment-gateway-main'
+					'source' => 'bytenft-payment-gateway'
 				], $context)
 			);
 		}
@@ -737,12 +737,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order);
 
 			wp_send_json([
-				'success' => ($state === 'success'),
+				'success' => ($state === 'success' || in_array($payment_status, ['success', 'paid'], true)),
 				'message' => '',
 				'data' => [
 					'state'          => $state ?: 'processing',
 					'payment_status' => $payment_status,
-					'redirect'       => $state === 'success'
+					'redirect'       => ($state === 'success' || in_array($payment_status, ['success', 'paid'], true))
 						? $order->get_checkout_order_received_url()
 						: null,
 					'order_id'       => $order_id,
@@ -844,14 +844,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	{
 		$schedules['every_two_hours'] = array(
 			'interval' => 2 * 60 * 60, // 2 hours in seconds = 7200
-			'display'  => __('Every Two Hours', 'bytenft-payment-gateway-main')
+			'display'  => __('Every Two Hours', 'bytenft-payment-gateway')
 		);
 		return $schedules;
 	}
 
 	function activate_cron_job()
 	{
-		ByteNFT_Payment_Gateway_Logger::info('Automatic payment status checks have been enabled.', ['source' => 'bytenft-payment-gateway-main']);
+		ByteNFT_Payment_Gateway_Logger::info('Automatic payment status checks have been enabled.', ['source' => 'bytenft-payment-gateway']);
 
 		// Clear existing scheduled event if it exists
 		$timestamp = wp_next_scheduled('bytenft_cron_event');
@@ -865,14 +865,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 	function deactivate_cron_job()
 	{
-		ByteNFT_Payment_Gateway_Logger::info('Automatic payment status checks have been disabled.', ['source' => 'bytenft-payment-gateway-main']);
+		ByteNFT_Payment_Gateway_Logger::info('Automatic payment status checks have been disabled.', ['source' => 'bytenft-payment-gateway']);
 		wp_clear_scheduled_hook('bytenft_cron_event');
 	}
 
 
 	public function handle_cron_event()
 	{
-		$logger_context = ['source' => 'bytenft-payment-gateway-main'];
+		$logger_context = ['source' => 'bytenft-payment-gateway'];
 
 		$accounts = get_option('woocommerce_bytenft_payment_gateway_accounts');
 		if (is_string($accounts)) {
@@ -898,7 +898,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 					'secret_key'   => $account['live_secret_key'],
 					'mode'         => 'live',
 				];
-			}
+		}
 
 			if ($isSandboxEnabled && !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key'])) {
 				$accountsData[] = [
@@ -953,7 +953,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 								'mode'   => $statusData['mode'],
 								'status' => $statusData['status'],
 							];
-						}
+		}
 
 						if (
 							$statusData['mode'] === 'sandbox' &&
@@ -977,12 +977,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				update_option('woocommerce_bytenft_payment_gateway_accounts', $accounts);
 
 				ByteNFT_Payment_Gateway_Logger::info('Payment account statuses were successfully updated after syncing.', [
-					'source'  => 'bytenft-payment-gateway-main',
+					'source'  => 'bytenft-payment-gateway',
 					'context' => ['updated_accounts' => $statusSummary],
 				]);
-			} else {
+		} else {
 				ByteNFT_Payment_Gateway_Logger::info('Payment accounts were checked, but no updates were necessary.', [
-					'source'  => 'bytenft-payment-gateway-main',
+					'source'  => 'bytenft-payment-gateway',
 					'context' => ['checked_accounts' => $statusSummary],
 				]);
 			}
@@ -996,12 +996,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 	function bytenft_manual_sync_callback()
 	{
-		$logger_context = ['source' => 'bytenft-payment-gateway-main'];
+		$logger_context = ['source' => 'bytenft-payment-gateway'];
 		// Verify nonce first
 		if (!check_ajax_referer('bytenft_sync_nonce', 'nonce', false)) {
 			ByteNFT_Payment_Gateway_Logger::error('Security validation failed during manual sync.', $logger_context);
 			wp_send_json_error([
-				'message' => __('Security check failed. Please refresh the page and try again.', 'bytenft-payment-gateway-main')
+				'message' => __('Security check failed. Please refresh the page and try again.', 'bytenft-payment-gateway')
 			], 400);
 			wp_die();
 		}
@@ -1010,7 +1010,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		if (!current_user_can('manage_woocommerce')) {
 		ByteNFT_Payment_Gateway_Logger::error('Unauthorized manual sync attempt by user ID: ' . get_current_user_id(), $logger_context);
 			wp_send_json_error([
-				'message' => __('You do not have permission to perform this action.', 'bytenft-payment-gateway-main')
+				'message' => __('You do not have permission to perform this action.', 'bytenft-payment-gateway')
 			], 403);
 			wp_die();
 		}
@@ -1025,19 +1025,19 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			if (!empty($output)) {
 				ByteNFT_Payment_Gateway_Logger::warning('Unexpected output generated during sync: ' . $output, $logger_context);
-			}
+	}
 
 			ByteNFT_Payment_Gateway_Logger::info('Payment accounts sync completed successfully.', $logger_context);
 
 			wp_send_json_success([
-				'message'  => __('Payment accounts synchronized successfully.', 'bytenft-payment-gateway-main'),
+				'message'  => __('Payment accounts synchronized successfully.', 'bytenft-payment-gateway'),
 				'timestamp' => current_time('mysql'),
 				'statuses' => $statusSummary
 			]);
 		} catch (Exception $e) {
 			ByteNFT_Payment_Gateway_Logger::error('Payment accounts sync failed: ' . $e->getMessage(), $logger_context);
 			wp_send_json_error([
-				'message' => __('Sync failed: ', 'bytenft-payment-gateway-main') . $e->getMessage(),
+				'message' => __('Sync failed: ', 'bytenft-payment-gateway') . $e->getMessage(),
 				'code'    => $e->getCode()
 			], 500);
 		}
@@ -1077,7 +1077,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			ByteNFT_Payment_Gateway_Logger::error(
 				'Unable to send plugin status. No public key found.',
 				[
-					'source' => 'bytenft-payment-gateway-main',
+					'source' => 'bytenft-payment-gateway',
 				]
 			);
 			return;
@@ -1116,7 +1116,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			ByteNFT_Payment_Gateway_Logger::error(
 				'Plugin status API call failed.',
 				[
-					'source'  => 'bytenft-payment-gateway-main',
+					'source'  => 'bytenft-payment-gateway',
 					'context' => [
 						'error' => $response->get_error_message(),
 					],
@@ -1128,7 +1128,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		ByteNFT_Payment_Gateway_Logger::info(
 			'Plugin status updated successfully.',
 			[
-				'source'  => 'bytenft-payment-gateway-main',
+				'source'  => 'bytenft-payment-gateway',
 				'context' => [
 					'plugin_status'  => $plugin_status,
 					'gateway_loaded' => $gateway_loaded,
