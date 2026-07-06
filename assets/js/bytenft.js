@@ -300,16 +300,6 @@
 
                 console.log('[Bytenft] parsed response', response);
 
-                // WooCommerce returns result:'failure' (with notices) when something fails internally.
-                // Guard against WC's own failure response format.
-                if (response?.result === 'failure') {
-                    const msg = response?.messages
-                        ? $(response.messages).text() || 'Payment failed. Please try again.'
-                        : 'Payment failed. Please try again.';
-                    self.failSafe(msg);
-                    return;
-                }
-
                 const success =
                     response?.result === 'success' ||
                     response?.success === true ||
@@ -351,7 +341,6 @@
                         }
                         self.trackPopupClose();
                     } else {
-                        // Popup was blocked or closed before redirect — redirect parent as fallback.
                         window.location.href = redirect;
                         self.finish();
                     }
@@ -606,18 +595,11 @@
 
                         self.cleanupPopup();
                         self.showCheckoutError(
-                            response?.data?.message ||
                             response?.message ||
-                            'Your payment was not completed. Please try again.'
+                            'Your payment was not completed.'
                         );
 
-                        // Fully reset state so customer can retry without page refresh.
-                        // Do NOT redirect to checkout — stay on current checkout page.
-                        self.state.finalSuccess = false;
-                        self.state.responseHandled = false;
-                        self.state.requestInFlightClassic = false;
-                        self.state.requestInFlightBlock = false;
-                        self.reset(false);
+                        self.reset();
 
                     },
                     'json'
