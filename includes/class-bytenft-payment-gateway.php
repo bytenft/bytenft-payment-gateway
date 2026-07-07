@@ -509,6 +509,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			if (empty($account_title) || empty($live_public_key) || empty($live_secret_key)) {
+				/* translators: %s: account title */
 				$errors[] = sprintf(__('Account "%s": Title, Live Public Key, and Live Secret Key are required.', 'bytenft-payment-gateway'), $account_title);
 				ByteNFT_Payment_Gateway_Logger::info("Validation failed: missing required fields for account '{$account_title}'");
 				continue;
@@ -516,12 +517,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$live_combined = $live_public_key . '|' . $live_secret_key;
 			if (in_array($live_combined, $unique_live_keys, true)) {
+				/* translators: %s: account title */
 				$errors[] = sprintf(__('Account "%s": Live Public Key and Live Secret Key must be unique.', 'bytenft-payment-gateway'), $account_title);
 				ByteNFT_Payment_Gateway_Logger::info("Validation failed: duplicate live keys for account '{$account_title}'");
 				continue;
 			}
 
 			if ($live_public_key === $live_secret_key) {
+				/* translators: %s: account title */
 				$errors[] = sprintf(__('Account "%s": Live Public Key and Live Secret Key must be different.', 'bytenft-payment-gateway'), $account_title);
 				ByteNFT_Payment_Gateway_Logger::info("Validation warning: live keys are identical for account '{$account_title}'");
 			}
@@ -531,11 +534,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ($has_sandbox && !empty($sandbox_public_key) && !empty($sandbox_secret_key)) {
 				$sandbox_combined = $sandbox_public_key . '|' . $sandbox_secret_key;
 				if (in_array($sandbox_combined, $unique_sandbox_keys, true)) {
+					/* translators: %s: account title */
 					$errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key must be unique.', 'bytenft-payment-gateway'), $account_title);
 					ByteNFT_Payment_Gateway_Logger::info("Validation failed: duplicate sandbox keys for account '{$account_title}'");
 					continue;
 				}
 				if ($sandbox_public_key === $sandbox_secret_key) {
+					/* translators: %s: account title */
 					$errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key must be different.', 'bytenft-payment-gateway'), $account_title);
 					ByteNFT_Payment_Gateway_Logger::info("Validation warning: sandbox keys are identical for account '{$account_title}'");
 				}
@@ -603,7 +608,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'sslverify' => true,
 			]);
 
-			$this->admin_notices->bytenft_add_notice('settings_success', 'notice notice-success', __('Settings saved successfully.', 'bytenft-payment-gateway'));
+			// $this->admin_notices->bytenft_add_notice('settings_success', 'notice notice-success', __('Settings saved successfully.', 'bytenft-payment-gateway'));
 			ByteNFT_Payment_Gateway_Logger::info('Account settings updated successfully.', ['count' => count($valid_accounts)]);
 
 			if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
@@ -760,6 +765,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'instructions' => [
 				'title'       => __('Instructions', 'bytenft-payment-gateway'),
 				'type'        => 'title',
+				/* translators: %1$s: Open HTML link tag, %2$s: Close HTML link tag */
 				'description' => sprintf(__('To configure this gateway, %1$sGet your API keys from your merchant account: Developer Settings > API Keys.%2$s', 'bytenft-payment-gateway'), $dev_instructions_link, ''),
 				'desc_tip'    => true,
 			],
@@ -1011,6 +1017,20 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return $this->build_response(
 				'fail',
 				'Invalid order.',
+				[],
+				400,
+				$order_id
+			);
+		}
+
+		if ( (float) $order->get_total() < 0.01 ) {
+			if (is_checkout()) {
+				wc_add_notice(__('The order total must be at least 0.01 to use this payment method.', 'bytenft-payment-gateway'), 'error');
+			}
+
+			return $this->build_response(
+				'fail',
+				__('The order total must be at least 0.01.', 'bytenft-payment-gateway'),
 				[],
 				400,
 				$order_id
@@ -1431,6 +1451,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$order,
 					'payment_initiated',
 					sprintf(
+						/* translators: %s: account title */
 						__('Payment initiated via ByteNFT (%s)', 'bytenft-payment-gateway'),
 						$account['title']
 					)
@@ -1796,15 +1817,18 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		if ($this->get_option('show_consent_checkbox') === 'yes') {
-			$nonce = isset($_POST['bytenft_nonce']) ? sanitize_text_field(wp_unslash($_POST['bytenft_nonce'])) : '';
-			if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
-				wc_add_notice(__('Nonce verification failed. Please try again.', 'bytenft-payment-gateway'), 'error');
-				return false;
-			}
-			$consent = isset($_POST['bytenft_consent']) ? sanitize_text_field(wp_unslash($_POST['bytenft_consent'])) : '';
-			if ($consent !== 'on') {
-				wc_add_notice(__('You must consent to the collection of your data to process this payment.', 'bytenft-payment-gateway'), 'error');
-				return false;
+			$is_blocks = defined('REST_REQUEST') && REST_REQUEST;
+			if (!$is_blocks) {
+				$nonce = isset($_POST['bytenft_nonce']) ? sanitize_text_field(wp_unslash($_POST['bytenft_nonce'])) : '';
+				if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
+					wc_add_notice(__('Nonce verification failed. Please try again.', 'bytenft-payment-gateway'), 'error');
+					return false;
+				}
+				$consent = isset($_POST['bytenft_consent']) ? sanitize_text_field(wp_unslash($_POST['bytenft_consent'])) : '';
+				if ($consent !== 'on') {
+					wc_add_notice(__('You must consent to the collection of your data to process this payment.', 'bytenft-payment-gateway'), 'error');
+					return false;
+				}
 			}
 		}
 		return true;
@@ -2198,6 +2222,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$is_empty  = empty($account['title']) && empty($account['sandbox_public_key']) && empty($account['sandbox_secret_key']) && empty($account['live_public_key']) && empty($account['live_secret_key']);
 		$is_filled = !empty($account['title']) && !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']) && !empty($account['live_public_key']) && !empty($account['live_secret_key']);
 		if (!$is_empty && !$is_filled) {
+			/* translators: %d: account index */
 			return sprintf(__('Account %d is invalid. Please fill all fields or leave the account empty.', 'bytenft-payment-gateway'), $index + 1);
 		}
 		return true;
@@ -2210,6 +2235,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$is_empty  = empty($account['title']) && empty($account['sandbox_public_key']) && empty($account['sandbox_secret_key']) && empty($account['live_public_key']) && empty($account['live_secret_key']);
 			$is_filled = !empty($account['title']) && !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']) && !empty($account['live_public_key']) && !empty($account['live_secret_key']);
 			if (!$is_empty && !$is_filled) {
+				/* translators: %d: account index */
 				$errors[] = sprintf(__('Account %d is invalid. Please fill all fields or leave the account empty.', 'bytenft-payment-gateway'), $index + 1);
 			} elseif ($is_filled) {
 				$valid_accounts[] = $account;

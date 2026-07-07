@@ -130,7 +130,89 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			);
 		}
 
-		$orderID = WC()->session ? WC()->session->get('store_api_draft_order') : null;
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Session Debug',
+			[
+				'context' => [
+					'store_api_draft_order' => WC()->session ? WC()->session->get('store_api_draft_order') : null,
+					'order_awaiting_payment' => WC()->session ? WC()->session->get('order_awaiting_payment') : null,
+					'posted' => $_POST,
+				]
+			]
+		);
+
+		$orderID = 0;
+		if (WC()->session) {
+			$orderID = WC()->session->get('store_api_draft_order');
+			if (!$orderID) {
+				$orderID = WC()->session->get('order_awaiting_payment');
+			}
+	    }
+
+		// Fallback: If it's a draft order OR if no order was found in the session, create/update the order with cart details and customer details
+		if (function_exists('wc_get_order') && !empty(WC()->cart) && !WC()->cart->is_empty()) {
+			$order = $orderID ? wc_get_order($orderID) : false;
+			if (!$order) {
+				// Create a new draft order
+				$order = wc_create_order();
+				if ($order) {
+					$orderID = $order->get_id();
+				}
+			}
+
+			// Sync Cart & Customer to the Order if it is a draft or pending order
+			if ($order && ($order->has_status('checkout-draft') || $order->has_status('pending'))) {
+				try {
+					// Clear existing items to avoid duplicates
+					$order->remove_order_items();
+
+					// Add products from cart
+					foreach (WC()->cart->get_cart() as $cart_item_key => $values) {
+						$item = new WC_Order_Item_Product();
+						$item->set_product($values['data']);
+						$item->set_quantity($values['quantity']);
+						$item->set_total($values['line_total']);
+						$item->set_subtotal($values['line_subtotal']);
+						$order->add_item($item);
+					}
+
+					// Copy billing details from Customer session
+					$customer = WC()->customer;
+					if ($customer) {
+						$order->set_billing_first_name($customer->get_billing_first_name() ?: sanitize_text_field($_POST['billing_first_name'] ?? ''));
+						$order->set_billing_last_name($customer->get_billing_last_name() ?: sanitize_text_field($_POST['billing_last_name'] ?? ''));
+						$order->set_billing_company($customer->get_billing_company() ?: sanitize_text_field($_POST['billing_company'] ?? ''));
+						$order->set_billing_address_1($customer->get_billing_address_1() ?: sanitize_text_field($_POST['billing_address_1'] ?? ''));
+						$order->set_billing_address_2($customer->get_billing_address_2() ?: sanitize_text_field($_POST['billing_address_2'] ?? ''));
+						$order->set_billing_city($customer->get_billing_city() ?: sanitize_text_field($_POST['billing_city'] ?? ''));
+						$order->set_billing_state($customer->get_billing_state() ?: sanitize_text_field($_POST['billing_state'] ?? ''));
+						$order->set_billing_postcode($customer->get_billing_postcode() ?: sanitize_text_field($_POST['billing_postcode'] ?? ''));
+						$order->set_billing_country($customer->get_billing_country() ?: sanitize_text_field($_POST['billing_country'] ?? 'US'));
+						$order->set_billing_email($customer->get_billing_email() ?: sanitize_text_field($_POST['billing_email'] ?? ''));
+						$order->set_billing_phone($customer->get_billing_phone() ?: sanitize_text_field($_POST['billing_phone'] ?? ''));
+
+						$order->set_shipping_first_name($customer->get_shipping_first_name() ?: sanitize_text_field($_POST['shipping_first_name'] ?? ''));
+						$order->set_shipping_last_name($customer->get_shipping_last_name() ?: sanitize_text_field($_POST['shipping_last_name'] ?? ''));
+						$order->set_shipping_company($customer->get_shipping_company() ?: sanitize_text_field($_POST['shipping_company'] ?? ''));
+						$order->set_shipping_address_1($customer->get_shipping_address_1() ?: sanitize_text_field($_POST['shipping_address_1'] ?? ''));
+						$order->set_shipping_address_2($customer->get_shipping_address_2() ?: sanitize_text_field($_POST['shipping_address_2'] ?? ''));
+						$order->set_shipping_city($customer->get_shipping_city() ?: sanitize_text_field($_POST['shipping_city'] ?? ''));
+						$order->set_shipping_state($customer->get_shipping_state() ?: sanitize_text_field($_POST['shipping_state'] ?? ''));
+						$order->set_shipping_postcode($customer->get_shipping_postcode() ?: sanitize_text_field($_POST['shipping_postcode'] ?? ''));
+						$order->set_shipping_country($customer->get_shipping_country() ?: sanitize_text_field($_POST['shipping_country'] ?? 'US'));
+					}
+
+					// Set order currency
+					$order->set_currency(get_woocommerce_currency());
+
+					// Calculate totals
+					$order->calculate_totals();
+					$order->save();
+				} catch (Exception $e) {
+					// Ignore
+				}
+			}
+		}
 
 		$status = [];
 		if($orderID){
@@ -655,12 +737,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order);
 
 			wp_send_json([
-				'success' => ($state === 'success'),
+				'success' => ($state === 'success' || in_array($payment_status, ['success', 'paid'], true)),
 				'message' => '',
 				'data' => [
 					'state'          => $state ?: 'processing',
 					'payment_status' => $payment_status,
-					'redirect'       => $state === 'success'
+					'redirect'       => ($state === 'success' || in_array($payment_status, ['success', 'paid'], true))
 						? $order->get_checkout_order_received_url()
 						: null,
 					'order_id'       => $order_id,
@@ -816,7 +898,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 					'secret_key'   => $account['live_secret_key'],
 					'mode'         => 'live',
 				];
-			}
+		}
 
 			if ($isSandboxEnabled && !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key'])) {
 				$accountsData[] = [
@@ -871,7 +953,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 								'mode'   => $statusData['mode'],
 								'status' => $statusData['status'],
 							];
-						}
+		}
 
 						if (
 							$statusData['mode'] === 'sandbox' &&
@@ -898,7 +980,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 					'source'  => 'bytenft-payment-gateway',
 					'context' => ['updated_accounts' => $statusSummary],
 				]);
-			} else {
+		} else {
 				ByteNFT_Payment_Gateway_Logger::info('Payment accounts were checked, but no updates were necessary.', [
 					'source'  => 'bytenft-payment-gateway',
 					'context' => ['checked_accounts' => $statusSummary],
@@ -943,7 +1025,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			if (!empty($output)) {
 				ByteNFT_Payment_Gateway_Logger::warning('Unexpected output generated during sync: ' . $output, $logger_context);
-			}
+	}
 
 			ByteNFT_Payment_Gateway_Logger::info('Payment accounts sync completed successfully.', $logger_context);
 
