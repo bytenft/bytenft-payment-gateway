@@ -143,6 +143,8 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 ## Changelog
 
 ### Version 1.0.18
+- Fixed an issue where invalid or stale orders could interfere with the checkout flow.
+- Fixed an issue where the payment gateway remained visible when no eligible merchant account was available by automatically hiding the plugin.
 
 ### Version 1.0.17
 - Enables merchants to track sales separately for individual ByteNFT accounts.
