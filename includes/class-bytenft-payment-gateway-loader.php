@@ -793,8 +793,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			'cancelled' =>
 				'You cancelled the payment.',
 
-			'processing' =>
-				'Payment is being processed.',
+			'processing' => (
+				in_array($payment_status, ['pending', null, ''], true)
+				&& $order->has_status('pending')
+			)
+				? "We couldn't confirm the payment status. If you completed the payment, your order will be updated automatically. Otherwise, you can try placing the order again."
+				: 'Your payment is currently being processed.',
 
 			default =>
 				'We couldn’t confirm your payment status yet. If needed, you can try placing the order again after checking your order status.'

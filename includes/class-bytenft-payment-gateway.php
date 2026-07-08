@@ -2081,7 +2081,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// =====================================================
 		$this->selected_account_for_display = $selected;
 
-		if (!$selected) {
+		if (!$this->is_gateway_available()) {
 			return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 
@@ -2102,6 +2102,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		return $available_gateways;
 	}
+
 	private function send_plugin_logs($accounts, $public_key, $secret_key, $amount, $gateway_loaded, $pluginLogApiUrl, $force_refresh)
 	{
 		$plugin_version = BYTENFT_PLUGIN_VERSION;
@@ -2616,5 +2617,86 @@ private function get_routing_sorted_accounts(array $accounts): array {
 			return false;
 		}
 		return true;
+	}
+
+	public function is_gateway_available()
+	{
+		if (!WC()->cart) {
+			return false;
+		}
+
+		if ($this->is_restricted_state()) {
+			return false;
+		}
+
+		$amount = (float) WC()->cart->get_total('raw');
+
+		if ($amount < 0.01) {
+			$amount = (float) (WC()->cart->get_totals()['total'] ?? 0);
+		}
+
+		if (!method_exists($this, 'get_all_accounts')) {
+			return false;
+		}
+
+		$accounts = $this->get_all_accounts();
+
+		if (empty($accounts)) {
+			return false;
+		}
+
+		usort($accounts, function ($a, $b) {
+			return ($a['priority'] ?? 1) <=> ($b['priority'] ?? 1);
+		});
+
+		foreach ($accounts as $account) {
+
+			$public = $this->sandbox
+				? ($account['sandbox_public_key'] ?? '')
+				: ($account['live_public_key'] ?? '');
+
+			$secret = $this->sandbox
+				? ($account['sandbox_secret_key'] ?? '')
+				: ($account['live_secret_key'] ?? '');
+
+			if (empty($public) || empty($secret)) {
+				continue;
+			}
+
+			$data = [
+				'is_sandbox'     => $this->sandbox,
+				'amount'         => $amount,
+				'api_public_key' => $public,
+				'api_secret_key' => $secret,
+			];
+
+			$cache = 'bytenft_' . md5($public . $amount);
+
+			$status = $this->get_cached_api_response(
+				$this->get_api_url('/api/check-merchant-status'),
+				$data,
+				$cache . '_status',
+				10
+			);
+
+			if (($status['status'] ?? '') !== 'success') {
+				continue;
+			}
+
+			$limit = $this->get_cached_api_response(
+				$this->get_api_url('/api/dailylimit'),
+				$data,
+				$cache . '_limit',
+				10
+			);
+
+			if (($limit['status'] ?? '') !== 'success') {
+				continue;
+			}
+
+			return true;
+		}
+
+		return false;
 	}
 }

@@ -12,11 +12,32 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 		$this->settings = get_option('woocommerce_' . $this->name . '_settings', []);
 	}
 
-	public function is_active() {
-		return (
-			isset($this->settings['enabled']) &&
-			$this->settings['enabled'] === 'yes'
-		);
+	public function is_active()
+	{
+		if (
+			!isset($this->settings['enabled']) ||
+			$this->settings['enabled'] !== 'yes'
+		) {
+			return false;
+		}
+
+		if (!function_exists('WC') || !WC()->payment_gateways()) {
+			return false;
+		}
+
+		$gateways = WC()->payment_gateways()->payment_gateways();
+
+		if (empty($gateways['bytenft'])) {
+			return false;
+		}
+
+		$gateway = $gateways['bytenft'];
+
+		if (!method_exists($gateway, 'is_gateway_available')) {
+			return false;
+		}
+
+		return $gateway->is_gateway_available();
 	}
 
 	public function get_payment_method_script_handles() {
