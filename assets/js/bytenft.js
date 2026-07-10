@@ -589,9 +589,9 @@
                             response?.data?.redirect ||
                             response?.redirect;
 
-                        if (success && redirectUrl) {
+                        if (success) {
 
-                            console.log('[Bytenft] Payment success → redirect');
+                            console.log('[Bytenft] Payment success');
 
                             self.state.finalSuccess = true;
 
@@ -599,8 +599,12 @@
                             self.state.popupInterval = null;
 
                             self.cleanupPopup();
-
-                            window.location.replace(redirectUrl);
+                            
+                            if (redirectUrl) {
+                                window.location.replace(redirectUrl);
+                            } else {
+                                window.location.reload();
+                            }
                             return;
                         }
 
