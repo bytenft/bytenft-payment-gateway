@@ -2327,6 +2327,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private function get_all_accounts() {
 		$accounts = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			"ByteNFT Gateway Decision",
+			[
+				'accounts'  => $accounts,
+			]
+		);
+
 		if (is_string($accounts)) {
 			$unserialized = maybe_unserialize($accounts);
 			$accounts = is_array($unserialized) ? $unserialized : [];
