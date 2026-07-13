@@ -2326,32 +2326,33 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	private function get_all_accounts() {
+
 		$accounts = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
 
-		ByteNFT_Payment_Gateway_Logger::info(
-			"ByteNFT Gateway Decision",
-			[
-				'accounts'  => $accounts,
-			]
-		);
-
 		if (is_string($accounts)) {
-			$unserialized = maybe_unserialize($accounts);
-			$accounts = is_array($unserialized) ? $unserialized : [];
+			$accounts = maybe_unserialize($accounts);
+			$accounts = is_array($accounts) ? $accounts : [];
 		}
+
 		$valid_accounts = [];
-		foreach ($accounts as $i => $account) {
+
+		foreach ($accounts as $account) {
+
 			if ($this->sandbox) {
 				$status   = strtolower($account['sandbox_status'] ?? '');
 				$has_keys = !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']);
-				
 			} else {
 				$status   = strtolower($account['live_status'] ?? '');
 				$has_keys = !empty($account['live_public_key']) && !empty($account['live_secret_key']);
-				if ($has_keys) $valid_accounts[] = $account;
+			}
+
+			if ($status === 'active' && $has_keys) {
+				$valid_accounts[] = $account;
 			}
 		}
+
 		$this->accounts = $valid_accounts;
+
 		return $valid_accounts;
 	}
 
