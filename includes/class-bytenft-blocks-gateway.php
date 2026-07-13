@@ -12,11 +12,32 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 		$this->settings = get_option('woocommerce_' . $this->name . '_settings', []);
 	}
 
-	public function is_active() {
-		return (
-			isset($this->settings['enabled']) &&
-			$this->settings['enabled'] === 'yes'
-		);
+	public function is_active()
+	{
+		if (
+			!isset($this->settings['enabled']) ||
+			$this->settings['enabled'] !== 'yes'
+		) {
+			return false;
+		}
+
+		if (!function_exists('WC') || !WC()->payment_gateways()) {
+			return false;
+		}
+
+		$gateways = WC()->payment_gateways()->payment_gateways();
+
+		if (empty($gateways['bytenft'])) {
+			return false;
+		}
+
+		$gateway = $gateways['bytenft'];
+
+		if (!method_exists($gateway, 'is_gateway_available')) {
+			return false;
+		}
+
+		return $gateway->is_gateway_available();
 	}
 
 	public function get_payment_method_script_handles() {
@@ -66,22 +87,15 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 /**
  * ─────────────────────────────────────────────────────────────────────────────
  * AJAX handler for Block Checkout payment processing.
- *
- * KEY FIX: Instead of `new BYTENFT_PAYMENT_GATEWAY()` (which creates a fresh,
- * partially-initialised instance), we pull the already-booted gateway instance
- * from WooCommerce's payment gateway registry.  That instance has had
- * init_settings() called by WooCommerce during the normal boot cycle, so
- * $this->sandbox, $this->enabled, and all get_option() values are correctly
- * populated when process_payment() runs.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 function bytenft_register_block_ajax_handlers() {
-	add_action('wp_ajax_bytenft_block_gateway_process',        'handle_bytenft_gateway_ajax');
-	add_action('wp_ajax_nopriv_bytenft_block_gateway_process', 'handle_bytenft_gateway_ajax');
+	add_action('wp_ajax_bytenft_block_gateway_process',        'bytenft_handle_block_gateway_ajax');
+	add_action('wp_ajax_nopriv_bytenft_block_gateway_process', 'bytenft_handle_block_gateway_ajax');
 }
 add_action('init', 'bytenft_register_block_ajax_handlers');
 
-function handle_bytenft_gateway_ajax() {
+function bytenft_handle_block_gateway_ajax() {
 
 	// ─────────────────────────────────────────────
 	// CONTEXT + LOG PREFIX (ADDED FOR DEBUGGING)
@@ -168,7 +182,7 @@ function handle_bytenft_gateway_ajax() {
 	);
 
 	// ─────────────────────────────────────────────
-	// NORMALIZE RESPONSE (SAFE FIX LAYER)
+	// NORMALIZE RESPONSE
 	// ─────────────────────────────────────────────
 	$is_success = false;
 
