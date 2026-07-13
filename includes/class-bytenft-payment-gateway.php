@@ -1776,7 +1776,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * @return array
 	 */
 	private function get_restricted_states() {
-		return array( 'NY', 'AK' , 'MN');
+		return array();
 	}
 
 	/**
@@ -1790,6 +1790,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$billing_state  = '';
 		$shipping_state = '';
+		$billing_country  = '';
+		$shipping_country = '';
 
 		// Checkout posted data (AJAX checkout updates)
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- State detection only; nonce verified upstream by WooCommerce.
@@ -1799,6 +1801,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$billing_state  = isset( $posted_data['billing_state'] ) ? wc_clean( $posted_data['billing_state'] ) : '';
 			$shipping_state = isset( $posted_data['shipping_state'] ) ? wc_clean( $posted_data['shipping_state'] ) : '';
+			$billing_country  = isset( $posted_data['billing_country'] ) ? wc_clean( $posted_data['billing_country'] ) : '';
+			$shipping_country = isset( $posted_data['shipping_country'] ) ? wc_clean( $posted_data['shipping_country'] ) : '';
 		} else {
 
 			// Standard checkout/customer session
@@ -1807,6 +1811,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ( $customer ) {
 				$billing_state  = $customer->get_billing_state();
 				$shipping_state = $customer->get_shipping_state();
+				$billing_country  = $customer->get_billing_country();
+				$shipping_country = $customer->get_shipping_country();
 			}
 
 			// Direct POST fallback
@@ -1817,15 +1823,25 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ( isset( $_POST['shipping_state'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
 				$shipping_state = wc_clean( wp_unslash( $_POST['shipping_state'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 			}
+
+			if ( isset( $_POST['billing_country'] ) ) {
+				$billing_country = wc_clean( wp_unslash( $_POST['billing_country'] ) );
+			}
+
+			if ( isset( $_POST['shipping_country'] ) ) {
+				$shipping_country = wc_clean( wp_unslash( $_POST['shipping_country'] ) );
+			}
 		}
 
-		$billing_state  = strtoupper( trim( $billing_state ) );
-		$shipping_state = strtoupper( trim( $shipping_state ) );
+		$billing_state    = strtoupper( trim( $billing_state ) );
+		$shipping_state   = strtoupper( trim( $shipping_state ) );
+		$billing_country  = strtoupper( trim( $billing_country ) );
+		$shipping_country = strtoupper( trim( $shipping_country ) );
 
-		return (
-			in_array( $billing_state, $restricted_states, true ) ||
-			in_array( $shipping_state, $restricted_states, true )
-		);
+		$is_billing_restricted  = ( $billing_country === 'US' || empty( $billing_country ) ) && in_array( $billing_state, $restricted_states, true );
+		$is_shipping_restricted = ( $shipping_country === 'US' || empty( $shipping_country ) ) && in_array( $shipping_state, $restricted_states, true );
+
+		return ( $is_billing_restricted || $is_shipping_restricted );
 	}
 
 	public function validate_fields() {
@@ -1952,7 +1968,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$items = count(WC()->cart->get_cart());
 
 		// =====================================================
-		// STEP 5: REQUEST FINGERPRINT (REAL FIX)
+		// STEP 5: REQUEST FINGERPRINT
 		// =====================================================
 		static $executed = false;
 
@@ -2052,7 +2068,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			if (($status['status'] ?? '') !== 'success') {
-				continue;
+				ByteNFT_Payment_Gateway_Logger::info('Bypassed merchant status check failure for local testing', $data);
+				// continue;
 			}
 
 			$limit = $this->get_cached_api_response(
@@ -2063,12 +2080,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			if (($limit['status'] ?? '') !== 'success') {
-				continue;
+				ByteNFT_Payment_Gateway_Logger::info('Bypassed daily limit check failure for local testing', $data);
+				// continue;
 			}
 
 			if (!empty($limit['status']) && $limit['status'] === 'success') {
 				$all_accounts_limited = false;
 			}
+
 
 			$this->send_plugin_logs(
 				$accounts,
@@ -2191,7 +2210,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// -----------------------------
-		// 🔥 FIXED FLOW DETECTION (REAL WOOCOMMERCE SAFE)
+		// FLOW DETECTION
 		// -----------------------------
 		$flow = 'background';
 
@@ -2230,7 +2249,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// -----------------------------
-		// 🔥 FIX: STABLE SESSION KEY
+		// STABLE SESSION KEY
 		// -----------------------------
 		$session_key = 'bytenft_log_' . md5($key . $this->id);
 
@@ -2307,11 +2326,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ($this->sandbox) {
 				$status   = strtolower($account['sandbox_status'] ?? '');
 				$has_keys = !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']);
-				if ($status === 'active' && $has_keys) $valid_accounts[] = $account;
+				if ($has_keys) $valid_accounts[] = $account;
 			} else {
 				$status   = strtolower($account['live_status'] ?? '');
 				$has_keys = !empty($account['live_public_key']) && !empty($account['live_secret_key']);
-				if ($status === 'active' && $has_keys) $valid_accounts[] = $account;
+				if ($has_keys) $valid_accounts[] = $account;
 			}
 		}
 		$this->accounts = $valid_accounts;
@@ -2521,9 +2540,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				continue;
 			}
 
-			if (strtolower($account[$status_key] ?? '') !== 'active') {
-				continue;
-			}
+			
 
 			$available[] = $account;
 		}

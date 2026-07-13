@@ -87,13 +87,6 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 /**
  * ─────────────────────────────────────────────────────────────────────────────
  * AJAX handler for Block Checkout payment processing.
- *
- * KEY FIX: Instead of `new BYTENFT_PAYMENT_GATEWAY()` (which creates a fresh,
- * partially-initialised instance), we pull the already-booted gateway instance
- * from WooCommerce's payment gateway registry.  That instance has had
- * init_settings() called by WooCommerce during the normal boot cycle, so
- * $this->sandbox, $this->enabled, and all get_option() values are correctly
- * populated when process_payment() runs.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 function bytenft_register_block_ajax_handlers() {
@@ -189,7 +182,7 @@ function bytenft_handle_block_gateway_ajax() {
 	);
 
 	// ─────────────────────────────────────────────
-	// NORMALIZE RESPONSE (SAFE FIX LAYER)
+	// NORMALIZE RESPONSE
 	// ─────────────────────────────────────────────
 	$is_success = false;
 
