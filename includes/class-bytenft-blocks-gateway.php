@@ -59,8 +59,6 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 			'instructions'=> $this->settings['instructions'] ?? '',
 			'accounts'    => $this->settings['accounts'] ?? '',
 		];
-
-		error_log('ByteNFT Blocks Data: ' . print_r($data, true));
 	}
 }
 
