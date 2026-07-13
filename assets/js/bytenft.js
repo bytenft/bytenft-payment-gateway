@@ -198,6 +198,43 @@
         bindBlockCheckout: function () {
             const self = this;
 
+            // UX: provide feedback if button is disabled due to background Store API sync
+            const observeButton = function() {
+                const btn = document.querySelector('.wc-block-components-checkout-place-order-button');
+                if (!btn) {
+                    setTimeout(observeButton, 500);
+                    return;
+                }
+                
+                let feedbackNote = document.getElementById('bytenft-sync-note');
+                if (!feedbackNote) {
+                    feedbackNote = document.createElement('div');
+                    feedbackNote.id = 'bytenft-sync-note';
+                    feedbackNote.style.color = '#777';
+                    feedbackNote.style.fontSize = '13px';
+                    feedbackNote.style.marginTop = '8px';
+                    feedbackNote.style.display = 'none';
+                    feedbackNote.innerText = 'Verifying payment option…';
+                    btn.parentNode.insertBefore(feedbackNote, btn.nextSibling);
+                }
+
+                const observer = new MutationObserver(function(mutations) {
+                    mutations.forEach(function(mutation) {
+                        if (mutation.attributeName === 'disabled') {
+                            const $form = $('form.wc-block-checkout__form');
+                            const selected = $form.find('input[name="radio-control-wc-payment-method-options"]:checked').val();
+                            if (btn.hasAttribute('disabled') && selected === self.PAYMENT_METHOD && !self.state.requestInFlightBlock) {
+                                feedbackNote.style.display = 'block';
+                            } else {
+                                feedbackNote.style.display = 'none';
+                            }
+                        }
+                    });
+                });
+                observer.observe(btn, { attributes: true });
+            };
+            observeButton();
+
             document.addEventListener('click', function (e) {
                 const btn = e.target.closest('.wc-block-components-checkout-place-order-button');
                 if (!btn) return;
