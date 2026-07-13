@@ -1831,6 +1831,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ( isset( $_POST['shipping_country'] ) ) {
 				$shipping_country = wc_clean( wp_unslash( $_POST['shipping_country'] ) );
 			}
+
+			if ( isset( $_POST['billing_country'] ) ) {
+				$billing_country = wc_clean( wp_unslash( $_POST['billing_country'] ) );
+			}
+
+			if ( isset( $_POST['shipping_country'] ) ) {
+				$shipping_country = wc_clean( wp_unslash( $_POST['shipping_country'] ) );
+			}
 		}
 
 		$billing_state    = strtoupper( trim( $billing_state ) );
@@ -2068,6 +2076,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			if (($status['status'] ?? '') !== 'success') {
+				// TEMPORARY BYPASS FOR LOCAL TESTING: Don't hide gateway on API failure
 				ByteNFT_Payment_Gateway_Logger::info('Bypassed merchant status check failure for local testing', $data);
 				// continue;
 			}
@@ -2080,6 +2089,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			if (($limit['status'] ?? '') !== 'success') {
+				// TEMPORARY BYPASS FOR LOCAL TESTING: Don't hide gateway on limit hit
 				ByteNFT_Payment_Gateway_Logger::info('Bypassed daily limit check failure for local testing', $data);
 				// continue;
 			}
@@ -2326,10 +2336,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ($this->sandbox) {
 				$status   = strtolower($account['sandbox_status'] ?? '');
 				$has_keys = !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']);
+				// TEMPORARY BYPASS FOR LOCAL TESTING: Allow even if status is not 'active'
 				if ($has_keys) $valid_accounts[] = $account;
 			} else {
 				$status   = strtolower($account['live_status'] ?? '');
 				$has_keys = !empty($account['live_public_key']) && !empty($account['live_secret_key']);
+				// TEMPORARY BYPASS FOR LOCAL TESTING: Allow even if status is not 'active'
 				if ($has_keys) $valid_accounts[] = $account;
 			}
 		}
@@ -2444,7 +2456,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				'api_secret_key' => $secret_key,
 			];
 			$cache_base  = 'bytenft_daily_limit_' . md5($public_key . $amount);
-			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 10, $force_refresh);
+			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 60, $force_refresh);
 			
 			if (!empty($status_data['status']) && $status_data['status'] === 'success') {
 				$user_account_active = true;
@@ -2457,7 +2469,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				continue;
 			}
 
-			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 10, $force_refresh);
+			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 60, $force_refresh);
 			
 			if (($limit_data['status'] ?? '') === 'success') {
 				$eligible_accounts[] = $account;
@@ -2540,7 +2552,10 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				continue;
 			}
 
-			
+			// TEMPORARY BYPASS FOR LOCAL TESTING: Allow even if status is not 'active'
+			// if (strtolower($account[$status_key] ?? '') !== 'active') {
+			// 	continue;
+			// }
 
 			$available[] = $account;
 		}
