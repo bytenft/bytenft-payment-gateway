@@ -2303,12 +2303,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ($this->sandbox) {
 				$status   = strtolower($account['sandbox_status'] ?? '');
 				$has_keys = !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']);
-				// TEMPORARY BYPASS FOR LOCAL TESTING: Allow even if status is not 'active'
-				if ($has_keys) $valid_accounts[] = $account;
+				
 			} else {
 				$status   = strtolower($account['live_status'] ?? '');
 				$has_keys = !empty($account['live_public_key']) && !empty($account['live_secret_key']);
-				// TEMPORARY BYPASS FOR LOCAL TESTING: Allow even if status is not 'active'
+			'
 				if ($has_keys) $valid_accounts[] = $account;
 			}
 		}
@@ -2519,10 +2518,6 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				continue;
 			}
 
-			// TEMPORARY BYPASS FOR LOCAL TESTING: Allow even if status is not 'active'
-			// if (strtolower($account[$status_key] ?? '') !== 'active') {
-			// 	continue;
-			// }
 
 			$available[] = $account;
 		}
