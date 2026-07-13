@@ -64,4 +64,3 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 	}
 }
 
-
