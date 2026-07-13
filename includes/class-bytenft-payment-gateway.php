@@ -2044,9 +2044,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			if (($status['status'] ?? '') !== 'success') {
-				// TEMPORARY BYPASS FOR LOCAL TESTING: Don't hide gateway on API failure
+				
 				ByteNFT_Payment_Gateway_Logger::info('Bypassed merchant status check failure for local testing', $data);
-				// continue;
+				
 			}
 
 			$limit = $this->get_cached_api_response(
@@ -2057,9 +2057,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			if (($limit['status'] ?? '') !== 'success') {
-				// TEMPORARY BYPASS FOR LOCAL TESTING: Don't hide gateway on limit hit
+				
 				ByteNFT_Payment_Gateway_Logger::info('Bypassed daily limit check failure for local testing', $data);
-				// continue;
+				
 			}
 
 			if (!empty($limit['status']) && $limit['status'] === 'success') {
