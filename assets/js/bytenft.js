@@ -325,7 +325,20 @@
                 self.state.orderId = orderId;
 
                 if (!success) {
-                    self.failSafe(response?.message || response?.data?.message || 'Payment failed. Please try again.');
+                    let errorMessage = response?.messages || response?.message || response?.data?.message || 'Payment failed. Please try again.';
+                    
+                    if (typeof errorMessage === 'string' && errorMessage.includes('<ul')) {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = errorMessage;
+                        const lis = tempDiv.querySelectorAll('li');
+                        if (lis.length > 0) {
+                            errorMessage = Array.from(lis).map(li => li.textContent.trim()).join(' | ');
+                        } else {
+                            errorMessage = tempDiv.textContent.trim() || errorMessage;
+                        }
+                    }
+
+                    self.failSafe(errorMessage);
                     return;
                 }
 
@@ -755,6 +768,14 @@
             this.state.requestInFlightClassic = false;
             this.state.requestInFlightBlock = false;
             this.state.finalSuccess = false;
+
+            const $form = $('form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form, .wcf-embed-checkout-form-steps');
+            if ($form.length) {
+                $form.removeClass('processing');
+                if (typeof $form.unblock === 'function') {
+                    $form.unblock();
+                }
+            }
 
             const $button = $('.wc-block-components-checkout-place-order-button, button[name="woocommerce_checkout_place_order"], #wcf-order-place-btn');
 
