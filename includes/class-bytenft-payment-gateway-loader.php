@@ -86,19 +86,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	}
 
 	/**
-	 * ── FIXED ──────────────────────────────────────────────────────────────────
 	 * Handle the block checkout AJAX payment request.
-	 *
-	 * Root cause of "No available payment accounts":
-	 * `new BYTENFT_PAYMENT_GATEWAY()` creates a cold instance. In an AJAX
-	 * context WooCommerce has not called init_settings() on it, so
-	 * $this->sandbox defaults to false and get_option() returns empty values.
-	 * get_next_available_account() then finds no matching keys → returns false.
-	 *
-	 * Fix: pull the already-booted instance from WC()->payment_gateways().
-	 * That instance was fully initialised during the normal WC boot cycle so
-	 * sandbox mode and account keys are correct.
-	 * ───────────────────────────────────────────────────────────────────────────
 	 */
 	function handle_bytenft_gateway_ajax(){
 
@@ -793,8 +781,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			'cancelled' =>
 				'You cancelled the payment.',
 
-			'processing' =>
-				'Payment is being processed.',
+			'processing' => (
+				in_array($payment_status, ['pending', null, ''], true)
+				&& $order->has_status('pending')
+			)
+				? "We couldn't confirm the payment status. If you completed the payment, your order will be updated automatically. Otherwise, you can try placing the order again."
+				: 'Your payment is currently being processed.',
 
 			default =>
 				'We couldn’t confirm your payment status yet. If needed, you can try placing the order again after checking your order status.'
