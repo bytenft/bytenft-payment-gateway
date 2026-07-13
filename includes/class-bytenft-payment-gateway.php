@@ -1944,7 +1944,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$items = count(WC()->cart->get_cart());
 
 		// =====================================================
-		// STEP 5: REQUEST FINGERPRINT (REAL FIX)
+		// STEP 5: REQUEST FINGERPRINT
 		// =====================================================
 		static $executed = false;
 
@@ -2044,7 +2044,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			if (($status['status'] ?? '') !== 'success') {
-				// TEMPORARY BYPASS FOR LOCAL TESTING: Don't hide gateway on API failure
 				ByteNFT_Payment_Gateway_Logger::info('Bypassed merchant status check failure for local testing', $data);
 				// continue;
 			}
@@ -2057,7 +2056,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			if (($limit['status'] ?? '') !== 'success') {
-				// TEMPORARY BYPASS FOR LOCAL TESTING: Don't hide gateway on limit hit
 				ByteNFT_Payment_Gateway_Logger::info('Bypassed daily limit check failure for local testing', $data);
 				// continue;
 			}
@@ -2187,7 +2185,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// -----------------------------
-		// 🔥 FIXED FLOW DETECTION (REAL WOOCOMMERCE SAFE)
+		// FLOW DETECTION
 		// -----------------------------
 		$flow = 'background';
 
@@ -2226,7 +2224,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// -----------------------------
-		// 🔥 FIX: STABLE SESSION KEY
+		// STABLE SESSION KEY
 		// -----------------------------
 		$session_key = 'bytenft_log_' . md5($key . $this->id);
 
@@ -2303,12 +2301,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ($this->sandbox) {
 				$status   = strtolower($account['sandbox_status'] ?? '');
 				$has_keys = !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']);
-				// TEMPORARY BYPASS FOR LOCAL TESTING: Allow even if status is not 'active'
 				if ($has_keys) $valid_accounts[] = $account;
 			} else {
 				$status   = strtolower($account['live_status'] ?? '');
 				$has_keys = !empty($account['live_public_key']) && !empty($account['live_secret_key']);
-				// TEMPORARY BYPASS FOR LOCAL TESTING: Allow even if status is not 'active'
 				if ($has_keys) $valid_accounts[] = $account;
 			}
 		}
