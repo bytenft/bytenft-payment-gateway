@@ -2519,10 +2519,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				continue;
 			}
 
-			// TEMPORARY BYPASS FOR LOCAL TESTING: Allow even if status is not 'active'
-			// if (strtolower($account[$status_key] ?? '') !== 'active') {
-			// 	continue;
-			// }
+			
 
 			$available[] = $account;
 		}

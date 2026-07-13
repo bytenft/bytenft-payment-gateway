@@ -574,7 +574,7 @@
                     self.state.popup &&
                     !self.state.popup.closed;
 
-                // 👉 wait until popup closes
+                //  wait until popup closes
                 if (popupStillOpen) {
                     return;
                 }
@@ -673,6 +673,7 @@
 
                 const $conditionalParent = $field.closest('.wcf-conditional-field, .woocommerce-validated');
                 if ($conditionalParent.length && $conditionalParent.is(':hidden')) return;
+                if ($field.closest('.payment_box').is(':hidden') || $field.is(':hidden')) return;
 
                 const val = ($field.val() || '').trim();
                 const $wrapper = $field.closest('.form-row, .wc-block-components-text-input, .form-row-first, .form-row-last');
