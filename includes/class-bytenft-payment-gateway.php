@@ -2340,7 +2340,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			} else {
 				$status   = strtolower($account['live_status'] ?? '');
 				$has_keys = !empty($account['live_public_key']) && !empty($account['live_secret_key']);
-			'
 				if ($has_keys) $valid_accounts[] = $account;
 			}
 		}
