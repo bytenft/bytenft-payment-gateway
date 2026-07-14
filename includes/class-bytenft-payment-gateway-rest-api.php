@@ -214,7 +214,6 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$order = wc_get_order($order_id);
 
 		/**
-		 * CRITICAL FIX:
 		 * Always resolve from ENGINE + WC state,
 		 * not raw API response.
 		 */
@@ -226,7 +225,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$wc_status = $order->get_status();
 
 		// -------------------------
-		// 6. SUCCESS OVERRIDE (IMPORTANT FIX)
+		// 6. SUCCESS OVERRIDE
 		// -------------------------
 		if (in_array($wc_status, ['processing', 'completed'], true) && $order->get_meta('_bytenft_payment_success') === 'yes') {
 			$state = 'success';
@@ -300,7 +299,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			return new WP_REST_Response(['success' => $success, 'message' => $message], 200);
 		}
 
-		// --- SAFARI/SESSION FIX ---
+		// --- SAFARI/SESSION HANDLING ---
 		// If the browser (Safari) lost the session cookie, WooCommerce might not know which 
 		// order the user just paid for. We force the session to recognize this order.
 		if (isset(WC()->session) && !empty($order)) {
