@@ -694,11 +694,11 @@
         },
 
         validateRequiredFields: function ($form) {
-            let missing = [];
-            let firstInvalid = null;
-            const isShippingActive = this.getShippingState($form);
+    let missing = [];
+    let firstInvalid = null;
+    const isShippingActive = this.getShippingState($form);
 
-            const $allFields = $('form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form').find('[required]');
+    const $allFields = $form.find('[required]');
 
             $allFields.each(function () {
                 const $field = $(this);
@@ -738,47 +738,44 @@
         },
 
         getShippingState: function ($form) {
-            const $root = $('body');
-            const $shipToDifferentCheckbox = $root.find('#ship-to-different-address-checkbox, input[name="ship_to_different_address"]');
-            
-            if ($shipToDifferentCheckbox.length) {
-                if ($shipToDifferentCheckbox.is(':checkbox')) {
-                    return $shipToDifferentCheckbox.is(':checked');
-                }
-                const val = $shipToDifferentCheckbox.val();
-                return (val === '1' || val === 'yes' || val === 'true');
-            }
+    const $shipToDifferentCheckbox = $form.find('#ship-to-different-address-checkbox, input[name="ship_to_different_address"]');
+    
+    if ($shipToDifferentCheckbox.length) {
+        if ($shipToDifferentCheckbox.is(':checkbox')) {
+            return $shipToDifferentCheckbox.is(':checked');
+        }
+        const val = $shipToDifferentCheckbox.val();
+        return (val === '1' || val === 'yes' || val === 'true');
+    }
 
-            const $shippingWrapper = $root.find('.shipping_address, .wcf-shipping-address-fade');
-            if ($shippingWrapper.length) {
-                return $shippingWrapper.is(':visible') || $shippingWrapper.css('display') === 'block';
-            }
+    const $shippingWrapper = $form.find('.shipping_address, .wcf-shipping-address-fade');
+    if ($shippingWrapper.length) {
+        return $shippingWrapper.is(':visible') || $shippingWrapper.css('display') === 'block';
+    }
 
-            return false;
-        },
+    return false;
+},
 
         validatePOBox: function ($form) {
-            const isShippingActive = this.getShippingState($form);
-            const $root = $('body');
-            
-            const billing1 = $root.find('[name="billing_address_1"]').val();
-            const billing2 = $root.find('[name="billing_address_2"]').val();
-            
-            if (this.containsPOBox(billing1) || this.containsPOBox(billing2)) {
-                return 'PO Box addresses are not allowed for Billing.';
-            }
+    const isShippingActive = this.getShippingState($form);
+    
+    const billing1 = $form.find('[name="billing_address_1"]').val();
+    const billing2 = $form.find('[name="billing_address_2"]').val();
+    
+    if (this.containsPOBox(billing1) || this.containsPOBox(billing2)) {
+        return 'PO Box addresses are not allowed for Billing.';
+    }
 
-            if (isShippingActive) {
-                const shipping1 = $root.find('[name="shipping_address_1"]').val();
-                const shipping2 = $root.find('[name="shipping_address_2"]').val();
-                
-                if (this.containsPOBox(shipping1) || this.containsPOBox(shipping2)) {
-                    return 'PO Box addresses are not allowed for Shipping.';
-                }
-            }
-            return null;
-        },
-
+    if (isShippingActive) {
+        const shipping1 = $form.find('[name="shipping_address_1"]').val();
+        const shipping2 = $form.find('[name="shipping_address_2"]').val();
+        
+        if (this.containsPOBox(shipping1) || this.containsPOBox(shipping2)) {
+            return 'PO Box addresses are not allowed for Shipping.';
+        }
+    }
+    return null;
+},
         containsPOBox: function (value) {
             if (!value) return false;
             const cleaned = value.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -879,13 +876,13 @@
             $('.woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper, .woocommerce-error, .wc-block-components-notice-banner, .woocommerce-message, .woocommerce-info, .bytenft-error-wrap').remove();
         },
 
-        getBillingEmail: function ($f) {
-            return $('body').find('#billing_email, #email, input[type="email"]').first().val();
-        },
+       getBillingEmail: function ($form) {
+    return $form.find('#billing_email, #email, input[type="email"]').first().val();
+},
 
-        getPhoneNumber: function ($f) {
-            return $('body').find('input[name="billing_phone"], input[type="tel"]').first().val();
-        },
+        getPhoneNumber: function ($form) {
+    return $form.find('input[name="billing_phone"], input[type="tel"]').first().val();
+},
 
         isValidEmail: function (e) {
             return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
