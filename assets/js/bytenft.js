@@ -333,9 +333,31 @@
                     self.handleResponse(response);
                 },
                 error: function (xhr) {
+
                     self.state.requestInFlightBlock = false;
+
                     console.log('[Bytenft] block checkout error:', xhr.responseText);
-                    self.failSafe('There was an error processing your order.');
+
+                    let message = 'There was an error processing your order.';
+
+                    try {
+
+                        let response = JSON.parse(xhr.responseText);
+
+                        message =
+                            response?.message ||
+                            response?.data?.message ||
+                            response?.data?.error ||
+                            message;
+
+                    } catch (e) {
+
+                        console.log('[Bytenft] Unable to parse error response');
+
+                    }
+
+
+                    self.failSafe(message);
                 }
             });
         },
@@ -892,7 +914,7 @@
                         </svg>
 
                         <div class="wc-block-components-notice-banner__content">
-                            ${finalMessage}
+                            ${String(finalMessage).replace(/</g, '&lt;').replace(/>/g, '&gt;')}
                         </div>
                     </div>
                 `;
@@ -934,7 +956,7 @@
 
 
             $('form.checkout').prepend(html);
-        }
+        },
 
         clearCheckoutErrors: function () {
             $('.woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper, .woocommerce-error, .wc-block-components-notice-banner, .woocommerce-message, .woocommerce-info, .bytenft-error-wrap').remove();

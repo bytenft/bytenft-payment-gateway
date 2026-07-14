@@ -1408,7 +1408,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						'fail',
 						$error_msg,
 						[],
-						400,
+						200,
 						$order_id
 					);
 				}
