@@ -239,17 +239,10 @@
                 const btn = e.target.closest('.wc-block-components-checkout-place-order-button');
                 if (!btn) return;
 
-                const $form = $('form.wc-block-checkout__form');
-                if (!$form.length) return;
-
-                const selected = $form.find(
-                    'input[name="radio-control-wc-payment-method-options"]:checked'
-                ).val();
-
-                if (selected !== self.PAYMENT_METHOD) return;
-
-                e.preventDefault();
-                e.stopImmediatePropagation();
+                const $blockForm = $('form.wc-block-checkout__form');
+                if ($blockForm.length) {
+                    return; 
+                }
 
                 if (!self.canProceed('Block')) return;
                 if (self.state.requestInFlightBlock) return;
