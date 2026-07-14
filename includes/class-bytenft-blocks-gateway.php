@@ -48,7 +48,7 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 				if (!empty($info['subtitle'])) $description = $info['subtitle'];
 			}
 		}
-		return [
+		$payment_method_data = [
 			'id'          => $this->name,
             'title'       => $title,
             'description' => $description,
@@ -59,6 +59,10 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 			'instructions'=> $this->settings['instructions'] ?? '',
 			'accounts'    => $this->settings['accounts'] ?? '',
 		];
+
+		error_log('ByteNFT Blocks Data: ' . print_r($payment_method_data, true));
+
+		return $payment_method_data;
 	}
 }
 

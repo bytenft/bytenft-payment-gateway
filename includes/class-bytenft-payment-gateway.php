@@ -493,10 +493,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$account_title      = $account['title'] ?? '';
 			$priority           = intval($account['priority'] ?? 1);
-			$live_public_key    = $account['live_public_key'] ?? '';
-			$live_secret_key    = $account['live_secret_key'] ?? '';
-			$sandbox_public_key = $account['sandbox_public_key'] ?? '';
-			$sandbox_secret_key = $account['sandbox_secret_key'] ?? '';
+			$live_public_key    = trim($account['live_public_key'] ?? '');
+			$live_secret_key    = trim($account['live_secret_key'] ?? '');
+			$sandbox_public_key = trim($account['sandbox_public_key'] ?? '');
+			$sandbox_secret_key = trim($account['sandbox_secret_key'] ?? '');
 			$has_sandbox         = isset($account['has_sandbox']) && $account['has_sandbox'] === 'on';
 			$live_status        = $account['live_status'] ?? 'Active';
 			$sandbox_status     = $has_sandbox ? ($account['sandbox_status'] ?? 'Active') : '';
@@ -514,6 +514,29 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				ByteNFT_Payment_Gateway_Logger::info("Validation failed: missing required fields for account '{$account_title}'");
 				continue;
 			}
+
+		// Reject bad/dirty keys (quotes, spaces, SQL-like text) at save time
+		$key_pattern       = '/^[A-Za-z0-9_\-]+$/';
+		$invalid_key_field = null;
+
+		if (!preg_match($key_pattern, $live_public_key)) {
+			$invalid_key_field = __('Live Public Key', 'bytenft-payment-gateway');
+		} elseif (!preg_match($key_pattern, $live_secret_key)) {
+			$invalid_key_field = __('Live Secret Key', 'bytenft-payment-gateway');
+		} elseif (!empty($sandbox_public_key) && !preg_match($key_pattern, $sandbox_public_key)) {
+			$invalid_key_field = __('Sandbox Public Key', 'bytenft-payment-gateway');
+		} elseif (!empty($sandbox_secret_key) && !preg_match($key_pattern, $sandbox_secret_key)) {
+			$invalid_key_field = __('Sandbox Secret Key', 'bytenft-payment-gateway');
+		}
+
+		if ($invalid_key_field) {
+			$errors[] = sprintf(
+				__('Account "%1$s": %2$s contains invalid characters. Only letters, numbers, "_" and "-" are allowed.', 'bytenft-payment-gateway'),
+				$account_title,
+				$invalid_key_field
+			);
+			continue;
+		}
 
 			$live_combined = $live_public_key . '|' . $live_secret_key;
 			if (in_array($live_combined, $unique_live_keys, true)) {
@@ -2040,39 +2063,46 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$this->get_api_url('/api/check-merchant-status'),
 				$data,
 				$cache . '_status',
-				10
+				10,
+				$force_refresh
 			);
 
 			if (($status['status'] ?? '') !== 'success') {
-				
-				ByteNFT_Payment_Gateway_Logger::info('Bypassed merchant status check failure for local testing', $data);
-				
+
+				ByteNFT_Payment_Gateway_Logger::info(
+					'Account skipped at display-time: merchant status check failed',
+					$data + ['response' => $status]
+				);
+
+				continue;
 			}
 
 			$limit = $this->get_cached_api_response(
 				$this->get_api_url('/api/dailylimit'),
 				$data,
 				$cache . '_limit',
-				10
+				10,
+				$force_refresh
 			);
 
 			if (($limit['status'] ?? '') !== 'success') {
-				
-				ByteNFT_Payment_Gateway_Logger::info('Bypassed daily limit check failure for local testing', $data);
-				
+
+				ByteNFT_Payment_Gateway_Logger::info(
+					'Account skipped at display-time: daily/transaction limit check failed',
+					$data + ['response' => $limit]
+				);
+
+				continue;
 			}
 
-			if (!empty($limit['status']) && $limit['status'] === 'success') {
-				$all_accounts_limited = false;
-			}
-
+			$all_accounts_limited = false;
 
 			$this->send_plugin_logs(
 				$accounts,
 				$public,
 				$secret,
 				$amount,
-				$all_accounts_limited ? 0 : 1,
+				1,
 				$pluginLogApiUrl,
 				$force_refresh
 			);
@@ -2307,9 +2337,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			} else {
 				$status   = strtolower($account['live_status'] ?? '');
 				$has_keys = !empty($account['live_public_key']) && !empty($account['live_secret_key']);
-			'
-				if ($has_keys) $valid_accounts[] = $account;
 			}
+			if ($has_keys) $valid_accounts[] = $account;
 		}
 		$this->accounts = $valid_accounts;
 		return $valid_accounts;
@@ -2422,7 +2451,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				'api_secret_key' => $secret_key,
 			];
 			$cache_base  = 'bytenft_daily_limit_' . md5($public_key . $amount);
-			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 60, $force_refresh);
+			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 45, $force_refresh);
 			
 			if (!empty($status_data['status']) && $status_data['status'] === 'success') {
 				$user_account_active = true;
@@ -2435,7 +2464,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				continue;
 			}
 
-			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 60, $force_refresh);
+			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 45, $force_refresh);
 			
 			if (($limit_data['status'] ?? '') === 'success') {
 				$eligible_accounts[] = $account;
