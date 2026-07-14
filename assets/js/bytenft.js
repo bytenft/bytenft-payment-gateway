@@ -842,54 +842,87 @@
 
         showCheckoutError: function (message, fields = []) {
 
-            // Remove previous ByteNFT errors
+            // Remove previous ByteNFT error
             $('.bytenft-error-wrap').remove();
 
             let finalMessage = message;
 
             if (fields.length) {
-                finalMessage += '\n' + fields.join(', ');
+                finalMessage += '<br>' + fields.join(', ');
             }
 
+
             /**
-             * WooCommerce Blocks checkout notice
+             * WooCommerce Blocks Checkout
              */
-            const blockNotice = document.querySelector(
+            const blockCheckout = document.querySelector(
                 '.wc-block-checkout__form'
             );
 
-            if (blockNotice) {
+            if (blockCheckout) {
 
-                const notice = document.createElement('div');
+                let container = document.getElementById(
+                    'bytenft-checkout-errors'
+                );
 
-                notice.className =
-                    'wc-block-components-notices wc-block-components-notice-banner is-error';
+                // Create persistent container if missing
+                if (!container) {
 
-                notice.setAttribute('role', 'alert');
+                    container = document.createElement('div');
 
-                notice.innerHTML = `
-                    <svg class="wc-block-components-notice-banner__icon">
-                        <use href="#error"></use>
-                    </svg>
+                    container.id = 'bytenft-checkout-errors';
 
-                    <div class="wc-block-components-notice-banner__content">
-                        ${finalMessage}
+                    container.className =
+                        'wc-block-components-notices';
+
+                    blockCheckout.prepend(container);
+                }
+
+
+                container.innerHTML = `
+                    <div 
+                        class="wc-block-components-notice-banner is-error"
+                        role="alert"
+                    >
+                        <svg 
+                            class="wc-block-components-notice-banner__icon"
+                            aria-hidden="true"
+                        >
+                            <use href="#error"></use>
+                        </svg>
+
+                        <div class="wc-block-components-notice-banner__content">
+                            ${finalMessage}
+                        </div>
                     </div>
                 `;
 
-                blockNotice.prepend(notice);
 
-                window.scrollTo({
-                    top: blockNotice.offsetTop - 100,
-                    behavior: 'smooth'
-                });
+                // Scroll to error
+                setTimeout(function () {
+
+                    const errorBox = document.getElementById(
+                        'bytenft-checkout-errors'
+                    );
+
+                    if (errorBox) {
+
+                        errorBox.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center'
+                        });
+
+                    }
+
+                }, 100);
+
 
                 return;
             }
 
 
             /**
-             * Classic checkout fallback
+             * Classic Checkout fallback
              */
             const html = `
                 <div class="woocommerce-notices-wrapper bytenft-error-wrap">
@@ -899,8 +932,9 @@
                 </div>
             `;
 
+
             $('form.checkout').prepend(html);
-        },
+        }
 
         clearCheckoutErrors: function () {
             $('.woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper, .woocommerce-error, .wc-block-components-notice-banner, .woocommerce-message, .woocommerce-info, .bytenft-error-wrap').remove();
