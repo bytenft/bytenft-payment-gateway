@@ -1214,10 +1214,18 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					]
 				);
 
+				if (!$last_error_data) {
+					$last_error_data = [
+						'message' => $data['error'] ?? 'Payment data validation failed.'
+					];
+				}
+
 				$used_accounts[] = $public_key;
+
 				$failed_accounts[] = [
 					'account' => $account['title'] ?? null,
 					'reason'  => 'prepare_failed',
+					'error'   => $data['error'] ?? null,
 				];
 
 				continue;
@@ -1318,12 +1326,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						400,
 						$order_id
 					);
-				}
+				}		
 
 				ByteNFT_Payment_Gateway_Logger::error(
 					'No eligible payment provider available for this order.',
 					[
-						'order_id' => $order_id ?? null
+						'order_id' => $order_id ?? null,
+						'failed_accounts' => $failed_accounts,
+						'last_error_data' => $last_error_data
 					]
 				);
 
