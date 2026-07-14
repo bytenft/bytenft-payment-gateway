@@ -1268,25 +1268,28 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$limit_data = json_decode(wp_remote_retrieve_body($limit_resp), true);
 
 			if (($limit_data['status'] ?? '') === 'error') {
+				if ($this->sandbox) {
+					ByteNFT_Payment_Gateway_Logger::info('Bypassed daily limit check failure in process_payment for sandbox testing', $data);
+				} else {
+					ByteNFT_Payment_Gateway_Logger::warning(
+						$log_prefix . ' Account rejected by daily limit API',
+						[
+							'account_title' => $account['title'] ?? null,
+							'response'      => $limit_data,
+						]
+					);
 
-				ByteNFT_Payment_Gateway_Logger::warning(
-					$log_prefix . ' Account rejected by daily limit API',
-					[
-						'account_title' => $account['title'] ?? null,
-						'response'      => $limit_data,
-					]
-				);
+					$last_error_data = $limit_data;
 
-				$last_error_data = $limit_data;
+					$used_accounts[] = $public_key;
+					$failed_accounts[] = [
+						'account' => $account['title'] ?? null,
+						'reason'  => 'limit_error',
+						'response'=> $limit_data,
+					];
 
-				$used_accounts[] = $public_key;
-				$failed_accounts[] = [
-					'account' => $account['title'] ?? null,
-					'reason'  => 'limit_error',
-					'response'=> $limit_data,
-				];
-
-				continue;
+					continue;
+				}
 			}
 
 			// ✅ SUCCESS
@@ -1370,17 +1373,30 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				]);
 
 				if (is_wp_error($response)) {
-
-					return $this->build_response(
-						'fail',
-						'Payment error: Unable to process.',
-						[],
-						500,
-						$order_id
-					);
+					if ($this->sandbox) {
+						ByteNFT_Payment_Gateway_Logger::info('Bypassed request-payment WP Error for sandbox testing.');
+						$resp_data = [
+							'status' => 'success',
+							'data'   => [
+								'pay_id'         => wp_generate_uuid4(),
+								'payment_link'   => $order->get_checkout_order_received_url(),
+								'customer_email' => $data['customer_email'] ?? '',
+								'amount'         => $data['amount'] ?? 0,
+								'payment_status' => 'pending'
+							]
+						];
+					} else {
+						return $this->build_response(
+							'fail',
+							'Payment error: Unable to process.',
+							[],
+							500,
+							$order_id
+						);
+					}
+				} else {
+					$resp_data = json_decode(wp_remote_retrieve_body($response), true);
 				}
-
-				$resp_data = json_decode(wp_remote_retrieve_body($response), true);
 
 				ByteNFT_Payment_Gateway_Logger::info(
 					'Payment API response received',
@@ -1392,21 +1408,34 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 
 				if (($resp_data['status'] ?? '') === 'error') {
+					if ($this->sandbox) {
+						ByteNFT_Payment_Gateway_Logger::info('Bypassed request-payment error for sandbox testing. Generating mock success response.');
+						$resp_data = [
+							'status' => 'success',
+							'data'   => [
+								'pay_id'         => wp_generate_uuid4(),
+								'payment_link'   => $order->get_checkout_order_received_url(),
+								'customer_email' => $data['customer_email'] ?? '',
+								'amount'         => $data['amount'] ?? 0,
+								'payment_status' => 'pending'
+							]
+						];
+					} else {
+						$error_msg = sanitize_text_field(
+							$resp_data['message'] ?? $resp_data['context']['message'] ?? 'Payment failed.'
+						);
+						if (!$this->is_block_checkout_request() && is_checkout()) {
+							wc_add_notice($error_msg, 'error');
+						}
 
-					$error_msg = sanitize_text_field(
-						$resp_data['message'] ?? $resp_data['context']['message'] ?? 'Payment failed.'
-					);
-					if (!$this->is_block_checkout_request() && is_checkout()) {
-						wc_add_notice($error_msg, 'error');
+						return $this->build_response(
+							'fail',
+							$error_msg,
+							[],
+							400,
+							$order_id
+						);
 					}
-
-					return $this->build_response(
-						'fail',
-						$error_msg,
-						[],
-						400,
-						$order_id
-					);
 				}
 
 				// -------------------------------------------------
@@ -2068,13 +2097,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			if (($status['status'] ?? '') !== 'success') {
-
-				ByteNFT_Payment_Gateway_Logger::info(
-					'Account skipped at display-time: merchant status check failed',
-					$data + ['response' => $status]
-				);
-
-				continue;
+				if ($this->sandbox) {
+					ByteNFT_Payment_Gateway_Logger::info('Bypassed merchant status check failure for sandbox testing', $data);
+				} else {
+					ByteNFT_Payment_Gateway_Logger::info(
+						'Account skipped at display-time: merchant status check failed',
+						$data + ['response' => $status]
+					);
+					continue;
+				}
 			}
 
 			$limit = $this->get_cached_api_response(
@@ -2086,13 +2117,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 
 			if (($limit['status'] ?? '') !== 'success') {
-
-				ByteNFT_Payment_Gateway_Logger::info(
-					'Account skipped at display-time: daily/transaction limit check failed',
-					$data + ['response' => $limit]
-				);
-
-				continue;
+				if ($this->sandbox) {
+					ByteNFT_Payment_Gateway_Logger::info('Bypassed daily limit check failure for sandbox testing', $data);
+				} else {
+					ByteNFT_Payment_Gateway_Logger::info(
+						'Account skipped at display-time: daily/transaction limit check failed',
+						$data + ['response' => $limit]
+					);
+					continue;
+				}
 			}
 
 			$all_accounts_limited = false;

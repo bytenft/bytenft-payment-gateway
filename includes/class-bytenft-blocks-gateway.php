@@ -13,10 +13,14 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 	}
 
 	public function is_active() {
-		return (
-			isset($this->settings['enabled']) &&
-			$this->settings['enabled'] === 'yes'
-		);
+		if ( ! isset($this->settings['enabled']) || $this->settings['enabled'] !== 'yes' ) {
+			return false;
+		}
+
+		// Prevent "shown but then rejected" contradiction in WooCommerce Blocks
+		// by verifying if the gateway passes the conditional backend filters.
+		$available_gateways = WC()->payment_gateways ? WC()->payment_gateways->payment_gateways() : [];
+		return isset($available_gateways[$this->id]);
 	}
 
 	public function get_payment_method_script_handles() {
