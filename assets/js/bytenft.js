@@ -160,6 +160,12 @@
                 data += '&wfacp_billing_same_as_shipping=1';
             }
 
+            const countryCode = $('select[name="billing_country"]').val();
+
+            if (countryCode) {
+                data += '&country_code=' + encodeURIComponent(countryCode);
+            }
+
             return data;
         },
 
@@ -835,46 +841,65 @@
         },
 
         showCheckoutError: function (message, fields = []) {
-            $('.bytenft-error-wrap, .woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper').remove();
 
-            let fieldsHtml = '';
+            // Remove previous ByteNFT errors
+            $('.bytenft-error-wrap').remove();
+
+            let finalMessage = message;
+
             if (fields.length) {
-                fieldsHtml = `
-                    <ul class="bytenft-error-fields" style="margin-top: 5px; padding-left: 20px;">
-                        ${fields.map(field => `<li>${field}</li>`).join('')}
-                    </ul>`;
+                finalMessage += '\n' + fields.join(', ');
             }
 
-            const html = `
-                <div class="woocommerce-notices-wrapper wcf-woocommerce-notices-wrapper bytenft-error-wrap">
-                    <div class="woocommerce-error bytenft-error-box" role="alert" style="border-left: 3px solid #cc0000; padding: 1em; background: #fff1f1;">
-                        <div class="bytenft-error-header"><strong>${message}</strong></div>
-                        ${fieldsHtml}
+            /**
+             * WooCommerce Blocks checkout notice
+             */
+            const blockNotice = document.querySelector(
+                '.wc-block-checkout__form'
+            );
+
+            if (blockNotice) {
+
+                const notice = document.createElement('div');
+
+                notice.className =
+                    'wc-block-components-notices wc-block-components-notice-banner is-error';
+
+                notice.setAttribute('role', 'alert');
+
+                notice.innerHTML = `
+                    <svg class="wc-block-components-notice-banner__icon">
+                        <use href="#error"></use>
+                    </svg>
+
+                    <div class="wc-block-components-notice-banner__content">
+                        ${finalMessage}
                     </div>
-                </div>`;
+                `;
 
-            const targets = ['.wc-block-checkout__form', 'form.checkout', 'form#wcf-embed-checkout-form', '.wcf-embed-checkout-form-steps'];
-            let inserted = false;
+                blockNotice.prepend(notice);
 
-            for (let target of targets) {
-                const $el = $(target);
-                if ($el.length) {
-                    $el.prepend(html);
-                    inserted = true;
-                    break;
-                }
+                window.scrollTo({
+                    top: blockNotice.offsetTop - 100,
+                    behavior: 'smooth'
+                });
+
+                return;
             }
 
-            if (!inserted) {
-                $('body').prepend(html);
-            }
 
-            const $notice = $('.woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper');
-            if ($notice.length) {
-                $('html, body').animate({
-                    scrollTop: $notice.offset().top - 80
-                }, 300);
-            }
+            /**
+             * Classic checkout fallback
+             */
+            const html = `
+                <div class="woocommerce-notices-wrapper bytenft-error-wrap">
+                    <div class="woocommerce-error" role="alert">
+                        ${finalMessage}
+                    </div>
+                </div>
+            `;
+
+            $('form.checkout').prepend(html);
         },
 
         clearCheckoutErrors: function () {
