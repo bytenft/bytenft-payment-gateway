@@ -126,6 +126,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$phone   = trim($data['billing_phone'] ?? '');
 		$country = strtoupper($data['billing_country'] ?? '');
 
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Billing phone debug',
+			[
+				'posted_phone' => $_POST['billing_phone'] ?? null,
+				'order_phone'  => $order->get_billing_phone(),
+				'phone'        => $phone,
+			]
+		);
+
 		if (!empty($phone)) {
 
 			$country_calling_code = WC()->countries->get_country_calling_code($country);
@@ -1363,12 +1372,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$resp_data = json_decode(wp_remote_retrieve_body($response), true);
 
 				ByteNFT_Payment_Gateway_Logger::info(
-					'Payment API response received',
-					[
-						'order_id' => $order_id,
-						'status'   => $resp_data['status'] ?? null,
-						'pay_id'   => $resp_data['data']['pay_id'] ?? null,
-					]
+					'Full API response',
+					$resp_data
 				);
 
 				if (($resp_data['status'] ?? '') === 'error') {
@@ -1379,6 +1384,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					if (!$this->is_block_checkout_request() && is_checkout()) {
 						wc_add_notice($error_msg, 'error');
 					}
+
+					ByteNFT_Payment_Gateway_Logger::info(
+						'Adding WooCommerce notice',
+						[
+							'message' => $error_msg,
+							'is_checkout' => is_checkout(),
+							'is_block_checkout_request' => $this->is_block_checkout_request(),
+						]
+					);
 
 					return $this->build_response(
 						'fail',
@@ -1588,8 +1602,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$last_name   = sanitize_text_field($order->get_billing_last_name());
 		$amount      = number_format($order->get_total(), 2, '.', '');
 		$email       = sanitize_text_field($order->get_billing_email());
-		$original_phone = $order->get_billing_phone();
-		$phone       = sanitize_text_field($original_phone);
+		$phone = '';
+
+		if (isset($_POST['billing_phone'])) {
+			$phone = sanitize_text_field(
+				wp_unslash($_POST['billing_phone'])
+			);
+		} else {
+			$phone = sanitize_text_field($order->get_billing_phone());
+		}
 		$country     = $order->get_billing_country();
 		$country_code = WC()->countries->get_country_calling_code($country);
 		
@@ -1639,7 +1660,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'source'   => 'woocommerce',
 		]);
 
-		return [
+		$payload = [
 			'api_secret'       => $api_secret,
 			'api_public_key'   => $api_public_key,
 			'first_name'       => $first_name,
@@ -1653,8 +1674,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'meta_data'        => $meta_data_array,
 			'remarks'          => 'Order ' . $order->get_order_number(),
 			'email'            => $email,
-			'phone_number'     => $phone,
-			'country_code'     => $country_code,
 			'billing_address_1'=> $billing_address_1,
 			'billing_address_2'=> $billing_address_2,
 			'billing_city'     => $billing_city,
@@ -1665,6 +1684,33 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'curr_code'        => sanitize_text_field($order->get_currency()),
 			'plugin_source'    => 'bytenft',
 		];
+
+		if (!empty($phone)) {
+
+			$normalized = $this->bytenft_normalize_phone($phone, $country_code);
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				'Phone normalization',
+				[
+					'original'   => $phone,
+					'normalized' => $normalized,
+				]
+			);
+
+			if (!$normalized['is_valid']) {
+				wc_add_notice($normalized['error'], 'error');
+
+				return [
+					'result' => 'fail',
+					'error'  => $normalized['error'],
+				];
+			}
+
+			$payload['phone_number'] = $normalized['phone'];
+			$payload['country_code'] = $normalized['country_code'];
+		}
+
+		return $payload;
 	}
 
 	private function bytenft_normalize_phone($phone, $country_code) {

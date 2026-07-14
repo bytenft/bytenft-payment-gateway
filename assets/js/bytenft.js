@@ -348,7 +348,9 @@
                     response = JSON.parse(response);
                 }
 
-                console.log('[Bytenft] parsed response', response);
+                console.group('[Bytenft] API Response');
+                console.log('Response:', response);
+                console.groupEnd();
 
                 const success =
                     response?.result === 'success' ||
