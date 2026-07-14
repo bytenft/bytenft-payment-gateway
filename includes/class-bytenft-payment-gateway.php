@@ -105,8 +105,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 */
 	public function bytenft_validate_checkout_fields($data, $errors)
 	{
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce is verified by WooCommerce core before this hook fires.
 		$selected_gateway = wc_clean(
-			wp_unslash($_POST['payment_method'] ?? '')
+			wp_unslash( $_POST['payment_method'] ?? '' ) // phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- wc_clean() sanitizes; nonce verified by WC core.
 		);
 
 		if (empty($selected_gateway)) {
@@ -314,7 +315,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 
 				throw new Exception(
-					$normalized['error'] ?? 'Invalid phone number.'
+					esc_html( $normalized['error'] ?? 'Invalid phone number.' )
 				);
 			}
 
@@ -437,7 +438,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	public function bytenft_process_admin_options() {
 		$enabled     = isset($_POST['woocommerce_' . $this->id . '_enabled']) ? 'yes' : 'no';
-		$accounts    = isset($_POST['accounts']) ? $_POST['accounts'] : [];
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce admin options handler before this method runs.
+		$accounts = isset( $_POST['accounts'] ) ? array_map( 'wc_clean', wp_unslash( $_POST['accounts'] ) ) : []; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.MissingUnslash,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$keys_entered = false;
 
 		if (!empty($accounts)) {
@@ -509,7 +511,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			if (empty($account_title) || empty($live_public_key) || empty($live_secret_key)) {
-				/* translators: %s: account title */
+				// translators: %s is the account title/name.
 				$errors[] = sprintf(__('Account "%s": Title, Live Public Key, and Live Secret Key are required.', 'bytenft-payment-gateway'), $account_title);
 				ByteNFT_Payment_Gateway_Logger::info("Validation failed: missing required fields for account '{$account_title}'");
 				continue;
@@ -540,14 +542,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$live_combined = $live_public_key . '|' . $live_secret_key;
 			if (in_array($live_combined, $unique_live_keys, true)) {
-				/* translators: %s: account title */
+				// translators: %s is the account title/name.
 				$errors[] = sprintf(__('Account "%s": Live Public Key and Live Secret Key must be unique.', 'bytenft-payment-gateway'), $account_title);
 				ByteNFT_Payment_Gateway_Logger::info("Validation failed: duplicate live keys for account '{$account_title}'");
 				continue;
 			}
 
 			if ($live_public_key === $live_secret_key) {
-				/* translators: %s: account title */
+				// translators: %s is the account title/name.
 				$errors[] = sprintf(__('Account "%s": Live Public Key and Live Secret Key must be different.', 'bytenft-payment-gateway'), $account_title);
 				ByteNFT_Payment_Gateway_Logger::info("Validation warning: live keys are identical for account '{$account_title}'");
 			}
@@ -557,13 +559,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			if ($has_sandbox && !empty($sandbox_public_key) && !empty($sandbox_secret_key)) {
 				$sandbox_combined = $sandbox_public_key . '|' . $sandbox_secret_key;
 				if (in_array($sandbox_combined, $unique_sandbox_keys, true)) {
-					/* translators: %s: account title */
+					// translators: %s is the account title/name.
 					$errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key must be unique.', 'bytenft-payment-gateway'), $account_title);
 					ByteNFT_Payment_Gateway_Logger::info("Validation failed: duplicate sandbox keys for account '{$account_title}'");
 					continue;
 				}
 				if ($sandbox_public_key === $sandbox_secret_key) {
-					/* translators: %s: account title */
+					// translators: %s is the account title/name.
 					$errors[] = sprintf(__('Account "%s": Sandbox Public Key and Sandbox Secret Key must be different.', 'bytenft-payment-gateway'), $account_title);
 					ByteNFT_Payment_Gateway_Logger::info("Validation warning: sandbox keys are identical for account '{$account_title}'");
 				}
@@ -608,7 +610,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'plugin_version' => $plugin_version,
 				'gateway_loaded' => 0,
 				'group_id'       => get_option('bytenft_group_id'),
-				'domain_name'    => parse_url(home_url(), PHP_URL_HOST),
+				'domain_name'    => wp_parse_url(home_url(), PHP_URL_HOST),
 				'valid_accounts'        => $valid_accounts,
 				'plugin_status'         => $enabled === 'yes' ? 1 : 0,
 				'plugin_version'        => $plugin_version,
@@ -617,7 +619,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'woocommerce_db_version'=> get_option('woocommerce_db_version'),
 				'gateway_loaded'        => 0,
 				'group_id'              => get_option('bytenft_group_id'),
-				'domain_name'           => parse_url(home_url(), PHP_URL_HOST),
+				'domain_name'           => wp_parse_url(home_url(), PHP_URL_HOST),
 			];
 
 			wp_remote_post($api_url, [
@@ -631,7 +633,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'sslverify' => true,
 			]);
 
-			// $this->admin_notices->bytenft_add_notice('settings_success', 'notice notice-success', __('Settings saved successfully.', 'bytenft-payment-gateway'));
+			
 			ByteNFT_Payment_Gateway_Logger::info('Account settings updated successfully.', ['count' => count($valid_accounts)]);
 
 			if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
@@ -788,7 +790,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'instructions' => [
 				'title'       => __('Instructions', 'bytenft-payment-gateway'),
 				'type'        => 'title',
-				/* translators: %1$s: Open HTML link tag, %2$s: Close HTML link tag */
+				// translators: %1$s is an opening HTML link tag, %2$s is the closing tag.
 				'description' => sprintf(__('To configure this gateway, %1$sGet your API keys from your merchant account: Developer Settings > API Keys.%2$s', 'bytenft-payment-gateway'), $dev_instructions_link, ''),
 				'desc_tip'    => true,
 			],
@@ -1071,8 +1073,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$lock_name = 'bytenft_order_' . $order_id;
 
 		// Try lock
-		$lock_result = $wpdb->get_var(
-			$wpdb->prepare("SELECT GET_LOCK(%s, 3)", $lock_name)
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- GET_LOCK is a session-scoped MySQL function; caching is not applicable.
+		$lock_result = $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->prepare( "SELECT GET_LOCK(%s, 3)", $lock_name )
 		);
 
 		if ((string)$lock_result !== '1') {
@@ -1090,7 +1093,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			// -------------------------------------------------
 			// 4. RATE LIMITING (UNCHANGED)
 			// -------------------------------------------------
-			$ip_address  = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP) ?: 'invalid';
+			$ip_address  = filter_var(wp_unslash($_SERVER['REMOTE_ADDR'] ?? ''), FILTER_VALIDATE_IP) ?: 'invalid';
 			$window_size = 10;
 			$max_requests = 5;
 
@@ -1146,7 +1149,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				return $this->build_response(
 					'success',
 					'Order already processed',
-					[],
+					['redirect' => esc_url($redirect)],
 					200,
 					$order->get_id()
 				);
@@ -1412,20 +1415,24 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				// -------------------------------------------------
 				// 9. DATABASE (UNCHANGED - KEPT EXACTLY SAME)
 				// -------------------------------------------------
-				$table_name = $wpdb->prefix . 'order_payment_link';
+				$table_name = $wpdb->prefix . 'order_payment_link'; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- safe, derived from $wpdb->prefix.
 
 				$pay_id = $resp_data['data']['pay_id'] ?? '';
 
 				if (!empty($resp_data['data']['payment_link'])) {
 
-					$existing = $wpdb->get_var($wpdb->prepare(
-						"SELECT id FROM $table_name WHERE order_id = %d",
-						$order_id
-					));
+					$existing = $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+						$wpdb->prepare(
+							// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- $table_name is derived solely from $wpdb->prefix which is safe.
+							"SELECT id FROM {$wpdb->prefix}order_payment_link WHERE order_id = %d",
+							$order_id
+						)
+					);
 
 					if ($existing) {
 
-						$wpdb->update(
+						// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write operation; caching is not applicable for updates.
+						$wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 							$table_name,
 							[
 								'uuid'           => sanitize_text_field($pay_id),
@@ -1438,7 +1445,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						);
 					} else {
 
-						$wpdb->insert(
+						// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Write operation; insert does not need caching.
+						$wpdb->insert( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 							$table_name,
 							[
 								'order_id'       => $order_id,
@@ -1474,8 +1482,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$order,
 					'payment_initiated',
 					sprintf(
-						/* translators: %s: account title */
-						__('Payment initiated via ByteNFT (%s)', 'bytenft-payment-gateway'),
+						// translators: %s is the payment account title.
+						__( 'Payment initiated via ByteNFT (%s)', 'bytenft-payment-gateway' ),
 						$account['title']
 					)
 				);
@@ -1537,7 +1545,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			} finally {
 
-				$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- RELEASE_LOCK is a session-scoped MySQL function; caching is not applicable.
+				$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+					$wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_name )
+				);
 			}
 	}
 
@@ -1548,7 +1559,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		int $code = 200,
 		?int $order_id = null
 	) {
-		return [
+		// WooCommerce process_payment() requires 'redirect' at the TOP LEVEL of
+		// the returned array. Hoist it from $data so WC can actually redirect.
+		$response = [
 			'result'   => $result, // success | fail
 			'message'  => $message,
 			'data'     => $data,
@@ -1556,11 +1569,20 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'code'     => $code,
 			'success'  => $result === 'success',
 		];
+
+		// If a redirect URL is present in $data, promote it to the top level.
+		// This is required by WooCommerce's checkout flow.
+		if (!empty($data['redirect'])) {
+			$response['redirect'] = $data['redirect'];
+		}
+
+		return $response;
 	}
 
 	private function is_block_checkout_request() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Checking action name only; actual nonce is verified in the AJAX handler itself.
 		return wp_doing_ajax() && isset($_REQUEST['action'])
-			&& $_REQUEST['action'] === 'bytenft_block_gateway_process';
+			&& sanitize_key(wp_unslash($_REQUEST['action'])) === 'bytenft_block_gateway_process'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	}
 
 	public function bytenft_display_test_order_tag($order) {
@@ -1795,8 +1817,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$shipping_country = '';
 
 		// Checkout posted data (AJAX checkout updates)
-		if ( isset( $_POST['post_data'] ) ) {
-			parse_str( wp_unslash( $_POST['post_data'] ), $posted_data );
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- State detection only; nonce verified upstream by WooCommerce.
+		if ( isset( $_POST['post_data'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.MissingUnslash -- wp_unslash is applied before sanitize_text_field below.
+			parse_str( sanitize_text_field( wp_unslash( $_POST['post_data'] ) ), $posted_data ); // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.MissingUnslash
 
 			$billing_state  = isset( $posted_data['billing_state'] ) ? wc_clean( $posted_data['billing_state'] ) : '';
 			$shipping_state = isset( $posted_data['shipping_state'] ) ? wc_clean( $posted_data['shipping_state'] ) : '';
@@ -1815,12 +1839,20 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			// Direct POST fallback
-			if ( isset( $_POST['billing_state'] ) ) {
-				$billing_state = wc_clean( wp_unslash( $_POST['billing_state'] ) );
+			if ( isset( $_POST['billing_state'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+				$billing_state = wc_clean( wp_unslash( $_POST['billing_state'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 			}
 
-			if ( isset( $_POST['shipping_state'] ) ) {
-				$shipping_state = wc_clean( wp_unslash( $_POST['shipping_state'] ) );
+			if ( isset( $_POST['shipping_state'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+				$shipping_state = wc_clean( wp_unslash( $_POST['shipping_state'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			}
+
+			if ( isset( $_POST['billing_country'] ) ) {
+				$billing_country = wc_clean( wp_unslash( $_POST['billing_country'] ) );
+			}
+
+			if ( isset( $_POST['shipping_country'] ) ) {
+				$shipping_country = wc_clean( wp_unslash( $_POST['shipping_country'] ) );
 			}
 
 			if ( isset( $_POST['billing_country'] ) ) {
@@ -1967,7 +1999,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$items = count(WC()->cart->get_cart());
 
 		// =====================================================
-		// STEP 5: REQUEST FINGERPRINT (REAL FIX)
+		// STEP 5: REQUEST FINGERPRINT
 		// =====================================================
 		static $executed = false;
 
@@ -2132,7 +2164,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// =====================================================
 		$this->selected_account_for_display = $selected;
 
-		if (!$selected) {
+		if (!$this->is_gateway_available()) {
 			return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 
@@ -2153,6 +2185,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		return $available_gateways;
 	}
+
 	private function send_plugin_logs($accounts, $public_key, $secret_key, $amount, $gateway_loaded, $pluginLogApiUrl, $force_refresh)
 	{
 		$plugin_version = BYTENFT_PLUGIN_VERSION;
@@ -2174,7 +2207,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'api_secret_key' => $secret_key,
 			'is_sandbox'     => $this->sandbox,
 			'group_id'       => $group_id ? $group_id : $this->bytenft_get_group_id(),
-			'domain_name'    => parse_url(home_url(), PHP_URL_HOST),
+			'domain_name'    => wp_parse_url(home_url(), PHP_URL_HOST),
 		];
 
 		$this->get_cached_api_response(
@@ -2217,14 +2250,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// -----------------------------
-		// 🔥 FIXED FLOW DETECTION (REAL WOOCOMMERCE SAFE)
+		// FLOW DETECTION
 		// -----------------------------
 		$flow = 'background';
 
 		$is_ajax = defined('DOING_AJAX') && DOING_AJAX;
 		$is_rest = defined('REST_REQUEST') && REST_REQUEST;
 
-		$wc_ajax = $_REQUEST['wc-ajax'] ?? '';
+		$wc_ajax = isset( $_REQUEST['wc-ajax'] ) ? sanitize_key( wp_unslash( $_REQUEST['wc-ajax'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Used only for flow detection logging.
 
 		if (is_checkout()) {
 			$flow = 'checkout_page';
@@ -2256,7 +2289,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		// -----------------------------
-		// 🔥 FIX: STABLE SESSION KEY
+		// STABLE SESSION KEY
 		// -----------------------------
 		$session_key = 'bytenft_log_' . md5($key . $this->id);
 
@@ -2273,7 +2306,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$is_empty  = empty($account['title']) && empty($account['sandbox_public_key']) && empty($account['sandbox_secret_key']) && empty($account['live_public_key']) && empty($account['live_secret_key']);
 		$is_filled = !empty($account['title']) && !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']) && !empty($account['live_public_key']) && !empty($account['live_secret_key']);
 		if (!$is_empty && !$is_filled) {
-			/* translators: %d: account index */
+			// translators: %d is the account number (1-based index).
 			return sprintf(__('Account %d is invalid. Please fill all fields or leave the account empty.', 'bytenft-payment-gateway'), $index + 1);
 		}
 		return true;
@@ -2286,7 +2319,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$is_empty  = empty($account['title']) && empty($account['sandbox_public_key']) && empty($account['sandbox_secret_key']) && empty($account['live_public_key']) && empty($account['live_secret_key']);
 			$is_filled = !empty($account['title']) && !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']) && !empty($account['live_public_key']) && !empty($account['live_secret_key']);
 			if (!$is_empty && !$is_filled) {
-				/* translators: %d: account index */
+				// translators: %d is the account number (1-based index).
 				$errors[] = sprintf(__('Account %d is invalid. Please fill all fields or leave the account empty.', 'bytenft-payment-gateway'), $index + 1);
 			} elseif ($is_filled) {
 				$valid_accounts[] = $account;
@@ -2323,24 +2356,30 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	private function get_all_accounts() {
+
 		$accounts = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
+
 		if (is_string($accounts)) {
-			$unserialized = maybe_unserialize($accounts);
-			$accounts = is_array($unserialized) ? $unserialized : [];
+			$accounts = maybe_unserialize($accounts);
+			$accounts = is_array($accounts) ? $accounts : [];
 		}
+
 		$valid_accounts = [];
-		foreach ($accounts as $i => $account) {
+
+		foreach ($accounts as $account) {
+
 			if ($this->sandbox) {
 				$status   = strtolower($account['sandbox_status'] ?? '');
 				$has_keys = !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key']);
-				
 			} else {
 				$status   = strtolower($account['live_status'] ?? '');
 				$has_keys = !empty($account['live_public_key']) && !empty($account['live_secret_key']);
 			}
 			if ($has_keys) $valid_accounts[] = $account;
 		}
+
 		$this->accounts = $valid_accounts;
+
 		return $valid_accounts;
 	}
 
@@ -2664,5 +2703,86 @@ private function get_routing_sorted_accounts(array $accounts): array {
 			return false;
 		}
 		return true;
+	}
+
+	public function is_gateway_available()
+	{
+		if (!WC()->cart) {
+			return false;
+		}
+
+		if ($this->is_restricted_state()) {
+			return false;
+		}
+
+		$amount = (float) WC()->cart->get_total('raw');
+
+		if ($amount < 0.01) {
+			$amount = (float) (WC()->cart->get_totals()['total'] ?? 0);
+		}
+
+		if (!method_exists($this, 'get_all_accounts')) {
+			return false;
+		}
+
+		$accounts = $this->get_all_accounts();
+
+		if (empty($accounts)) {
+			return false;
+		}
+
+		usort($accounts, function ($a, $b) {
+			return ($a['priority'] ?? 1) <=> ($b['priority'] ?? 1);
+		});
+
+		foreach ($accounts as $account) {
+
+			$public = $this->sandbox
+				? ($account['sandbox_public_key'] ?? '')
+				: ($account['live_public_key'] ?? '');
+
+			$secret = $this->sandbox
+				? ($account['sandbox_secret_key'] ?? '')
+				: ($account['live_secret_key'] ?? '');
+
+			if (empty($public) || empty($secret)) {
+				continue;
+			}
+
+			$data = [
+				'is_sandbox'     => $this->sandbox,
+				'amount'         => $amount,
+				'api_public_key' => $public,
+				'api_secret_key' => $secret,
+			];
+
+			$cache = 'bytenft_' . md5($public . $amount);
+
+			$status = $this->get_cached_api_response(
+				$this->get_api_url('/api/check-merchant-status'),
+				$data,
+				$cache . '_status',
+				10
+			);
+
+			if (($status['status'] ?? '') !== 'success') {
+				continue;
+			}
+
+			$limit = $this->get_cached_api_response(
+				$this->get_api_url('/api/dailylimit'),
+				$data,
+				$cache . '_limit',
+				10
+			);
+
+			if (($limit['status'] ?? '') !== 'success') {
+				continue;
+			}
+
+			return true;
+		}
+
+		return false;
 	}
 }
