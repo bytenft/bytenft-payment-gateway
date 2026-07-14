@@ -1724,9 +1724,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	private function bytenft_normalize_phone($phone, $country_code) {
-		$cleanedPhone  = preg_replace('/[()\s-]/', '', $phone ?? '');
-		$countryCode   = preg_replace('/[^0-9]/', '', $country_code ?? '');
-		$phoneNumber   = preg_replace('/[^\d]/', '', $cleanedPhone);
+
+		$cleanedPhone = preg_replace('/[()\s-]/', '', $phone ?? '');
+		$countryCode  = preg_replace('/[^0-9]/', '', $country_code ?? '');
+		$phoneNumber  = preg_replace('/[^\d]/', '', $cleanedPhone);
 
 		if (!empty($countryCode) && strlen($phoneNumber) > strlen($countryCode) && strpos($phoneNumber, $countryCode) === 0) {
 			$normalizedPhone = substr($phoneNumber, strlen($countryCode));
@@ -1734,29 +1735,135 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$normalizedPhone = $phoneNumber;
 		}
 
-		$normalizedPhone = ltrim($normalizedPhone, '0');
 
-		if (empty($phoneNumber)) {
-			return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => true, 'error' => null];
+		/**
+		 * Reject dummy/test phone numbers
+		 * Do this BEFORE removing leading zeros
+		 */
+		if (!empty($phoneNumber)) {
+
+			// Reject repeated numbers:
+			// 0000000000, 1111111111, 9999999999, etc.
+			if (preg_match('/^(\d)\1+$/', $phoneNumber)) {
+
+				return [
+					'phone'        => $phoneNumber,
+					'country_code' => '+' . $countryCode,
+					'is_valid'     => false,
+					'error'        => 'Please enter a valid phone number.'
+				];
+			}
+
+
+			// Reject common test numbers
+			$invalidNumbers = [
+				'1234567890',
+				'0123456789',
+				'9876543210'
+			];
+
+			if (in_array($phoneNumber, $invalidNumbers, true)) {
+
+				return [
+					'phone'        => $phoneNumber,
+					'country_code' => '+' . $countryCode,
+					'is_valid'     => false,
+					'error'        => 'Please enter a valid phone number.'
+				];
+			}
 		}
 
-		$localLength   = strlen($normalizedPhone);
-		$totalLength   = strlen($countryCode . $normalizedPhone);
-		$requires10Digits = in_array($countryCode, ['1']);
-		$europeCodes   = ['33','34','39','31','44','46','47','48','49','41','45','358'];
 
+		/**
+		 * Remove leading zeros after dummy validation
+		 */
+		$normalizedPhone = ltrim($normalizedPhone, '0');
+
+
+		/**
+		 * Empty phone validation
+		 */
+		if (empty($phoneNumber)) {
+
+			return [
+				'phone'        => $normalizedPhone,
+				'country_code' => '+' . $countryCode,
+				'is_valid'     => true,
+				'error'        => null
+			];
+		}
+
+
+		$localLength = strlen($normalizedPhone);
+		$totalLength = strlen($countryCode . $normalizedPhone);
+
+
+		/**
+		 * Country-specific validation
+		 */
+		$requires10Digits = in_array($countryCode, ['1']);
+
+		$europeCodes = [
+			'33',
+			'34',
+			'39',
+			'31',
+			'44',
+			'46',
+			'47',
+			'48',
+			'49',
+			'41',
+			'45',
+			'358'
+		];
+
+
+		/**
+		 * US validation
+		 */
 		if ($requires10Digits) {
+
 			if ($localLength !== 10) {
-				return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => false, 'error' => 'Phone number must be exactly 10 digits.'];
+
+				return [
+					'phone'        => $normalizedPhone,
+					'country_code' => '+' . $countryCode,
+					'is_valid'     => false,
+					'error'        => 'Phone number must be exactly 10 digits.'
+				];
 			}
-		} elseif (in_array($countryCode, $europeCodes)) {
+
+		}
+
+
+		/**
+		 * European validation
+		 */
+		elseif (in_array($countryCode, $europeCodes)) {
+
 			$min = ($countryCode === '49' || $countryCode === '358') ? 5 : 8;
 			$max = ($countryCode === '49' || $countryCode === '358') ? 11 : 10;
+
+
 			if ($localLength < $min || $localLength > $max) {
-				return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => false, 'error' => "European number invalid: should be $min-$max digits"];
+
+				return [
+					'phone'        => $normalizedPhone,
+					'country_code' => '+' . $countryCode,
+					'is_valid'     => false,
+					'error'        => "European number invalid: should be $min-$max digits"
+				];
 			}
-		} else {
-			// Default international validation
+
+		}
+
+
+		/**
+		 * Default international validation
+		 */
+		else {
+
 			if ($localLength < 10 || $localLength > 15) {
 
 				return [
@@ -1768,11 +1875,30 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 		}
 
+
+		/**
+		 * Total length validation including country code
+		 */
 		if ($totalLength > 15) {
-			return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => false, 'error' => sprintf('Phone number is too long. Maximum allowed length is 15 digits (including country code). Your phone number has %d digits.', $totalLength)];
+
+			return [
+				'phone'        => $normalizedPhone,
+				'country_code' => '+' . $countryCode,
+				'is_valid'     => false,
+				'error'        => sprintf(
+					'Phone number is too long. Maximum allowed length is 15 digits (including country code). Your phone number has %d digits.',
+					$totalLength
+				)
+			];
 		}
 
-		return ['phone' => $normalizedPhone, 'country_code' => '+' . $countryCode, 'is_valid' => true, 'error' => null];
+
+		return [
+			'phone'        => $normalizedPhone,
+			'country_code' => '+' . $countryCode,
+			'is_valid'     => true,
+			'error'        => null
+		];
 	}
 
 	private function bytenft_get_client_ip() {
