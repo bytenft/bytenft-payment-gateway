@@ -350,6 +350,39 @@
                             response?.data?.error ||
                             message;
 
+
+                        // WooCommerce checkout error format
+                        if (
+                            response?.payment_result?.payment_details &&
+                            Array.isArray(response.payment_result.payment_details)
+                        ) {
+
+                            const errorItem = response.payment_result.payment_details.find(
+                                item => item.key === 'message'
+                            );
+
+                            if (errorItem?.value) {
+                                message = errorItem.value;
+                            }
+                        }
+
+
+                        // WooCommerce blocks API error format
+                        if (
+                            response?.data?.payment_result?.payment_details &&
+                            Array.isArray(response.data.payment_result.payment_details)
+                        ) {
+
+                            const errorItem = response.data.payment_result.payment_details.find(
+                                item => item.key === 'message'
+                            );
+
+                            if (errorItem?.value) {
+                                message = errorItem.value;
+                            }
+                        }
+
+
                     } catch (e) {
 
                         console.log('[Bytenft] Unable to parse error response');
@@ -975,9 +1008,48 @@
         },
 
         isValidPhoneNumber: function (p) {
+
             if (!p) return true;
+
             const cleaned = p.replace(/[\s\-().]/g, '');
-            return (/^(\+1|1)?\d{10}$/.test(cleaned) || /^(\+|00)[1-9]\d{6,14}$/.test(cleaned) || /^\+?\d{5,15}$/.test(cleaned));
+
+            // digits only
+            if (!/^\+?\d+$/.test(cleaned)) {
+                return false;
+            }
+
+            const numberOnly = cleaned.replace('+','');
+
+            // reject repeated digits
+            if (/^(\d)\1+$/.test(numberOnly)) {
+                return false;
+            }
+
+            // reject common test numbers
+            const invalidNumbers = [
+                '0000000000',
+                '1111111111',
+                '2222222222',
+                '3333333333',
+                '4444444444',
+                '5555555555',
+                '6666666666',
+                '7777777777',
+                '8888888888',
+                '9999999999',
+                '1234567890',
+                '9876543210'
+            ];
+
+            if (invalidNumbers.includes(numberOnly)) {
+                return false;
+            }
+
+
+            return (
+                /^1?\d{10}$/.test(numberOnly) ||
+                /^[1-9]\d{6,14}$/.test(numberOnly)
+            );
         },
 
         bindInputSanitization: function () {
