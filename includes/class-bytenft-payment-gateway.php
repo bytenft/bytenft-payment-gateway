@@ -1322,9 +1322,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$order->update_meta_data('_bytenft_limit_exceeded', true);
 					$order->save();
 
+					$message = !empty($last_error_data['message'])
+						? (string)$last_error_data['message']
+						: 'Payment failed.';
+
 					return $this->build_response(
 						'fail',
-						$last_error_data['message'] ?? 'Payment limit error.',
+						$message,
 						[],
 						400,
 						$order_id
@@ -1403,49 +1407,34 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 
 				if (($resp_data['status'] ?? '') === 'error') {
-					if ($this->sandbox) {
-						ByteNFT_Payment_Gateway_Logger::info('Bypassed request-payment error for sandbox testing. Generating mock success response.');
-						$resp_data = [
-							'status' => 'success',
-							'data'   => [
-								'pay_id'         => wp_generate_uuid4(),
-								'payment_link'   => $order->get_checkout_order_received_url(),
-								'customer_email' => $data['customer_email'] ?? '',
-								'amount'         => $data['amount'] ?? 0,
-								'payment_status' => 'pending'
-							]
-						];
-					} else {
-						$error_msg = sanitize_text_field(
-							$resp_data['message'] ?? $resp_data['context']['message'] ?? 'Payment failed.'
-						);
-						if (!$this->is_block_checkout_request() && is_checkout()) {
-							wc_add_notice($error_msg, 'error');
-						}
 
-						return $this->build_response(
-							'fail',
-							$error_msg,
-							[],
-							400,
-							$order_id
-						);
-					}
+					// Always extract the API validation message
+					$error_msg = sanitize_text_field(
+						$resp_data['message']
+						?? $resp_data['context']['message']
+						?? 'Payment failed.'
+					);
 
-					ByteNFT_Payment_Gateway_Logger::info(
-						'Adding WooCommerce notice',
+					ByteNFT_Payment_Gateway_Logger::warning(
+						'Request-payment API returned an error',
 						[
+							'sandbox' => $this->sandbox,
+							'response' => $resp_data,
 							'message' => $error_msg,
-							'is_checkout' => is_checkout(),
-							'is_block_checkout_request' => $this->is_block_checkout_request(),
 						]
 					);
 
+					// Show WooCommerce notice for Classic Checkout
+					if (!$this->is_block_checkout_request() && is_checkout()) {
+						wc_add_notice($error_msg, 'error');
+					}
+
+					// Return the API validation message for BOTH sandbox and live
 					return $this->build_response(
 						'fail',
 						$error_msg,
 						[],
-						200,
+						400,
 						$order_id
 					);
 				}
@@ -1592,15 +1581,15 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private function build_response(
 		string $result,
-		string $message = '',
+		?string $message = '',
 		array $data = [],
 		int $code = 200,
 		?int $order_id = null
 	) {
-		// WooCommerce process_payment() requires 'redirect' at the TOP LEVEL of
-		// the returned array. Hoist it from $data so WC can actually redirect.
+		$message = (string)($message ?? '');
+
 		$response = [
-			'result'   => $result, // success | fail
+			'result'   => $result,
 			'message'  => $message,
 			'data'     => $data,
 			'order_id' => $order_id,
@@ -1608,8 +1597,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'success'  => $result === 'success',
 		];
 
-		// If a redirect URL is present in $data, promote it to the top level.
-		// This is required by WooCommerce's checkout flow.
 		if (!empty($data['redirect'])) {
 			$response['redirect'] = $data['redirect'];
 		}
