@@ -160,6 +160,12 @@
                 data += '&wfacp_billing_same_as_shipping=1';
             }
 
+            const countryCode = $('select[name="billing_country"]').val();
+
+            if (countryCode) {
+                data += '&country_code=' + encodeURIComponent(countryCode);
+            }
+
             return data;
         },
 
@@ -327,9 +333,64 @@
                     self.handleResponse(response);
                 },
                 error: function (xhr) {
+
                     self.state.requestInFlightBlock = false;
+
                     console.log('[Bytenft] block checkout error:', xhr.responseText);
-                    self.failSafe('There was an error processing your order.');
+
+                    let message = 'There was an error processing your order.';
+
+                    try {
+
+                        let response = JSON.parse(xhr.responseText);
+
+                        message =
+                            response?.message ||
+                            response?.data?.message ||
+                            response?.data?.error ||
+                            message;
+
+
+                        // WooCommerce checkout error format
+                        if (
+                            response?.payment_result?.payment_details &&
+                            Array.isArray(response.payment_result.payment_details)
+                        ) {
+
+                            const errorItem = response.payment_result.payment_details.find(
+                                item => item.key === 'message'
+                            );
+
+                            if (errorItem?.value) {
+                                message = errorItem.value;
+                            }
+                        }
+
+
+                        // WooCommerce blocks API error format
+                        if (
+                            response?.data?.payment_result?.payment_details &&
+                            Array.isArray(response.data.payment_result.payment_details)
+                        ) {
+
+                            const errorItem = response.data.payment_result.payment_details.find(
+                                item => item.key === 'message'
+                            );
+
+                            if (errorItem?.value) {
+                                message = errorItem.value;
+                            }
+                        }
+
+
+                    } catch (e) {
+
+                        console.log('[Bytenft] Unable to parse error response');
+
+                    }
+
+
+                    self.failSafe(message);
                 }
             });
         },
@@ -348,7 +409,9 @@
                     response = JSON.parse(response);
                 }
 
-                console.log('[Bytenft] parsed response', response);
+                console.group('[Bytenft] API Response');
+                console.log('Response:', response);
+                console.groupEnd();
 
                 const success =
                     response?.result === 'success' ||
@@ -833,46 +896,99 @@
         },
 
         showCheckoutError: function (message, fields = []) {
-            $('.bytenft-error-wrap, .woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper').remove();
 
-            let fieldsHtml = '';
+            // Remove previous ByteNFT error
+            $('.bytenft-error-wrap').remove();
+
+            let finalMessage = message;
+
             if (fields.length) {
-                fieldsHtml = `
-                    <ul class="bytenft-error-fields" style="margin-top: 5px; padding-left: 20px;">
-                        ${fields.map(field => `<li>${field}</li>`).join('')}
-                    </ul>`;
+                finalMessage += '<br>' + fields.join(', ');
             }
 
-            const html = `
-                <div class="woocommerce-notices-wrapper wcf-woocommerce-notices-wrapper bytenft-error-wrap">
-                    <div class="woocommerce-error bytenft-error-box" role="alert" style="border-left: 3px solid #cc0000; padding: 1em; background: #fff1f1;">
-                        <div class="bytenft-error-header"><strong>${message}</strong></div>
-                        ${fieldsHtml}
-                    </div>
-                </div>`;
 
-            const targets = ['.wc-block-checkout__form', 'form.checkout', 'form#wcf-embed-checkout-form', '.wcf-embed-checkout-form-steps'];
-            let inserted = false;
+            /**
+             * WooCommerce Blocks Checkout
+             */
+            const blockCheckout = document.querySelector(
+                '.wc-block-checkout__form'
+            );
 
-            for (let target of targets) {
-                const $el = $(target);
-                if ($el.length) {
-                    $el.prepend(html);
-                    inserted = true;
-                    break;
+            if (blockCheckout) {
+
+                let container = document.getElementById(
+                    'bytenft-checkout-errors'
+                );
+
+                // Create persistent container if missing
+                if (!container) {
+
+                    container = document.createElement('div');
+
+                    container.id = 'bytenft-checkout-errors';
+
+                    container.className =
+                        'wc-block-components-notices';
+
+                    blockCheckout.prepend(container);
                 }
+
+
+                container.innerHTML = `
+                    <div 
+                        class="wc-block-components-notice-banner is-error"
+                        role="alert"
+                    >
+                        <svg 
+                            class="wc-block-components-notice-banner__icon"
+                            aria-hidden="true"
+                        >
+                            <use href="#error"></use>
+                        </svg>
+
+                        <div class="wc-block-components-notice-banner__content">
+                            ${String(finalMessage).replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+                        </div>
+                    </div>
+                `;
+
+
+                // Scroll to error
+                setTimeout(function () {
+
+                    const errorBox = document.getElementById(
+                        'bytenft-checkout-errors'
+                    );
+
+                    if (errorBox) {
+
+                        errorBox.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center'
+                        });
+
+                    }
+
+                }, 100);
+
+
+                return;
             }
 
-            if (!inserted) {
-                $('body').prepend(html);
-            }
 
-            const $notice = $('.woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper');
-            if ($notice.length) {
-                $('html, body').animate({
-                    scrollTop: $notice.offset().top - 80
-                }, 300);
-            }
+            /**
+             * Classic Checkout fallback
+             */
+            const html = `
+                <div class="woocommerce-notices-wrapper bytenft-error-wrap">
+                    <div class="woocommerce-error" role="alert">
+                        ${finalMessage}
+                    </div>
+                </div>
+            `;
+
+
+            $('form.checkout').prepend(html);
         },
 
         clearCheckoutErrors: function () {
@@ -892,9 +1008,48 @@
         },
 
         isValidPhoneNumber: function (p) {
+
             if (!p) return true;
+
             const cleaned = p.replace(/[\s\-().]/g, '');
-            return (/^(\+1|1)?\d{10}$/.test(cleaned) || /^(\+|00)[1-9]\d{6,14}$/.test(cleaned) || /^\+?\d{5,15}$/.test(cleaned));
+
+            // digits only
+            if (!/^\+?\d+$/.test(cleaned)) {
+                return false;
+            }
+
+            const numberOnly = cleaned.replace('+','');
+
+            // reject repeated digits
+            if (/^(\d)\1+$/.test(numberOnly)) {
+                return false;
+            }
+
+            // reject common test numbers
+            const invalidNumbers = [
+                '0000000000',
+                '1111111111',
+                '2222222222',
+                '3333333333',
+                '4444444444',
+                '5555555555',
+                '6666666666',
+                '7777777777',
+                '8888888888',
+                '9999999999',
+                '1234567890',
+                '9876543210'
+            ];
+
+            if (invalidNumbers.includes(numberOnly)) {
+                return false;
+            }
+
+
+            return (
+                /^1?\d{10}$/.test(numberOnly) ||
+                /^[1-9]\d{6,14}$/.test(numberOnly)
+            );
         },
 
         bindInputSanitization: function () {

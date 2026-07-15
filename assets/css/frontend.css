@@ -82,3 +82,47 @@
     border-color: #df1b41 !important;
     box-shadow: 0 0 0 1px #df1b41 !important;
 }
+
+#bytenft-checkout-errors {
+    margin-bottom: 16px;
+}
+
+#bytenft-checkout-errors .wc-block-components-notice-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+}
+
+#bytenft-checkout-errors .wc-block-components-notice-banner.is-error {
+    background-color: #fff5f5;
+    border: 1px solid #cc1818;
+    color: #cc1818;
+}
+
+#bytenft-checkout-errors 
+.wc-block-components-notice-banner__content {
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+#bytenft-checkout-errors .wc-block-components-notice-banner__icon {
+    width: 20px !important;
+    height: 20px !important;
+    min-width: 20px !important;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+#bytenft-checkout-errors .wc-block-components-notice-banner__icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+#bytenft-checkout-errors .wc-block-components-notice-banner__content {
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.5;
+}
