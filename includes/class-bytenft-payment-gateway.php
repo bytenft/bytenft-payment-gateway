@@ -130,7 +130,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'Billing phone debug',
 			[
 				'posted_phone' => $_POST['billing_phone'] ?? null,
-				'order_phone'  => $order->get_billing_phone(),
 				'phone'        => $phone,
 			]
 		);
@@ -1454,23 +1453,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 							$order_id
 						);
 					}
-
-					ByteNFT_Payment_Gateway_Logger::info(
-						'Adding WooCommerce notice',
-						[
-							'message' => $error_msg,
-							'is_checkout' => is_checkout(),
-							'is_block_checkout_request' => $this->is_block_checkout_request(),
-						]
-					);
-
-					return $this->build_response(
-						'fail',
-						$error_msg,
-						[],
-						200,
-						$order_id
-					);
 				}
 
 				// -------------------------------------------------
@@ -1683,6 +1665,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 		$country     = $order->get_billing_country();
 		$country_code = WC()->countries->get_country_calling_code($country);
+
+		if (is_array($country_code)) {
+			$country_code = reset($country_code);
+		}
 		
 		$billing_address_1 = sanitize_text_field($order->get_billing_address_1());
 		$billing_address_2 = sanitize_text_field($order->get_billing_address_2());
