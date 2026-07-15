@@ -32,9 +32,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 */
 	private $selected_account_for_display = null;
 
-	/**
-	 * Constructor for the gateway.
-	 */
 	public function __construct() {
 		if (!class_exists('WC_Payment_Gateway_CC')) {
 			add_action('admin_notices', [$this, 'woocommerce_not_active_notice']);
@@ -74,9 +71,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$this->current_account_index = 0;
 	}
 
-	/**
-	 * Register hooks for the gateway.
-	 */
 	private function register_hooks() {
 		add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'bytenft_process_admin_options']);
 		add_action('wp_enqueue_scripts', [$this, 'bytenft_enqueue_styles_and_scripts']);
@@ -994,6 +988,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return ob_get_clean();
 	}
 
+	/**
+	 * Process the payment for a given order.
+	 *
+	 * @param int   $order_id      The WooCommerce order ID.
+	 * @param array $used_accounts Array of public keys for accounts that have already been tried.
+	 * @return array Array containing the result of the payment process.
+	 */
 	public function process_payment($order_id, $used_accounts = [])
 	{
 		global $wpdb;
@@ -1289,7 +1290,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				}
 			}
 
-			// ✅ SUCCESS
+			//  SUCCESS
 			ByteNFT_Payment_Gateway_Logger::info(
 				$log_prefix . ' Account selected',
 				[
@@ -1312,7 +1313,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 						return $this->build_response(
 							'fail',
-							'The transaction amount exceeds the maximum allowed limit.',
+							'This payment method has reached its transaction limit for now. Please try another payment option provided by the merchant to complete your order.',
 							[],
 							400,
 							$order_id
@@ -1324,7 +1325,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 					return $this->build_response(
 						'fail',
-						$last_error_data['message'] ?? 'Payment limit error.',
+						'This payment method has reached its transaction limit for now. Please try another payment option provided by the merchant to complete your order.',
 						[],
 						400,
 						$order_id
@@ -2307,25 +2308,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				}
 			}
 
-			$limit = $this->get_cached_api_response(
-				$this->get_api_url('/api/dailylimit'),
-				$data,
-				$cache . '_limit',
-				10,
-				$force_refresh
-			);
-
-			if (($limit['status'] ?? '') !== 'success') {
-				if ($this->sandbox) {
-					ByteNFT_Payment_Gateway_Logger::info('Bypassed daily limit check failure for sandbox testing', $data);
-				} else {
-					ByteNFT_Payment_Gateway_Logger::info(
-						'Account skipped at display-time: daily/transaction limit check failed',
-						$data + ['response' => $limit]
-					);
-					continue;
-				}
-			}
 
 			$all_accounts_limited = false;
 
@@ -2634,6 +2616,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * @return array          Sorted array of eligible accounts.
 	 */
 
+/**
+ * Routing sorted accounts.
+ */
 private function get_routing_sorted_accounts(array $accounts): array {
 	// No max_single_txn logic: return all accounts sorted by priority only
 	usort($accounts, function ($a, $b) {
@@ -2905,6 +2890,11 @@ private function get_routing_sorted_accounts(array $accounts): array {
 		return true;
 	}
 
+	/**
+	 * Check if the gateway is available for use.
+	 *
+	 * @return bool True if the gateway is available, false otherwise.
+	 */
 	public function is_gateway_available()
 	{
 		if (!WC()->cart) {
@@ -2969,16 +2959,6 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				continue;
 			}
 
-			$limit = $this->get_cached_api_response(
-				$this->get_api_url('/api/dailylimit'),
-				$data,
-				$cache . '_limit',
-				10
-			);
-
-			if (($limit['status'] ?? '') !== 'success') {
-				continue;
-			}
 
 			return true;
 		}
