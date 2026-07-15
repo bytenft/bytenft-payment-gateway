@@ -1309,10 +1309,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				if ($last_error_data) {
 
 					if (!empty($last_error_data['max_limit_reached'])) {
+						$limit_error_msg = 'The transaction amount exceeds the maximum allowed limit.';
+						if (!$this->is_block_checkout_request() && is_checkout()) {
+							wc_add_notice($limit_error_msg, 'error');
+						}
 
 						return $this->build_response(
 							'fail',
-							'The transaction amount exceeds the maximum allowed limit.',
+							$limit_error_msg,
 							[],
 							400,
 							$order_id
@@ -1322,9 +1326,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$order->update_meta_data('_bytenft_limit_exceeded', true);
 					$order->save();
 
+					$limit_error_msg = $last_error_data['message'] ?? 'Payment limit error.';
+					if (!$this->is_block_checkout_request() && is_checkout()) {
+						wc_add_notice($limit_error_msg, 'error');
+					}
+
 					return $this->build_response(
 						'fail',
-						$last_error_data['message'] ?? 'Payment limit error.',
+						$limit_error_msg,
 						[],
 						400,
 						$order_id
@@ -1600,7 +1609,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// WooCommerce process_payment() requires 'redirect' at the TOP LEVEL of
 		// the returned array. Hoist it from $data so WC can actually redirect.
 		$response = [
-			'result'   => $result, // success | fail
+			'result'   => $result === 'fail' ? 'failure' : $result, // success | failure
 			'message'  => $message,
 			'data'     => $data,
 			'order_id' => $order_id,
