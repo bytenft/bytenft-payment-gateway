@@ -130,7 +130,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'Billing phone debug',
 			[
 				'posted_phone' => $_POST['billing_phone'] ?? null,
-				'order_phone'  => $order->get_billing_phone(),
 				'phone'        => $phone,
 			]
 		);
@@ -787,6 +786,22 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'type'        => 'checkbox',
 				'description' => __('Use sandbox API keys (real payments will not be taken).', 'bytenft-payment-gateway'),
 				'default'     => 'no',
+			],
+
+			'block_voip_numbers' => [
+				'title'       => __('Block VOIP Numbers', 'bytenft-payment-gateway'),
+				'label'       => __('Enable VOIP / Virtual Number blocking', 'bytenft-payment-gateway'),
+				'type'        => 'checkbox',
+				'description' => __('Requires a Phone Validation API Key. If validation fails or times out, it defaults to allowing the transaction.', 'bytenft-payment-gateway'),
+				'default'     => 'no',
+			],
+
+			'phone_validation_api_key' => [
+				'title'       => __('Phone Validation API Key', 'bytenft-payment-gateway'),
+				'type'        => 'text',
+				'description' => __('API Key from AbstractAPI Phone Validation (or compatible provider) to check line type.', 'bytenft-payment-gateway'),
+				'default'     => '',
+				'desc_tip'    => true,
 			],
 
 			'group_id' => [
@@ -1448,6 +1463,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						200,
 						$order_id
 					);
+
 				}
 
 				// -------------------------------------------------
@@ -1660,6 +1676,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 		$country     = $order->get_billing_country();
 		$country_code = WC()->countries->get_country_calling_code($country);
+
+		if (is_array($country_code)) {
+			$country_code = reset($country_code);
+		}
 		
 		$billing_address_1 = sanitize_text_field($order->get_billing_address_1());
 		$billing_address_2 = sanitize_text_field($order->get_billing_address_2());
@@ -1758,6 +1778,40 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		return $payload;
+	}
+
+	private function bytenft_check_voip_number($phone, $country_code) {
+		$block_voip = $this->get_option('block_voip_numbers');
+		$api_key    = $this->get_option('phone_validation_api_key');
+
+		if ($block_voip !== 'yes' || empty($api_key)) {
+			return ['is_voip' => false];
+		}
+
+		$full_number = ltrim($country_code, '+') . ltrim($phone, '0');
+		
+		$url = add_query_arg([
+			'api_key' => $api_key,
+			'phone'   => $full_number
+		], 'https://phonevalidation.abstractapi.com/v1/');
+
+		$response = wp_remote_get($url, [
+			'timeout' => 5, // Fail open quickly if API is down
+		]);
+
+		if (is_wp_error($response)) {
+			return ['is_voip' => false];
+		}
+
+		$body = wp_remote_retrieve_body($response);
+		$data = json_decode($body, true);
+
+		// Allow filter to swap to Twilio or other providers
+		$result = apply_filters('bytenft_voip_lookup_result', [
+			'is_voip' => ($data['type'] ?? '') === 'VoiceOverInternetProtocol' || ($data['is_valid_voip'] ?? false) === true
+		], $data);
+
+		return $result;
 	}
 
 	private function bytenft_normalize_phone($phone, $country_code) {
@@ -1929,6 +1983,19 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			];
 		}
 
+
+		/**
+		 * VOIP Validation
+		 */
+		$voip_check = $this->bytenft_check_voip_number($normalizedPhone, $countryCode);
+		if (!empty($voip_check['is_voip'])) {
+			return [
+				'phone'        => $normalizedPhone,
+				'country_code' => '+' . $countryCode,
+				'is_valid'     => false,
+				'error'        => sprintf('The phone number %s is a Voice Over IP (VOIP) number. VOIP numbers are not supported for payments.', $normalizedPhone)
+			];
+		}
 
 		return [
 			'phone'        => $normalizedPhone,

@@ -122,19 +122,34 @@
 
                     self.setStatus('popup');
 
-                   const popup = self.openPopupImmediately();
+                    try {
+                        const popup = self.openPopupImmediately();
 
-                    if (!popup) {
+                        if (!popup) {
+                            self.releaseLock('Classic');
+                            self.setStatus('idle');
+                            return false;
+                        }
+
+                        // Watchdog timer (20s)
+                        if (self.watchdogTimerClassic) clearTimeout(self.watchdogTimerClassic);
+                        self.watchdogTimerClassic = setTimeout(function() {
+                            if (self.state.requestInFlightClassic) {
+                                self.releaseLock('Classic');
+                                self.setStatus('idle');
+                            }
+                        }, 20000);
+
+                        // 3. NOW move to processing
+                        self.setStatus('processing');
+
+                        // 4. Start AJAX AFTER popup exists
+                        self.handleClassicCheckout($form);
+                    } catch (e) {
                         self.releaseLock('Classic');
                         self.setStatus('idle');
-                        return false;
+                        console.error('ByteNFT Popup Error (Classic):', e);
                     }
-
-                    // 3. NOW move to processing
-                    self.setStatus('processing');
-
-                    // 4. Start AJAX AFTER popup exists
-                    self.handleClassicCheckout($form);
                     return false;
                 });
         },
@@ -282,16 +297,32 @@
                 }
 
                 self.setStatus('popup');
-                const popup = self.openPopupImmediately();
+                
+                try {
+                    const popup = self.openPopupImmediately();
 
-                if (!popup) {
+                    if (!popup) {
+                        self.releaseLock('Block');
+                        self.setStatus('idle');
+                        return;
+                    }
+
+                    // Watchdog timer (20s)
+                    if (self.watchdogTimerBlock) clearTimeout(self.watchdogTimerBlock);
+                    self.watchdogTimerBlock = setTimeout(function() {
+                        if (self.state.requestInFlightBlock) {
+                            self.releaseLock('Block');
+                            self.setStatus('idle');
+                        }
+                    }, 20000);
+
+                    self.setStatus('processing');
+                    self.handleBlockCheckout($form);
+                } catch (e) {
                     self.releaseLock('Block');
                     self.setStatus('idle');
-                    return;
+                    console.error('ByteNFT Popup Error (Block):', e);
                 }
-
-                self.setStatus('processing');
-                self.handleBlockCheckout($form);
             }, true);
 
             // Prevent native block context from bypassing validation filters
