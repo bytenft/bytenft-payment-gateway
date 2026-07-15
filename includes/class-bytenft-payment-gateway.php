@@ -526,29 +526,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				continue;
 			}
 
-		// Reject bad/dirty keys (quotes, spaces, SQL-like text) at save time
-		$key_pattern       = '/^[A-Za-z0-9_\-]+$/';
-		$invalid_key_field = null;
-
-		if (!preg_match($key_pattern, $live_public_key)) {
-			$invalid_key_field = __('Live Public Key', 'bytenft-payment-gateway');
-		} elseif (!preg_match($key_pattern, $live_secret_key)) {
-			$invalid_key_field = __('Live Secret Key', 'bytenft-payment-gateway');
-		} elseif (!empty($sandbox_public_key) && !preg_match($key_pattern, $sandbox_public_key)) {
-			$invalid_key_field = __('Sandbox Public Key', 'bytenft-payment-gateway');
-		} elseif (!empty($sandbox_secret_key) && !preg_match($key_pattern, $sandbox_secret_key)) {
-			$invalid_key_field = __('Sandbox Secret Key', 'bytenft-payment-gateway');
-		}
-
-		if ($invalid_key_field) {
-			$errors[] = sprintf(
-				__('Account "%1$s": %2$s contains invalid characters. Only letters, numbers, "_" and "-" are allowed.', 'bytenft-payment-gateway'),
-				$account_title,
-				$invalid_key_field
-			);
-			continue;
-		}
-
 			$live_combined = $live_public_key . '|' . $live_secret_key;
 			if (in_array($live_combined, $unique_live_keys, true)) {
 				// translators: %s is the account title/name.
