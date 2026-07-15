@@ -69,7 +69,7 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 				if (!empty($info['subtitle'])) $description = $info['subtitle'];
 			}
 		}
-		return [
+		$payment_method_data = [
 			'id'          => $this->name,
             'title'       => $title,
             'description' => $description,
@@ -80,6 +80,77 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 			'instructions'=> $this->settings['instructions'] ?? '',
 			'accounts'    => $this->settings['accounts'] ?? '',
 		];
+
+		error_log('ByteNFT Blocks Data: ' . print_r($payment_method_data, true));
+
+		return $payment_method_data;
+	}
+}
+
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * AJAX handler for Block Checkout payment processing.
+ *
+ * KEY FIX: Instead of `new BYTENFT_PAYMENT_GATEWAY()` (which creates a fresh,
+ * partially-initialised instance), we pull the already-booted gateway instance
+ * from WooCommerce's payment gateway registry.  That instance has had
+ * init_settings() called by WooCommerce during the normal boot cycle, so
+ * $this->sandbox, $this->enabled, and all get_option() values are correctly
+ * populated when process_payment() runs.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+function bytenft_register_block_ajax_handlers() {
+	add_action('wp_ajax_bytenft_block_gateway_process',        'handle_bytenft_gateway_ajax');
+	add_action('wp_ajax_nopriv_bytenft_block_gateway_process', 'handle_bytenft_gateway_ajax');
+}
+add_action('init', 'bytenft_register_block_ajax_handlers');
+
+function handle_bytenft_gateway_ajax() {
+
+	// ─────────────────────────────────────────────
+	// CONTEXT + LOG PREFIX (ADDED FOR DEBUGGING)
+	// ─────────────────────────────────────────────
+	$orderID = WC()->session ? WC()->session->get('store_api_draft_order') : null;
+
+	$log_prefix = "[Order #{$orderID}]";
+	$log_ctx    = ['order_id' => $orderID];
+
+	// ─────────────────────────────────────────────
+	// NONCE CHECK (WITH LOGGING)
+	// ─────────────────────────────────────────────
+	$nonce = isset($_POST['nonce'])
+		? sanitize_text_field(wp_unslash($_POST['nonce']))
+		: '';
+
+	if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
+
+
+		ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' AJAX | Invalid nonce');
+
+		wp_send_json([
+			'success' => false,
+			'message' => 'Security check failed.',
+			'data'    => [
+				'reload'   => true,
+				'order_id' => $orderID
+			]
+		]);
+
+		die;
+	}
+
+	// ─────────────────────────────────────────────
+	// GET GATEWAY INSTANCE (UNCHANGED LOGIC)
+	// ─────────────────────────────────────────────
+	$gateways       = WC()->payment_gateways()->payment_gateways();
+	$bytenftPayment = $gateways['bytenft'] ?? null;
+
+	if (!$bytenftPayment) {
+
+		$bytenftPayment = new BYTENFT_PAYMENT_GATEWAY();
+		$bytenftPayment->init_settings();
+		$bytenftPayment->load_gateway_settings();
 
 		error_log('ByteNFT Blocks Data: ' . print_r($data, true));
 	}
