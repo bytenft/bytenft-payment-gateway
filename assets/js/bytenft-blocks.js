@@ -38,6 +38,8 @@ console.log('bytenft-blocks.js loaded at', new Date().toISOString());
             features: settings.supports || ['products'],
         },
     };
+    // FIX: Added `settings.isActive` check to prevent the payment method from 
+    // registering on the frontend if the backend conditionally hid it.
     if(settings.title && settings.isActive){
         console.log(settings.title);
         registerPaymentMethod(methodConfig);
