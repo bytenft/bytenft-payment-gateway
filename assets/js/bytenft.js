@@ -108,7 +108,6 @@
                         self.releaseLock('Classic');
                         self.setStatus('idle');
                         self.reset();
-                        self.showCheckoutError(requiredError.message, requiredError.fields);
                         return false;
                     }
 
@@ -270,7 +269,6 @@
                     self.releaseLock('Block');
                     self.setStatus('idle');
                     self.reset();
-                    self.showCheckoutError(requiredError.message, requiredError.fields);
                     return;
                 }
 
@@ -761,7 +759,9 @@
             let firstInvalid = null;
             const isShippingActive = this.getShippingState($form);
 
-            const $allFields = $('form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form').find('[required]');
+            const $allFields = $('form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form').find(
+                '[required], .validate-required input, .validate-required select, .validate-required textarea'
+            );
 
             $allFields.each(function () {
                 const $field = $(this);
@@ -780,6 +780,7 @@
 
                 if (!val) {
                     $wrapper.addClass('woocommerce-invalid woocommerce-invalid-required-field');
+                    $field.css({'border-color': '#a00', 'box-shadow': '0 0 0 1px #a00'});
 
                     let label = $wrapper.find('label').first().text().trim() || $field.attr('placeholder') || name;
                     label = label.replace('*', '').trim();
@@ -790,6 +791,7 @@
                     if (!firstInvalid) firstInvalid = $field;
                 } else {
                     $wrapper.removeClass('woocommerce-invalid woocommerce-invalid-required-field');
+                    $field.css({'border-color': '', 'box-shadow': ''});
                 }
             });
 
