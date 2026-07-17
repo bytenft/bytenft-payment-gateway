@@ -2287,26 +2287,6 @@ if (!empty($phone)) {
 				}
 			}
 
-			$limit = $this->get_cached_api_response(
-				$this->get_api_url('/api/dailylimit'),
-				$data,
-				$cache . '_limit',
-				10,
-				$force_refresh
-			);
-
-			if (($limit['status'] ?? '') !== 'success') {
-				if ($this->sandbox) {
-					ByteNFT_Payment_Gateway_Logger::info('Bypassed daily limit check failure for sandbox testing', $data);
-				} else {
-					ByteNFT_Payment_Gateway_Logger::info(
-						'Account skipped at display-time: daily/transaction limit check failed',
-						$data + ['response' => $limit]
-					);
-					continue;
-				}
-			}
-
 			$all_accounts_limited = false;
 
 			$this->send_plugin_logs(
@@ -2683,20 +2663,8 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				continue;
 			}
 
-			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 45, $force_refresh);
-			
-			if (($limit_data['status'] ?? '') === 'success') {
-				$eligible_accounts[] = $account;
-			} else {
-				$this->log_info_once_per_session('skip_limit_' . $acc_title, "Skipping '{$acc_title}': daily limit exceeded", [
-					'response_status' => $limit_data['status'] ?? 'unknown',
-					'message' => $limit_data['message'] ?? '',
-				]);
-				continue;
-			}
-			if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {
-				$all_accounts_limited = false;
-			}
+			$eligible_accounts[] = $account;
+			$all_accounts_limited = false;
 
 			$selected_account = $account;
 			break;
@@ -2705,10 +2673,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 		$gateway_id = $this->id;
 		$available_gateways = WC()->payment_gateways->get_available_payment_gateways();
 		if ($all_accounts_limited) {
-			
-			if (!isset($limit_data['max_limit_reached']) || $limit_data['max_limit_reached'] == false) {
-				return $this->hide_gateway($available_gateways, $gateway_id);
-			}
+			return $this->hide_gateway($available_gateways, $gateway_id);
 		}
 		// Fallback logic if no eligible account found
 		
@@ -2946,17 +2911,6 @@ private function get_routing_sorted_accounts(array $accounts): array {
 			);
 
 			if (($status['status'] ?? '') !== 'success') {
-				continue;
-			}
-
-			$limit = $this->get_cached_api_response(
-				$this->get_api_url('/api/dailylimit'),
-				$data,
-				$cache . '_limit',
-				10
-			);
-
-			if (($limit['status'] ?? '') !== 'success') {
 				continue;
 			}
 
