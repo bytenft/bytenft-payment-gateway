@@ -1719,31 +1719,24 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'plugin_source'    => 'bytenft',
 		];
 
-		if (!empty($phone)) {
+		$normalized = $this->bytenft_normalize_phone($phone, $country_code);
 
-			$normalized = $this->bytenft_normalize_phone($phone, $country_code);
+// Always send country code
+$payload['country_code'] = $normalized['country_code'];
 
-			ByteNFT_Payment_Gateway_Logger::info(
-				'Phone normalization',
-				[
-					'original'   => $phone,
-					'normalized' => $normalized,
-				]
-			);
+if (!empty($phone)) {
 
-			if (!$normalized['is_valid']) {
-				wc_add_notice($normalized['error'], 'error');
+    if (!$normalized['is_valid']) {
+        wc_add_notice($normalized['error'], 'error');
 
-				return [
-					'result' => 'fail',
-					'error'  => $normalized['error'],
-				];
-			}
+        return [
+            'result' => 'fail',
+            'error'  => $normalized['error'],
+        ];
+    }
 
-			$payload['phone_number'] = $normalized['phone'];
-			$payload['country_code'] = $normalized['country_code'];
-		}
-
+    $payload['phone_number'] = $normalized['phone'];
+}
 		return $payload;
 	}
 

@@ -754,53 +754,116 @@
             return null;
         },
 
+        getBillingEmail: function ($form) {
+            let email = $form.find('input[name="billing_email"], #billing_email, input[type="email"]').val();
+            if (!email) {
+                email = $('body').find('input[name="billing_email"], #billing_email, input[type="email"], #email').first().val();
+            }
+            return (email || '').trim();
+        },
+
+        isValidEmail: function (email) {
+            const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return re.test(email);
+        },
+
+        getPhoneNumber: function ($form) {
+            let phone = $form.find('input[name="billing_phone"], #billing_phone, input[type="tel"]').val();
+            if (!phone) {
+                phone = $('body').find('input[name="billing_phone"], #billing_phone, input[type="tel"]').first().val();
+            }
+            return (phone || '').trim();
+        },
+
+
         validateRequiredFields: function ($form) {
-            let missing = [];
-            let firstInvalid = null;
-            const isShippingActive = this.getShippingState($form);
 
-            const $allFields = $('form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form').find(
-                '[required], .validate-required input, .validate-required select, .validate-required textarea'
-            );
+    let firstInvalid = null;
+    const isShippingActive = this.getShippingState($form);
 
-            $allFields.each(function () {
-                const $field = $(this);
-                const name = $field.attr('name') || '';
+    const messages = {
+        billing_first_name: 'Please enter a valid first name.',
+        billing_last_name: 'Please enter a valid last name.',
+        billing_address_1: 'Please enter a valid street address.',
+        billing_city: 'Please enter a valid town / city.',
+        billing_state: 'Please select a state.',
+        billing_postcode: 'Please enter a valid postcode / ZIP.',
+        billing_email: 'Please enter a valid email address.',
 
-                if ($field.attr('type') === 'hidden') return;
+        shipping_first_name: 'Please enter a valid first name.',
+        shipping_last_name: 'Please enter a valid last name.',
+        shipping_address_1: 'Please enter a valid street address.',
+        shipping_city: 'Please enter a valid town / city.',
+        shipping_state: 'Please select a state.',
+        shipping_postcode: 'Please enter a valid postcode / ZIP.'
+    };
 
-                if (name.indexOf('shipping_') === 0 && !isShippingActive) return;
+    const $fields = $('form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form')
+        .find('[required], .validate-required input, .validate-required select, .validate-required textarea');
 
-                const $conditionalParent = $field.closest('.wcf-conditional-field, .woocommerce-validated');
-                if ($conditionalParent.length && $conditionalParent.is(':hidden')) return;
-                if ($field.closest('.payment_box').is(':hidden') || $field.is(':hidden')) return;
+    $fields.each(function () {
 
-                const val = ($field.val() || '').trim();
-                const $wrapper = $field.closest('.form-row, .wc-block-components-text-input, .form-row-first, .form-row-last');
+        const $field = $(this);
+        const name = $field.attr('name') || '';
 
-                if (!val) {
-                    $wrapper.addClass('woocommerce-invalid woocommerce-invalid-required-field');
-                    $field.css({'border-color': '#a00', 'box-shadow': '0 0 0 1px #a00'});
+        if ($field.attr('type') === 'hidden') return;
 
-                    let label = $wrapper.find('label').first().text().trim() || $field.attr('placeholder') || name;
-                    label = label.replace('*', '').trim();
+        // Phone is optional
+        if (name === 'billing_phone') return;
 
-                    if (label && !missing.includes(label)) {
-                        missing.push(label);
-                    }
-                    if (!firstInvalid) firstInvalid = $field;
-                } else {
-                    $wrapper.removeClass('woocommerce-invalid woocommerce-invalid-required-field');
-                    $field.css({'border-color': '', 'box-shadow': ''});
-                }
+        if (name.indexOf('shipping_') === 0 && !isShippingActive) return;
+
+        const value = ($field.val() || '').trim();
+
+        const $wrapper = $field.closest('.form-row, .wc-block-components-text-input, .form-row-first, .form-row-last');
+
+        $wrapper.find('.bytenft-field-error').remove();
+
+        if (!value) {
+
+            $wrapper.addClass('woocommerce-invalid woocommerce-invalid-required-field');
+
+            $field.css({
+                borderColor: '#d63638',
+                boxShadow: '0 0 0 1px #d63638'
             });
 
-            if (firstInvalid && firstInvalid.is(':visible')) {
-                setTimeout(function () { firstInvalid.trigger('focus'); }, 100);
+            $field.after(
+                '<div class="bytenft-field-error" style="color:#d63638;font-size:13px;margin-top:10px;">' +
+                (messages[name] || 'This field is required.') +
+                '</div>'
+            );
+
+            if (!firstInvalid) {
+                firstInvalid = $field;
             }
 
-            return missing.length ? { message: 'Please fill required fields.', fields: missing } : null;
-        },
+        } else {
+
+            $wrapper.removeClass('woocommerce-invalid woocommerce-invalid-required-field');
+
+            $field.css({
+                borderColor: '',
+                boxShadow: ''
+            });
+
+            $wrapper.find('.bytenft-field-error').remove();
+        }
+
+    });
+
+    if (firstInvalid) {
+        setTimeout(function () {
+            firstInvalid.focus();
+        }, 100);
+
+        return {
+            message: 'Please correct the highlighted fields.'
+        };
+    }
+
+    return null;
+},
 
         getShippingState: function ($form) {
             const $root = $('body');
@@ -994,20 +1057,18 @@
         },
 
         clearCheckoutErrors: function () {
-            $('.woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper, .woocommerce-error, .wc-block-components-notice-banner, .woocommerce-message, .woocommerce-info, .bytenft-error-wrap').remove();
-        },
 
-        getBillingEmail: function ($f) {
-            return $('body').find('#billing_email, #email, input[type="email"]').first().val();
-        },
+    $('.woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper, .woocommerce-error, .wc-block-components-notice-banner, .woocommerce-message, .woocommerce-info, .bytenft-error-wrap').remove();
 
-        getPhoneNumber: function ($f) {
-            return $('body').find('input[name="billing_phone"], input[type="tel"]').first().val();
-        },
+    $('.bytenft-field-error').remove();
 
-        isValidEmail: function (e) {
-            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
-        },
+    $('.woocommerce-invalid').removeClass('woocommerce-invalid woocommerce-invalid-required-field');
+
+    $('input, select, textarea').css({
+        borderColor: '',
+        boxShadow: ''
+    });
+},
 
         isValidPhoneNumber: function (p) {
 
