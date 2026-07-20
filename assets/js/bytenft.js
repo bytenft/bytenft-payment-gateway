@@ -423,20 +423,33 @@
                 self.state.orderId = orderId;
 
                 if (!success) {
-                    let errorMessage = response?.messages || response?.message || response?.data?.message || 'Payment failed. Please try again.';
-                    
+
+                    let errorMessage =
+                        response?.messages ||
+                        response?.message ||
+                        response?.data?.message ||
+                        'Payment failed. Please try again.';
+
+                    // Extract WooCommerce validation errors
                     if (typeof errorMessage === 'string' && errorMessage.includes('<ul')) {
                         const tempDiv = document.createElement('div');
                         tempDiv.innerHTML = errorMessage;
-                        const lis = tempDiv.querySelectorAll('li');
-                        if (lis.length > 0) {
-                            errorMessage = Array.from(lis).map(li => li.textContent.trim()).join(' | ');
+
+                        const items = tempDiv.querySelectorAll('li');
+
+                        if (items.length) {
+                            errorMessage = Array.from(items)
+                                .map(li => li.textContent.trim())
+                                .join('<br>');
                         } else {
-                            errorMessage = tempDiv.textContent.trim() || errorMessage;
+                            errorMessage = tempDiv.textContent.trim();
                         }
                     }
 
-                    self.failSafe(errorMessage);
+                    self.cleanupPopup();          // Close loading popup
+                    self.showCheckoutError(errorMessage);
+                    self.reset();
+
                     return;
                 }
 
@@ -487,6 +500,7 @@
             this.releaseLock();
             this.cleanupPopup();
             this.showCheckoutError(message);
+            this.refreshCheckout();
             this.reset(false); // IMPORTANT: restore button immediately
             this.finish();
         },
@@ -722,11 +736,12 @@
                         console.log('[Bytenft] Payment failed / incomplete');
 
                         self.cleanupPopup();
-                        self.showCheckoutError(
-                            response?.message ||
-                            'Your payment was not completed.'
-                        );
 
+                        if (response?.message) {
+                            self.showCheckoutError(response.message);
+                        }
+
+                        self.refreshCheckout();
                         self.reset();
 
                     },
@@ -750,6 +765,15 @@
 
             const poBox = this.validatePOBox($form);
             if (poBox) return poBox;
+
+            const country = $('select[name="billing_country"]').val();
+            const postcode = ($('input[name="billing_postcode"]').val() || '').trim();
+
+            if (country === 'US') {
+                if (!/^\d{5}(-\d{4})?$/.test(postcode)) {
+                    return 'Please enter a valid US ZIP code.';
+                }
+            }
 
             return null;
         },
@@ -1058,17 +1082,34 @@
 
         clearCheckoutErrors: function () {
 
-    $('.woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper, .woocommerce-error, .wc-block-components-notice-banner, .woocommerce-message, .woocommerce-info, .bytenft-error-wrap').remove();
+            $('.woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper, .woocommerce-error, .wc-block-components-notice-banner, .woocommerce-message, .woocommerce-info, .bytenft-error-wrap').remove();
 
-    $('.bytenft-field-error').remove();
+            $('.bytenft-field-error').remove();
 
-    $('.woocommerce-invalid').removeClass('woocommerce-invalid woocommerce-invalid-required-field');
+            $('.woocommerce-invalid').removeClass('woocommerce-invalid woocommerce-invalid-required-field');
 
-    $('input, select, textarea').css({
-        borderColor: '',
-        boxShadow: ''
-    });
-},
+            $('input, select, textarea').css({
+                borderColor: '',
+                boxShadow: ''
+            });
+        },
+
+        refreshCheckout: function () {
+
+            // WooCommerce Blocks Checkout
+            if (document.querySelector('.wc-block-checkout')) {
+
+                document.body.dispatchEvent(
+                    new CustomEvent('wc-blocks_checkout_update_payment_methods')
+                );
+
+            } else {
+
+                // Classic Checkout
+                $(document.body).trigger('update_checkout');
+
+            }
+        },
 
         isValidPhoneNumber: function (p) {
 

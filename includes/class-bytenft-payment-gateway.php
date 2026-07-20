@@ -105,6 +105,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 */
 	public function bytenft_validate_checkout_fields($data, $errors)
 	{
+		ByteNFT_Payment_Gateway_Logger::info(
+			'bytenft_validate_checkout_fields called'
+		);
+
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce is verified by WooCommerce core before this hook fires.
 		$selected_gateway = wc_clean(
 			wp_unslash( $_POST['payment_method'] ?? '' ) // phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- wc_clean() sanitizes; nonce verified by WC core.
@@ -115,6 +119,25 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		if ($selected_gateway !== $this->id) {
+			return;
+		}
+
+		$first_name = trim($data['billing_first_name'] ?? '');
+		$last_name  = trim($data['billing_last_name'] ?? '');
+
+		if (strlen($first_name) < 3) {
+			$errors->add(
+				'bytenft_first_name_error',
+				__('First name must be at least 3 characters.', 'bytenft-payment-gateway')
+			);
+			return;
+		}
+
+		if (strlen($last_name) < 3) {
+			$errors->add(
+				'bytenft_last_name_error',
+				__('Last name must be at least 3 characters.', 'bytenft-payment-gateway')
+			);
 			return;
 		}
 
@@ -132,6 +155,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'posted_phone' => $_POST['billing_phone'] ?? null,
 				'order_phone'  => $order->get_billing_phone(),
 				'phone'        => $phone,
+				'country'	   => $country,
 			]
 		);
 
@@ -287,6 +311,17 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		if ($payment_method !== $this->id) {
 			return;
+		}
+
+		$first_name = trim($request['billing_address']['first_name'] ?? '');
+		$last_name  = trim($request['billing_address']['last_name'] ?? '');
+
+		if (strlen($first_name) < 3) {
+			throw new Exception('First name must be at least 3 characters.');
+		}
+
+		if (strlen($last_name) < 3) {
+			throw new Exception('Last name must be at least 3 characters.');
 		}
 
 		/*
