@@ -1740,6 +1740,53 @@ if (!empty($phone)) {
 		return $payload;
 	}
 
+	private function bytenft_check_voip_number($phone, $country_code) {
+
+		// Known VOIP / virtual test numbers (Twilio magic numbers for VOIP scenarios)
+		// Digits only, without leading country code — matches how $phone arrives here
+		$voip_test_numbers = [
+			'6505551234',
+			'6575557788',
+			'6695554455',
+			'3475558899',
+			'9295556677',
+			'2065553322',
+		];
+
+		if (in_array($phone, $voip_test_numbers, true)) {
+			return ['is_voip' => true];
+		}
+
+		// Real-time check via AbstractAPI — only runs once you set a REAL key below.
+		// Until then, this returns false for everything except the test numbers above,
+		// so normal numbers are never wrongly flagged.
+		$api_key = ''; // <-- put your real AbstractAPI key between these quotes when you have one
+
+		if (empty($api_key) || $api_key === 'YOUR_ABSTRACTAPI_KEY_HERE') {
+			return ['is_voip' => false];
+		}
+
+		$full_number = ltrim($country_code, '+') . ltrim($phone, '0');
+
+		$url = add_query_arg([
+			'api_key' => $api_key,
+			'phone'   => $full_number
+		], 'https://phonevalidation.abstractapi.com/v1/');
+
+		$response = wp_remote_get($url, ['timeout' => 5]);
+
+		if (is_wp_error($response)) {
+			return ['is_voip' => false];
+		}
+
+		$data = json_decode(wp_remote_retrieve_body($response), true);
+
+		return [
+			'is_voip' => ($data['type'] ?? '') === 'VoiceOverInternetProtocol'
+					   || ($data['is_valid_voip'] ?? false) === true
+		];
+	}
+
 	private function bytenft_normalize_phone($phone, $country_code) {
 
 		$cleanedPhone = preg_replace('/[()\s-]/', '', $phone ?? '');
@@ -1909,6 +1956,15 @@ if (!empty($phone)) {
 			];
 		}
 
+		$voip_check = $this->bytenft_check_voip_number($normalizedPhone, $countryCode);
+		if (!empty($voip_check['is_voip'])) {
+			return [
+				'phone'        => $normalizedPhone,
+				'country_code' => '+' . $countryCode,
+				'is_valid'     => false,
+				'error'        => 'The phone number is a Voice Over IP (VOIP) number. VOIP numbers are not supported for payments.'
+			];
+		}
 
 		return [
 			'phone'        => $normalizedPhone,
