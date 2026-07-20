@@ -136,70 +136,73 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			}
 	    }
 
-		// Fallback: If it's a draft order OR if no order was found in the session, create/update the order with cart details and customer details
-		if (function_exists('wc_get_order') && !empty(WC()->cart) && !WC()->cart->is_empty()) {
-			$order = $orderID ? wc_get_order($orderID) : false;
-			if (!$order) {
-				// Create a new draft order
-				$order = wc_create_order();
-				if ($order) {
-					$orderID = $order->get_id();
-				}
-			}
+		// Fallback: Create/update order from cart if needed
+        if (function_exists('wc_get_order')) {
+            $order = $orderID ? wc_get_order($orderID) : false;
+            
+            if (!$order && !empty(WC()->cart) && !WC()->cart->is_empty()) {
+                // Create a new draft order if none exists in session
+                $order = wc_create_order();
+                if ($order) {
+                    $orderID = $order->get_id();
+                }
+            }
 
-			// Sync Cart & Customer to the Order if it is a draft or pending order
-			if ($order && ($order->has_status('checkout-draft') || $order->has_status('pending'))) {
-				try {
-					// Clear existing items to avoid duplicates
-					$order->remove_order_items();
+            // Sync Details to the Order if it exists and is open for modifications
+            if ($order && ($order->has_status('checkout-draft') || $order->has_status('pending'))) {
+                try {
+                    // FIX: Only populate items from cart if the order is completely brand new/empty
+                    // This prevents wiping out the pre-calculated items/shipping loaded by WC Blocks Store API
+                    if ( count( $order->get_items() ) === 0 && !empty(WC()->cart) && !WC()->cart->is_empty() ) {
+                        foreach (WC()->cart->get_cart() as $cart_item_key => $values) {
+                            $item = new WC_Order_Item_Product();
+                            $item->set_product($values['data']);
+                            $item->set_quantity($values['quantity']);
+                            $item->set_total($values['line_total']);
+                            $item->set_subtotal($values['line_subtotal']);
+                            $order->add_item($item);
+                        }
+                    }
 
-					// Add products from cart
-					foreach (WC()->cart->get_cart() as $cart_item_key => $values) {
-						$item = new WC_Order_Item_Product();
-						$item->set_product($values['data']);
-						$item->set_quantity($values['quantity']);
-						$item->set_total($values['line_total']);
-						$item->set_subtotal($values['line_subtotal']);
-						$order->add_item($item);
-					}
+                    // Copy customer details safely
+                    $customer = WC()->customer;
+                    if ($customer) {
+                        $order->set_billing_first_name(sanitize_text_field($_POST['billing_first_name'] ?? $customer->get_billing_first_name()));
+                        $order->set_billing_last_name(sanitize_text_field($_POST['billing_last_name'] ?? $customer->get_billing_last_name()));
+                        $order->set_billing_company(sanitize_text_field($_POST['billing_company'] ?? $customer->get_billing_company()));
+                        $order->set_billing_address_1(sanitize_text_field($_POST['billing_address_1'] ?? $customer->get_billing_address_1()));
+                        $order->set_billing_address_2(sanitize_text_field($_POST['billing_address_2'] ?? $customer->get_billing_address_2()));
+                        $order->set_billing_city(sanitize_text_field($_POST['billing_city'] ?? $customer->get_billing_city()));
+                        $order->set_billing_state(sanitize_text_field($_POST['billing_state'] ?? $customer->get_billing_state()));
+                        $order->set_billing_postcode(sanitize_text_field($_POST['billing_postcode'] ?? $customer->get_billing_postcode()));
+                        $order->set_billing_country(sanitize_text_field($_POST['billing_country'] ?? ($customer->get_billing_country() ?: 'US')));
+                        $order->set_billing_email(sanitize_email($_POST['contact_email'] ?? $_POST['billing_email'] ?? $customer->get_billing_email()));
+                        $order->set_billing_phone(sanitize_text_field($_POST['billing_phone'] ?? $customer->get_billing_phone()));
 
-					// Copy billing details from Customer session
-					$customer = WC()->customer;
-					if ($customer) {
-						$order->set_billing_first_name($customer->get_billing_first_name() ?: sanitize_text_field($_POST['billing_first_name'] ?? ''));
-						$order->set_billing_last_name($customer->get_billing_last_name() ?: sanitize_text_field($_POST['billing_last_name'] ?? ''));
-						$order->set_billing_company($customer->get_billing_company() ?: sanitize_text_field($_POST['billing_company'] ?? ''));
-						$order->set_billing_address_1($customer->get_billing_address_1() ?: sanitize_text_field($_POST['billing_address_1'] ?? ''));
-						$order->set_billing_address_2($customer->get_billing_address_2() ?: sanitize_text_field($_POST['billing_address_2'] ?? ''));
-						$order->set_billing_city($customer->get_billing_city() ?: sanitize_text_field($_POST['billing_city'] ?? ''));
-						$order->set_billing_state($customer->get_billing_state() ?: sanitize_text_field($_POST['billing_state'] ?? ''));
-						$order->set_billing_postcode($customer->get_billing_postcode() ?: sanitize_text_field($_POST['billing_postcode'] ?? ''));
-						$order->set_billing_country($customer->get_billing_country() ?: sanitize_text_field($_POST['billing_country'] ?? 'US'));
-						$order->set_billing_email($customer->get_billing_email() ?: sanitize_text_field($_POST['billing_email'] ?? ''));
-						$order->set_billing_phone($customer->get_billing_phone() ?: sanitize_text_field($_POST['billing_phone'] ?? ''));
+                        $order->set_shipping_first_name(sanitize_text_field($_POST['shipping_first_name'] ?? $customer->get_shipping_first_name()));
+                        $order->set_shipping_last_name(sanitize_text_field($_POST['shipping_last_name'] ?? $customer->get_shipping_last_name()));
+                        $order->set_shipping_company(sanitize_text_field($_POST['shipping_company'] ?? $customer->get_shipping_company()));
+                        $order->set_shipping_address_1(sanitize_text_field($_POST['shipping_address_1'] ?? $customer->get_shipping_address_1()));
+                        $order->set_shipping_address_2(sanitize_text_field($_POST['shipping_address_2'] ?? $customer->get_shipping_address_2()));
+                        $order->set_shipping_city(sanitize_text_field($_POST['shipping_city'] ?? $customer->get_shipping_city()));
+                        $order->set_shipping_state(sanitize_text_field($_POST['shipping_state'] ?? $customer->get_shipping_state()));
+                        $order->set_shipping_postcode(sanitize_text_field($_POST['shipping_postcode'] ?? $customer->get_shipping_postcode()));
+                        $order->set_shipping_country(sanitize_text_field($_POST['shipping_country'] ?? ($customer->get_shipping_country() ?: 'US')));
+                    }
 
-						$order->set_shipping_first_name($customer->get_shipping_first_name() ?: sanitize_text_field($_POST['shipping_first_name'] ?? ''));
-						$order->set_shipping_last_name($customer->get_shipping_last_name() ?: sanitize_text_field($_POST['shipping_last_name'] ?? ''));
-						$order->set_shipping_company($customer->get_shipping_company() ?: sanitize_text_field($_POST['shipping_company'] ?? ''));
-						$order->set_shipping_address_1($customer->get_shipping_address_1() ?: sanitize_text_field($_POST['shipping_address_1'] ?? ''));
-						$order->set_shipping_address_2($customer->get_shipping_address_2() ?: sanitize_text_field($_POST['shipping_address_2'] ?? ''));
-						$order->set_shipping_city($customer->get_shipping_city() ?: sanitize_text_field($_POST['shipping_city'] ?? ''));
-						$order->set_shipping_state($customer->get_shipping_state() ?: sanitize_text_field($_POST['shipping_state'] ?? ''));
-						$order->set_shipping_postcode($customer->get_shipping_postcode() ?: sanitize_text_field($_POST['shipping_postcode'] ?? ''));
-						$order->set_shipping_country($customer->get_shipping_country() ?: sanitize_text_field($_POST['shipping_country'] ?? 'US'));
-					}
-
-					// Set order currency
-					$order->set_currency(get_woocommerce_currency());
-
-					// Calculate totals
-					$order->calculate_totals();
-					$order->save();
-				} catch (Exception $e) {
-					// Ignore
-				}
-			}
-		}
+                    $order->set_currency(get_woocommerce_currency());
+                    
+                    // Only run a full recalculation if the total is currently evaluated as 0
+                    if ( (float) $order->get_total() < 0.01 ) {
+                        $order->calculate_totals();
+                    }
+                    
+                    $order->save();
+                } catch (Exception $e) {
+                    // Ignore
+                }
+            }
+        }
 
 		$checkout = WC()->checkout();
 		$data     = $checkout->get_posted_data();
