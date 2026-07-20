@@ -968,7 +968,7 @@
                 .text(this.state.buttonText || 'Place order');
         },
 
-       showCheckoutError: function (message, fields = []) {
+      showCheckoutError: function (message, fields = []) {
 
             // Remove previous ByteNFT error
             $('.bytenft-error-wrap').remove();
@@ -978,7 +978,6 @@
             if (fields.length) {
                 finalMessage += '<br>' + fields.join(', ');
             }
-
 
             /**
              * WooCommerce Blocks Checkout
@@ -995,30 +994,43 @@
 
                 // Create persistent container if missing
                 if (!container) {
-
                     container = document.createElement('div');
-
                     container.id = 'bytenft-checkout-errors';
-
-                    container.className =
-                        'wc-block-components-notices';
-
+                    container.className = 'wc-block-components-notices';
                     blockCheckout.prepend(container);
                 }
 
-                // NEW UX FIX: If the message contains a <ul> or list layout from classic WC validation,
-                // strip out the hidden-notice wrap and extract the text elements into neat paragraphs 
-                // for the native Block Banner template.
-                if (typeof finalMessage === 'string' && finalMessage.includes('<ul')) {
-                    const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = finalMessage;
-                    
-                    const listItems = tempDiv.querySelectorAll('li');
-                    if (listItems.length) {
-                        // Re-map list items into clean block-friendly display paragraphs
-                        finalMessage = Array.from(listItems)
-                            .map(li => '<p style="margin: 0 0 8px 0; padding: 0;">' + li.innerHTML + '</p>')
-                            .join('');
+                // Parse incoming string to strip out double-wrapped blocks markup
+                if (typeof finalMessage === 'string') {
+                    // Create an off-screen temporary DOM node to decode literal entity text (&lt; to <)
+                    const decoder = document.createElement('div');
+                    decoder.innerHTML = finalMessage;
+                    let decodedHTML = decoder.textContent || decoder.innerText || finalMessage;
+
+                    // If it contains a nested inner block banner content structure
+                    if (decodedHTML.includes('wc-block-components-notice-banner__content')) {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = decodedHTML;
+                        
+                        // Extract only the actual nested text content/tags inside the inner block
+                        const actualContent = tempDiv.querySelector('.wc-block-components-notice-banner__content');
+                        if (actualContent) {
+                            finalMessage = actualContent.innerHTML.trim();
+                        } else {
+                            finalMessage = tempDiv.textContent.trim();
+                        }
+                    } else if (decodedHTML.includes('<ul')) {
+                        // Extract classic multi-line list elements if present
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = decodedHTML;
+                        const listItems = tempDiv.querySelectorAll('li');
+                        if (listItems.length) {
+                            finalMessage = Array.from(listItems)
+                                .map(li => '<p style="margin: 0 0 8px 0; padding: 0;">' + li.innerHTML + '</p>')
+                                .join('');
+                        }
+                    } else {
+                        finalMessage = decodedHTML;
                     }
                 }
 
@@ -1030,8 +1042,12 @@
                         <svg 
                             class="wc-block-components-notice-banner__icon"
                             aria-hidden="true"
+                            xmlns="http://www.w3.org/2000/svg" 
+                            viewBox="0 0 24 24" 
+                            width="24" 
+                            height="24"
                         >
-                            <use href="#error"></use>
+                            <path d="M12 3.2c-4.8 0-8.8 3.9-8.8 8.8 0 4.8 3.9 8.8 8.8 8.8 4.8 0 8.8-3.9 8.8-8.8 0-4.8-4-8.8-8.8-8.8zm0 16c-4 0-7.2-3.3-7.2-7.2C4.8 8 8 4.8 12 4.8s7.2 3.3 7.2 7.2c0 4-3.2 7.2-7.2 7.2zM11 17h2v-6h-2v6zm0-8h2V7h-2v2z"></path>
                         </svg>
 
                         <div class="wc-block-components-notice-banner__content" style="display: block;">
@@ -1040,41 +1056,43 @@
                     </div>
                 `;
 
-
                 // Scroll to error
                 setTimeout(function () {
-
-                    const errorBox = document.getElementById(
-                        'bytenft-checkout-errors'
-                    );
-
+                    const errorBox = document.getElementById('bytenft-checkout-errors');
                     if (errorBox) {
-
                         errorBox.scrollIntoView({
                             behavior: 'smooth',
                             block: 'center'
                         });
-
                     }
-
                 }, 100);
-
 
                 return;
             }
 
-
             /**
              * Classic Checkout fallback
              */
+            let classicHTML = finalMessage;
+            
+            // Decode entity tags if classic themes return block-escaped markup strings
+            if (typeof classicHTML === 'string' && (classicHTML.includes('&lt;') || classicHTML.includes('wc-block'))) {
+                const decoder = document.createElement('div');
+                decoder.innerHTML = classicHTML;
+                let decodedHTML = decoder.textContent || decoder.innerText || classicHTML;
+                
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = decodedHTML;
+                classicHTML = tempDiv.querySelector('.wc-block-components-notice-banner__content')?.innerHTML || tempDiv.textContent;
+            }
+
             const html = `
                 <div class="woocommerce-notices-wrapper bytenft-error-wrap">
                     <div class="woocommerce-error" role="alert">
-                        ${finalMessage}
+                        ${classicHTML}
                     </div>
                 </div>
             `;
-
 
             $('form.checkout').prepend(html);
             
