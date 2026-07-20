@@ -58,19 +58,18 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('wp_ajax_bytenft_block_gateway_process', [$this,'handle_bytenft_gateway_ajax']);
 		add_action('wp_ajax_nopriv_bytenft_block_gateway_process', [$this,'handle_bytenft_gateway_ajax']); 
 		add_action('wp', function () {
-		    // Allow notices ONLY on checkout page
-		    if ( ! is_checkout() ) {
-			remove_action(
-			    'woocommerce_before_checkout_form',
-			    'woocommerce_output_all_notices',
-			    10
-			);
-			// Clear queued notices (errors, success, info)
-			if ( function_exists( 'wc_clear_notices' ) ) {
-				wc_clear_notices();
+			// Allow notices on the checkout page, and preserve them during AJAX or REST requests
+			if ( ! is_checkout() && ! wp_doing_ajax() && ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+				remove_action(
+					'woocommerce_before_checkout_form',
+					'woocommerce_output_all_notices',
+					10
+				);
+				// Clear queued notices (errors, success, info)
+				if ( function_exists( 'wc_clear_notices' ) ) {
+					wc_clear_notices();
+				}
 			}
-		    }
-
 		});
 
 		add_action('woocommerce_checkout_create_order', function($order){
@@ -200,6 +199,91 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 					// Ignore
 				}
 			}
+		}
+
+		$checkout = WC()->checkout();
+		$data     = $checkout->get_posted_data();
+		$errors   = new WP_Error();
+
+		// Normalize payload key mismatches
+		if ( empty( $data['billing_email'] ) && ! empty( $_POST['contact_email'] ) ) {
+			$data['billing_email'] = sanitize_email( wp_unslash( $_POST['contact_email'] ) );
+		}
+
+		$customer = WC()->customer;
+		$fields   = $checkout->get_checkout_fields();
+		
+		// Check if shipping validation is actually needed
+		$ship_to_different = isset( $_POST['ship_to_different_address'] ) ? wc_string_to_bool( $_POST['ship_to_different_address'] ) : false;
+
+		foreach ( $fields as $fieldset_key => $fieldset ) {
+			// Skip validation for shipping fields completely if the customer unchecked "Ship to a different address"
+			if ( 'shipping' === $fieldset_key && ! $ship_to_different ) {
+				continue;
+			}
+
+			foreach ( $fieldset as $key => $field ) {
+				$val = isset( $data[ $key ] ) ? $data[ $key ] : ( isset( $_POST[ $key ] ) ? $_POST[ $key ] : '' );
+				
+				if ( empty( $val ) && $customer ) {
+					if ( is_callable( [ $customer, "get_{$key}" ] ) ) {
+						$val = $customer->{"get_{$key}"}();
+					}
+				}
+
+				$data[ $key ] = trim( (string) $val );
+
+				// Validate Required Fields
+				if ( isset( $field['required'] ) && $field['required'] && empty( $data[ $key ] ) ) {
+					/* translators: %s: field label */
+					$errors->add( 'required-field', sprintf( __( '%s is a required field.', 'woocommerce' ), '<strong>' . esc_html( $field['label'] ) . '</strong>' ) );
+				}
+				
+				// Validate Name Field Lengths (Enforce 3 characters minimum)
+				if ( in_array( $key, [ 'billing_first_name', 'billing_last_name', 'shipping_first_name', 'shipping_last_name' ], true ) ) {
+					if ( ! empty( $data[ $key ] ) && mb_strlen( $data[ $key ] ) < 3 ) {
+						$errors->add( 'bytenft_len_error', sprintf( __( '%s must be at least 3 characters long.', 'bytenft-payment-gateway' ), '<strong>' . esc_html( $field['label'] ) . '</strong>' ) );
+					}
+				}
+
+				// Validate Email Formatting
+				if ( 'email' === $field['type'] && ! empty( $data[ $key ] ) && ! is_email( $data[ $key ] ) ) {
+					$errors->add( 'validation', sprintf( __( '%s is not a valid email address.', 'woocommerce' ), '<strong>' . esc_html( $field['label'] ) . '</strong>' ) );
+				}
+			}
+		}
+
+		// Run core action hooks
+		do_action( 'woocommerce_checkout_process' );
+		do_action( 'woocommerce_after_checkout_validation', $data, $errors );
+
+		// 3. Catch errors fired into wc_add_notice during hooks
+		if ( function_exists( 'wc_get_notices' ) && wc_notice_count( 'error' ) > 0 ) {
+			wp_send_json([
+				'result'   => 'fail',
+				'messages' => wc_print_notices(true),
+				'error'    => true
+			]);
+			die;
+		}
+
+		// 4. Catch errors populated directly into the WP_Error object
+		if ( $errors->has_errors() ) {
+			if ( function_exists( 'wc_clear_notices' ) ) {
+				wc_clear_notices(); // Remove duplicates before formatting
+			}
+
+			foreach ( $errors->get_error_messages() as $message ) {
+				wc_add_notice( $message, 'error' );
+			}
+
+			wp_send_json([
+				'result'   => 'failure',
+				'messages' => wc_print_notices( true ), // Outputs standard WooCommerce styled HTML structure
+				'html'     => wc_print_notices( true ), // Fallback for some custom AJAX script engines
+				'error'    => true
+			]);
+			die;
 		}
 
 		$status = [];

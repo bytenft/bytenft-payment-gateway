@@ -423,28 +423,12 @@
                 self.state.orderId = orderId;
 
                 if (!success) {
-
+                    // FIXED: Keep the raw HTML string format from WooCommerce intact!
                     let errorMessage =
                         response?.messages ||
                         response?.message ||
                         response?.data?.message ||
                         'Payment failed. Please try again.';
-
-                    // Extract WooCommerce validation errors
-                    if (typeof errorMessage === 'string' && errorMessage.includes('<ul')) {
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = errorMessage;
-
-                        const items = tempDiv.querySelectorAll('li');
-
-                        if (items.length) {
-                            errorMessage = Array.from(items)
-                                .map(li => li.textContent.trim())
-                                .join('<br>');
-                        } else {
-                            errorMessage = tempDiv.textContent.trim();
-                        }
-                    }
 
                     self.cleanupPopup();          // Close loading popup
                     self.showCheckoutError(errorMessage);
@@ -984,7 +968,7 @@
                 .text(this.state.buttonText || 'Place order');
         },
 
-        showCheckoutError: function (message, fields = []) {
+       showCheckoutError: function (message, fields = []) {
 
             // Remove previous ByteNFT error
             $('.bytenft-error-wrap').remove();
@@ -1022,6 +1006,21 @@
                     blockCheckout.prepend(container);
                 }
 
+                // NEW UX FIX: If the message contains a <ul> or list layout from classic WC validation,
+                // strip out the hidden-notice wrap and extract the text elements into neat paragraphs 
+                // for the native Block Banner template.
+                if (typeof finalMessage === 'string' && finalMessage.includes('<ul')) {
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = finalMessage;
+                    
+                    const listItems = tempDiv.querySelectorAll('li');
+                    if (listItems.length) {
+                        // Re-map list items into clean block-friendly display paragraphs
+                        finalMessage = Array.from(listItems)
+                            .map(li => '<p style="margin: 0 0 8px 0; padding: 0;">' + li.innerHTML + '</p>')
+                            .join('');
+                    }
+                }
 
                 container.innerHTML = `
                     <div 
@@ -1035,8 +1034,8 @@
                             <use href="#error"></use>
                         </svg>
 
-                        <div class="wc-block-components-notice-banner__content">
-                            ${String(finalMessage).replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+                        <div class="wc-block-components-notice-banner__content" style="display: block;">
+                            ${finalMessage}
                         </div>
                     </div>
                 `;
@@ -1078,6 +1077,12 @@
 
 
             $('form.checkout').prepend(html);
+            
+            if ($('form.checkout').length) {
+                $('html, body').animate({
+                    scrollTop: ($('form.checkout').offset().top - 100)
+                }, 300);
+            }
         },
 
         clearCheckoutErrors: function () {
