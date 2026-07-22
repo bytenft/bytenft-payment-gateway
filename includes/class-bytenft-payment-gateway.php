@@ -1624,7 +1624,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$message = (string)($message ?? '');
 
 		$response = [
-			'result'   => $result,
+			'result'   => ($result === 'fail') ? 'failure' : $result,
 			'message'  => $message,
 			'data'     => $data,
 			'order_id' => $order_id,
@@ -2087,32 +2087,66 @@ if (!empty($phone)) {
 	}
 
 	public function validate_fields() {
-		if (!$this->check_for_sql_injection()) return false;
 
-		/**
-		 * Block restricted states.
-		 * Prevent direct checkout submission even if gateway is forced.
-		 */
-		if ( $this->is_restricted_state() ) {
-			wc_add_notice(__('Bytenft payment is not available in your state.', 'bytenft-payment-gateway'), 'error');
+		// ---------------------------------------------------------------------
+		// Security
+		// ---------------------------------------------------------------------
+		if ( ! $this->check_for_sql_injection() ) {
 			return false;
 		}
 
-		if ($this->get_option('show_consent_checkbox') === 'yes') {
-			$is_blocks = defined('REST_REQUEST') && REST_REQUEST;
-			if (!$is_blocks) {
-				$nonce = isset($_POST['bytenft_nonce']) ? sanitize_text_field(wp_unslash($_POST['bytenft_nonce'])) : '';
-				if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
-					wc_add_notice(__('Nonce verification failed. Please try again.', 'bytenft-payment-gateway'), 'error');
+		// ---------------------------------------------------------------------
+		// Restricted States
+		// ---------------------------------------------------------------------
+		if ( $this->is_restricted_state() ) {
+			wc_add_notice(
+				__( 'Bytenft payment is not available in your state.', 'bytenft-payment-gateway' ),
+				'error'
+			);
+
+			return false;
+		}
+
+		// ---------------------------------------------------------------------
+		// Consent Validation
+		// ---------------------------------------------------------------------
+		if ( $this->get_option( 'show_consent_checkbox' ) === 'yes' ) {
+
+			$is_blocks = defined( 'REST_REQUEST' ) && REST_REQUEST;
+
+			// Classic checkout only.
+			if ( ! $is_blocks ) {
+
+				$nonce = isset( $_POST['bytenft_nonce'] )
+					? sanitize_text_field( wp_unslash( $_POST['bytenft_nonce'] ) )
+					: '';
+
+				if ( empty( $nonce ) || ! wp_verify_nonce( $nonce, 'bytenft_payment' ) ) {
+
+					wc_add_notice(
+						__( 'Nonce verification failed. Please try again.', 'bytenft-payment-gateway' ),
+						'error'
+					);
+
 					return false;
 				}
-				$consent = isset($_POST['bytenft_consent']) ? sanitize_text_field(wp_unslash($_POST['bytenft_consent'])) : '';
-				if ($consent !== 'on') {
-					wc_add_notice(__('You must consent to the collection of your data to process this payment.', 'bytenft-payment-gateway'), 'error');
+
+				$consent = isset( $_POST['bytenft_consent'] )
+					? sanitize_text_field( wp_unslash( $_POST['bytenft_consent'] ) )
+					: '';
+
+				if ( 'on' !== $consent ) {
+
+					wc_add_notice(
+						__( 'You must consent to the collection of your data to process this payment.', 'bytenft-payment-gateway' ),
+						'error'
+					);
+
 					return false;
 				}
 			}
 		}
+
 		return true;
 	}
 

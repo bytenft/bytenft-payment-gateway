@@ -7,6 +7,7 @@ if (!defined('ABSPATH')) {
 require_once plugin_dir_path(__FILE__) . 'config.php';
 require_once plugin_dir_path(__FILE__) . 'class-bytenft-payment-state-engine.php';
 require_once plugin_dir_path(__FILE__) . 'class-bytenft-payment-logger.php';
+
 /**
  * Class BYTENFT_PAYMENT_GATEWAY_Loader
  * Handles the loading and initialization of the ByteNFT Payment Gateway plugin.
@@ -85,75 +86,53 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	}
 
 	/**
-	 * Handle the block checkout AJAX payment request.
-	 */
-	function handle_bytenft_gateway_ajax(){
+     * Handle the block checkout AJAX payment request using standard WooCommerce validation.
+     */
+    function handle_bytenft_gateway_ajax() {
 
-		// Nonce verification
-		$nonce = isset($_POST['nonce'])
-			? sanitize_text_field(wp_unslash($_POST['nonce']))
-			: '';
+        // 1. Nonce verification
+        $nonce = isset($_POST['nonce'])
+            ? sanitize_text_field(wp_unslash($_POST['nonce']))
+            : '';
 
-		if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
-			wp_send_json(['result' => 'fail', 'error' => 'Security check failed.']);
-			die;
-		}
+        if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
+            wp_send_json([
+                'result'   => 'fail',
+                'messages' => '<ul class="woocommerce-error"><li>' . esc_html__('Security check failed. Please refresh the page.', 'bytenft-payment-gateway') . '</li></ul>',
+                'error'    => true
+            ]);
+            wp_die();
+        }
 
-		// Pull the already-initialised gateway from the WC registry.
-		// Never use `new BYTENFT_PAYMENT_GATEWAY()` here — see note above.
-		$gateways       = WC()->payment_gateways()->payment_gateways();
-		$bytenftPayment = $gateways['bytenft'] ?? null;
+        // 2. Fetch Gateway Instance safely
+        $gateways       = WC()->payment_gateways()->payment_gateways();
+        $bytenftPayment = $gateways['bytenft'] ?? null;
 
-		if (!$bytenftPayment) {
-			// Fallback: manually instantiate and force-load settings from DB.
-			// Should never happen in normal operation.
-			$bytenftPayment = new BYTENFT_PAYMENT_GATEWAY();
-			$bytenftPayment->init_settings();
-			$bytenftPayment->load_gateway_settings();
+        if (!$bytenftPayment) {
+            $bytenftPayment = new BYTENFT_PAYMENT_GATEWAY();
+            $bytenftPayment->init_settings();
+            $bytenftPayment->load_gateway_settings();
+        }
 
-			ByteNFT_Payment_Gateway_Logger::warning(
-				'ByteNFT: gateway not found in WC registry during AJAX — fell back to manual instantiation.',
-				['source' => 'bytenft-payment-gateway']
-			);
-		}
+        // 3. Obtain or prepare order
+        $orderID = 0;
+        if (WC()->session) {
+            $orderID = WC()->session->get('store_api_draft_order') ?: WC()->session->get('order_awaiting_payment');
+        }
 
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Session Debug',
-			[
-				'context' => [
-					'store_api_draft_order' => WC()->session ? WC()->session->get('store_api_draft_order') : null,
-					'order_awaiting_payment' => WC()->session ? WC()->session->get('order_awaiting_payment') : null,
-					'posted' => $_POST,
-				]
-			]
-		);
-
-		$orderID = 0;
-		if (WC()->session) {
-			$orderID = WC()->session->get('store_api_draft_order');
-			if (!$orderID) {
-				$orderID = WC()->session->get('order_awaiting_payment');
-			}
-	    }
-
-		// Fallback: Create/update order from cart if needed
         if (function_exists('wc_get_order')) {
             $order = $orderID ? wc_get_order($orderID) : false;
             
             if (!$order && !empty(WC()->cart) && !WC()->cart->is_empty()) {
-                // Create a new draft order if none exists in session
                 $order = wc_create_order();
                 if ($order) {
                     $orderID = $order->get_id();
                 }
             }
 
-            // Sync Details to the Order if it exists and is open for modifications
             if ($order && ($order->has_status('checkout-draft') || $order->has_status('pending'))) {
                 try {
-                    // FIX: Only populate items from cart if the order is completely brand new/empty
-                    // This prevents wiping out the pre-calculated items/shipping loaded by WC Blocks Store API
-                    if ( count( $order->get_items() ) === 0 && !empty(WC()->cart) && !WC()->cart->is_empty() ) {
+                    if (count($order->get_items()) === 0 && !empty(WC()->cart) && !WC()->cart->is_empty()) {
                         foreach (WC()->cart->get_cart() as $cart_item_key => $values) {
                             $item = new WC_Order_Item_Product();
                             $item->set_product($values['data']);
@@ -164,7 +143,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
                         }
                     }
 
-                    // Copy customer details safely
                     $customer = WC()->customer;
                     if ($customer) {
                         $order->set_billing_first_name(sanitize_text_field($_POST['billing_first_name'] ?? $customer->get_billing_first_name()));
@@ -192,114 +170,92 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
                     $order->set_currency(get_woocommerce_currency());
                     
-                    // Only run a full recalculation if the total is currently evaluated as 0
-                    if ( (float) $order->get_total() < 0.01 ) {
+                    if ((float) $order->get_total() < 0.01) {
                         $order->calculate_totals();
                     }
                     
                     $order->save();
                 } catch (Exception $e) {
-                    // Ignore
+                    ByteNFT_Payment_Gateway_Logger::error('Order sync error: ' . $e->getMessage(), ['source' => 'bytenft-payment-gateway']);
                 }
             }
         }
 
-		$checkout = WC()->checkout();
-		$data     = $checkout->get_posted_data();
-		$errors   = new WP_Error();
+        // 4. FUTURE-PROOF NATIVE WOOCOMMERCE VALIDATION
+        if (function_exists('wc_clear_notices')) {
+            wc_clear_notices();
+        }
 
-		// Normalize payload key mismatches
-		if ( empty( $data['billing_email'] ) && ! empty( $_POST['contact_email'] ) ) {
-			$data['billing_email'] = sanitize_email( wp_unslash( $_POST['contact_email'] ) );
-		}
+        $checkout = WC()->checkout();
+        $data     = $checkout->get_posted_data();
+        $errors   = new WP_Error();
 
-		$customer = WC()->customer;
-		$fields   = $checkout->get_checkout_fields();
-		
-		// Check if shipping validation is actually needed
-		$ship_to_different = isset( $_POST['ship_to_different_address'] ) ? wc_string_to_bool( $_POST['ship_to_different_address'] ) : false;
+        // Normalize email payload parameter
+        if (empty($data['billing_email']) && !empty($_POST['contact_email'])) {
+            $data['billing_email'] = sanitize_email(wp_unslash($_POST['contact_email']));
+        }
 
-		foreach ( $fields as $fieldset_key => $fieldset ) {
-			// Skip validation for shipping fields completely if the customer unchecked "Ship to a different address"
-			if ( 'shipping' === $fieldset_key && ! $ship_to_different ) {
-				continue;
+		$validator = new ByteNFT_Checkout_Validator();
+		$validator->validate($data, $errors);
+
+        // Run processes and hooks for custom/3rd party validation plugins
+        do_action('woocommerce_checkout_process');
+        do_action('woocommerce_after_checkout_validation', $data, $errors);
+
+        // Optional custom 3-character length rule on names
+        foreach (['billing_first_name', 'billing_last_name', 'shipping_first_name', 'shipping_last_name'] as $name_key) {
+            if (!empty($data[$name_key]) && mb_strlen($data[$name_key]) < 3) {
+                $errors->add(
+                    'bytenft_len_error',
+                    sprintf(__('Name fields must be at least 3 characters long.', 'bytenft-payment-gateway'))
+                );
+                break;
+            }
+        }
+
+        // 5. RETURN ERRORS IF ANY VALIDATION FAILED
+        $has_wp_errors = $errors->has_errors();
+		$has_wc_errors = (function_exists('wc_notice_count') && wc_notice_count('error') > 0);
+
+		if ($has_wp_errors || $has_wc_errors) {
+
+			wc_clear_notices();
+
+			$messages = array_unique($errors->get_error_messages());
+
+			foreach ($messages as $message) {
+				wc_add_notice($message, 'error');
 			}
 
-			foreach ( $fieldset as $key => $field ) {
-				$val = isset( $data[ $key ] ) ? $data[ $key ] : ( isset( $_POST[ $key ] ) ? $_POST[ $key ] : '' );
-				
-				if ( empty( $val ) && $customer ) {
-					if ( is_callable( [ $customer, "get_{$key}" ] ) ) {
-						$val = $customer->{"get_{$key}"}();
-					}
-				}
+			$notices = wc_print_notices(true);
 
-				$data[ $key ] = trim( (string) $val );
-
-				// Validate Required Fields
-				if ( isset( $field['required'] ) && $field['required'] && empty( $data[ $key ] ) ) {
-					/* translators: %s: field label */
-					$errors->add( 'required-field', sprintf( __( '%s is a required field.', 'woocommerce' ), '<strong>' . esc_html( $field['label'] ) . '</strong>' ) );
-				}
-				
-				// Validate Name Field Lengths (Enforce 3 characters minimum)
-				if ( in_array( $key, [ 'billing_first_name', 'billing_last_name', 'shipping_first_name', 'shipping_last_name' ], true ) ) {
-					if ( ! empty( $data[ $key ] ) && mb_strlen( $data[ $key ] ) < 3 ) {
-						$errors->add( 'bytenft_len_error', sprintf( __( '%s must be at least 3 characters long.', 'bytenft-payment-gateway' ), '<strong>' . esc_html( $field['label'] ) . '</strong>' ) );
-					}
-				}
-
-				// Validate Email Formatting
-				if ( 'email' === $field['type'] && ! empty( $data[ $key ] ) && ! is_email( $data[ $key ] ) ) {
-					$errors->add( 'validation', sprintf( __( '%s is not a valid email address.', 'woocommerce' ), '<strong>' . esc_html( $field['label'] ) . '</strong>' ) );
-				}
-			}
-		}
-
-		// Run core action hooks
-		do_action( 'woocommerce_checkout_process' );
-		do_action( 'woocommerce_after_checkout_validation', $data, $errors );
-
-		// 3. Catch errors fired into wc_add_notice during hooks
-		if ( function_exists( 'wc_get_notices' ) && wc_notice_count( 'error' ) > 0 ) {
 			wp_send_json([
 				'result'   => 'fail',
-				'messages' => wc_print_notices(true),
-				'error'    => true
+				'messages' => $notices,
+				'html'     => $notices,
+				'error'    => true,
 			]);
-			die;
+
+			wp_die();
 		}
 
-		// 4. Catch errors populated directly into the WP_Error object
-		if ( $errors->has_errors() ) {
-			if ( function_exists( 'wc_clear_notices' ) ) {
-				wc_clear_notices(); // Remove duplicates before formatting
-			}
+        // 6. PROCESS PAYMENT
+        $order = $orderID ? wc_get_order($orderID) : false;
 
-			foreach ( $errors->get_error_messages() as $message ) {
-				wc_add_notice( $message, 'error' );
-			}
-
-			wp_send_json([
-				'result'   => 'failure',
-				'messages' => wc_print_notices( true ), // Outputs standard WooCommerce styled HTML structure
-				'html'     => wc_print_notices( true ), // Fallback for some custom AJAX script engines
-				'error'    => true
-			]);
-			die;
-		}
-
-		$status = [];
-		if($orderID){
-			$status = $bytenftPayment->process_payment($orderID);
-		}else{
-			wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
-			$status = ['result' => 'fail','error' => 'Invalid order.'];
-		}
-		
-		wp_send_json($status);
-		die;
-	}
+        if ($order instanceof WC_Order) {
+            $status = $bytenftPayment->process_payment($orderID);
+        } else {
+            wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
+            $status = [
+                'result'   => 'fail',
+                'messages' => $notices,
+                'error'    => true,
+            ];
+        }
+        
+        wp_send_json($status);
+        wp_die();
+    }
 
 	/**
 	 * Initializes the plugin.
@@ -307,6 +263,13 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	 */
 	public function bytenft_init()
 	{
+
+		if (!class_exists('WC_Checkout')) {
+			return;
+		}
+
+		require_once plugin_dir_path(__FILE__) . 'class-bytenft-checkout-validator.php';
+		
 		// Check if the environment is compatible
 		$environment_warning = bytenft_check_system_requirements();
 		if ($environment_warning) {

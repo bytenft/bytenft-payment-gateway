@@ -30,7 +30,10 @@
             requestInFlightClassic: false,
             requestInFlightBlock: false,
             responseHandled: false,
-            finalSuccess: false
+            finalSuccess: false,
+            buttonObserver: null,
+            blockEventsBound: false,
+            popupStarted: null,
         },
 
         /* =========================================================
@@ -140,32 +143,105 @@
         },
 
         buildCheckoutPayload: function () {
-            const $form = $('form.checkout, form.wc-block-checkout__form, #order_review').first();
 
-            let data = $form.serialize();
+            const $form = $(
+                'form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form, .wcf-embed-checkout-form-steps, #order_review'
+            ).first();
 
-            // =====================================================
-            // CRITICAL WOOCOMMERCE STATE ENFORCEMENT
-            // =====================================================
+            // Start with all normal form fields (Classic/FunnelKit)
+            const data = new URLSearchParams($form.serialize());
 
-            const shipToDifferent = $(
-                '#ship-to-different-address-checkbox, input[name="ship_to_different_address"]'
-            ).is(':checked') ? 1 : 0;
+            /**
+             * Get a field value from:
+             * 1. name attribute (Classic/FunnelKit)
+             * 2. id attribute (Checkout Blocks)
+             */
+            const getFieldValue = function (name, id) {
 
-            data += '&ship_to_different_address=' + shipToDifferent;
+                // Try by name first
+                let field = document.querySelector(`[name="${name}"]`);
 
-            // Optional safety: force billing/shipping sync flag consistency
-            if (!shipToDifferent) {
-                data += '&wfacp_billing_same_as_shipping=1';
+                if (field && field.value !== '') {
+                    return field.value;
+                }
+
+                // Fallback for WooCommerce Blocks
+                if (id) {
+                    field = document.getElementById(id);
+
+                    if (field && field.value !== '') {
+                        return field.value;
+                    }
+                }
+
+                return null;
+            };
+
+            /**
+             * WooCommerce Blocks fields.
+             * These usually don't have a name="" attribute.
+             */
+            const blockFields = {
+                billing_country: 'billing-country',
+                billing_state: 'billing-state',
+                billing_first_name: 'billing-first_name',
+                billing_last_name: 'billing-last_name',
+                billing_company: 'billing-company',
+                billing_address_1: 'billing-address_1',
+                billing_address_2: 'billing-address_2',
+                billing_city: 'billing-city',
+                billing_postcode: 'billing-postcode',
+                billing_phone: 'billing-phone',
+                billing_email: 'billing-email',
+
+                shipping_country: 'shipping-country',
+                shipping_state: 'shipping-state',
+                shipping_first_name: 'shipping-first_name',
+                shipping_last_name: 'shipping-last_name',
+                shipping_company: 'shipping-company',
+                shipping_address_1: 'shipping-address_1',
+                shipping_address_2: 'shipping-address_2',
+                shipping_city: 'shipping-city',
+                shipping_postcode: 'shipping-postcode',
+                shipping_phone: 'shipping-phone'
+            };
+
+            // Add missing fields only
+            Object.entries(blockFields).forEach(([name, id]) => {
+
+                if (data.has(name)) {
+                    return;
+                }
+
+                const value = getFieldValue(name, id);
+
+                if (value !== null) {
+                    data.set(name, value);
+                }
+            });
+
+            /**
+             * Shipping flag
+             */
+            const shipToDifferent =
+                $('#ship-to-different-address-checkbox, input[name="ship_to_different_address"]').is(':checked')
+                    ? '1'
+                    : '0';
+
+            data.set('ship_to_different_address', shipToDifferent);
+
+            if (shipToDifferent === '0') {
+                data.set('wfacp_billing_same_as_shipping', '1');
             }
 
-            const countryCode = $('select[name="billing_country"]').val();
-
-            if (countryCode) {
-                data += '&country_code=' + encodeURIComponent(countryCode);
+            /**
+             * Backward compatibility
+             */
+            if (data.has('billing_country')) {
+                data.set('country_code', data.get('billing_country'));
             }
 
-            return data;
+            return data.toString();
         },
 
         handleClassicCheckout: function ($form) {
@@ -201,6 +277,13 @@
          * ========================================================= */
 
         bindBlockCheckout: function () {
+
+            if (this.state.blockEventsBound) {
+                return;
+            }
+
+            this.state.blockEventsBound = true;
+            
             const self = this;
 
             // UX: provide feedback if button is disabled due to background Store API sync
@@ -223,6 +306,12 @@
                     btn.parentNode.insertBefore(feedbackNote, btn.nextSibling);
                 }
 
+                // Remove previous observer
+                if (self.state.buttonObserver) {
+                    self.state.buttonObserver.disconnect();
+                    self.state.buttonObserver = null;
+                }
+
                 const observer = new MutationObserver(function(mutations) {
                     mutations.forEach(function(mutation) {
                         if (mutation.attributeName === 'disabled') {
@@ -236,7 +325,11 @@
                         }
                     });
                 });
-                observer.observe(btn, { attributes: true });
+                observer.observe(btn, {
+                    attributes: true
+                });
+
+                self.state.buttonObserver = observer;
             };
             observeButton();
 
@@ -485,7 +578,6 @@
             this.cleanupPopup();
             this.showCheckoutError(message);
             this.refreshCheckout();
-            this.reset(false); // IMPORTANT: restore button immediately
             this.finish();
         },
 
@@ -497,7 +589,7 @@
             }
 
             this.setStatus('done');
-            this.reset(true);
+            this.reset();
 
             this.state.responseHandled = false;
             this.state.requestInFlightClassic = false;
@@ -647,6 +739,8 @@
 
             const self = this;
 
+            self.state.popupStarted = Date.now();
+
             if (!self.state.orderId) {
                 console.log('[Bytenft] No order ID for popup tracking');
                 return;
@@ -660,25 +754,29 @@
 
             self.state.popupInterval = setInterval(function () {
 
-                 if (self.state.finalSuccess) {
+                // Payment already completed
+                if (self.state.finalSuccess) {
                     clearInterval(self.state.popupInterval);
                     self.state.popupInterval = null;
                     return;
                 }
 
-                const popupStillOpen =
-                    self.state.popup &&
-                    !self.state.popup.closed;
+                // Popup still open
+                if (self.state.popup && !self.state.popup.closed) {
 
-                //  wait until popup closes
-                if (popupStillOpen) {
+                    // Optional: payment expired after 30 minutes
+                    if (Date.now() - self.state.popupStarted > 30 * 60 * 1000) {
+                        console.log('[Bytenft] Payment timeout');
+                    }
+
                     return;
                 }
 
+                // Popup closed
                 clearInterval(self.state.popupInterval);
                 self.state.popupInterval = null;
 
-                console.log('[Bytenft] Popup closed → single final check');
+                console.log('[Bytenft] Popup closed → checking payment');
 
                 $.post(
                     bytenft_params.ajax_url,
@@ -694,31 +792,21 @@
                             response?.data?.payment_status === 'success' ||
                             response?.data?.payment_status === 'paid';
 
-                        const redirectUrl =
-                            response?.data?.redirect ||
-                            response?.redirect;
-
                         if (success) {
-
-                            console.log('[Bytenft] Payment success');
 
                             self.state.finalSuccess = true;
 
-                            clearInterval(self.state.popupInterval);
-                            self.state.popupInterval = null;
-
                             self.cleanupPopup();
-                            
-                            if (redirectUrl) {
-                                window.location.replace(redirectUrl);
-                            } else {
-                                window.location.reload();
-                            }
+
+                            window.location.replace(
+                                response?.data?.redirect ||
+                                response?.redirect
+                            );
+
                             return;
                         }
 
-                        console.log('[Bytenft] Payment failed / incomplete');
-
+                        // Payment cancelled/failed
                         self.cleanupPopup();
 
                         if (response?.message) {
@@ -726,13 +814,15 @@
                         }
 
                         self.refreshCheckout();
-                        self.reset();
+
+                        // IMPORTANT
+                        self.finish();
 
                     },
                     'json'
                 );
 
-            }, 1000); // small check ONLY for popup close detection
+            }, 1000);
         },
 
         /* =========================================================
@@ -942,6 +1032,7 @@
             this.state.requestInFlightClassic = false;
             this.state.requestInFlightBlock = false;
             this.state.finalSuccess = false;
+            this.state.popupStarted = null;
 
             const $form = $('form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form, .wcf-embed-checkout-form-steps');
             if ($form.length) {
@@ -968,59 +1059,56 @@
                 .text(this.state.buttonText || 'Place order');
         },
 
-      showCheckoutError: function (message, fields = []) {
-
-            // Remove previous ByteNFT error
-            $('.bytenft-error-wrap').remove();
+        showCheckoutError: function (message, fields = []) {
+            // 1. Cleanly clear out any old error instances to avoid duplicates
+            $('.bytenft-error-wrap, #bytenft-checkout-errors').remove();
 
             let finalMessage = message;
 
+            // Prevent appending field names if the main message already contains them
             if (fields.length) {
-                finalMessage += '<br>' + fields.join(', ');
+                const lowerMessage = String(finalMessage).toLowerCase();
+                
+                const filteredFields = fields.filter(field => {
+                    const cleanField = field.replace(/^(billing_|shipping_)/, '').replace(/_/g, ' ').toLowerCase();
+                    return !lowerMessage.includes(cleanField);
+                });
+
+                if (filteredFields.length) {
+                    finalMessage += '<br>' + filteredFields.join(', ');
+                }
             }
 
             /**
-             * WooCommerce Blocks Checkout
+             * Modern WooCommerce Blocks Checkout Handler
              */
-            const blockCheckout = document.querySelector(
-                '.wc-block-checkout__form'
-            );
+            const blockCheckoutWrapper = document.querySelector('.wp-block-woocommerce-checkout');
 
-            if (blockCheckout) {
+            if (blockCheckoutWrapper) {
+                let container = document.getElementById('bytenft-checkout-errors');
 
-                let container = document.getElementById(
-                    'bytenft-checkout-errors'
-                );
-
-                // Create persistent container if missing
+                // Create container outside the React tree if it doesn't exist
                 if (!container) {
                     container = document.createElement('div');
                     container.id = 'bytenft-checkout-errors';
                     container.className = 'wc-block-components-notices';
-                    blockCheckout.prepend(container);
+                    
+                    // FIX: Safely insert BEFORE the entire block checkout tree, NOT inside it.
+                    blockCheckoutWrapper.parentNode.insertBefore(container, blockCheckoutWrapper);
                 }
 
                 // Parse incoming string to strip out double-wrapped blocks markup
                 if (typeof finalMessage === 'string') {
-                    // Create an off-screen temporary DOM node to decode literal entity text (&lt; to <)
                     const decoder = document.createElement('div');
                     decoder.innerHTML = finalMessage;
                     let decodedHTML = decoder.textContent || decoder.innerText || finalMessage;
 
-                    // If it contains a nested inner block banner content structure
                     if (decodedHTML.includes('wc-block-components-notice-banner__content')) {
                         const tempDiv = document.createElement('div');
                         tempDiv.innerHTML = decodedHTML;
-                        
-                        // Extract only the actual nested text content/tags inside the inner block
                         const actualContent = tempDiv.querySelector('.wc-block-components-notice-banner__content');
-                        if (actualContent) {
-                            finalMessage = actualContent.innerHTML.trim();
-                        } else {
-                            finalMessage = tempDiv.textContent.trim();
-                        }
+                        finalMessage = actualContent ? actualContent.innerHTML.trim() : tempDiv.textContent.trim();
                     } else if (decodedHTML.includes('<ul')) {
-                        // Extract classic multi-line list elements if present
                         const tempDiv = document.createElement('div');
                         tempDiv.innerHTML = decodedHTML;
                         const listItems = tempDiv.querySelectorAll('li');
@@ -1035,34 +1123,23 @@
                 }
 
                 container.innerHTML = `
-                    <div 
-                        class="wc-block-components-notice-banner is-error"
-                        role="alert"
-                    >
-                        <svg 
-                            class="wc-block-components-notice-banner__icon"
-                            aria-hidden="true"
-                            xmlns="http://www.w3.org/2000/svg" 
-                            viewBox="0 0 24 24" 
-                            width="24" 
-                            height="24"
-                        >
+                    <div class="wc-block-components-notice-banner is-error" role="alert">
+                        <svg class="wc-block-components-notice-banner__icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
                             <path d="M12 3.2c-4.8 0-8.8 3.9-8.8 8.8 0 4.8 3.9 8.8 8.8 8.8 4.8 0 8.8-3.9 8.8-8.8 0-4.8-4-8.8-8.8-8.8zm0 16c-4 0-7.2-3.3-7.2-7.2C4.8 8 8 4.8 12 4.8s7.2 3.3 7.2 7.2c0 4-3.2 7.2-7.2 7.2zM11 17h2v-6h-2v6zm0-8h2V7h-2v2z"></path>
                         </svg>
-
                         <div class="wc-block-components-notice-banner__content" style="display: block;">
                             ${finalMessage}
                         </div>
                     </div>
                 `;
 
-                // Scroll to error
+                // Smooth scroll to the newly injected safe wrapper
                 setTimeout(function () {
                     const errorBox = document.getElementById('bytenft-checkout-errors');
                     if (errorBox) {
                         errorBox.scrollIntoView({
                             behavior: 'smooth',
-                            block: 'center'
+                            block: 'start'
                         });
                     }
                 }, 100);
@@ -1075,7 +1152,6 @@
              */
             let classicHTML = finalMessage;
             
-            // Decode entity tags if classic themes return block-escaped markup strings
             if (typeof classicHTML === 'string' && (classicHTML.includes('&lt;') || classicHTML.includes('wc-block'))) {
                 const decoder = document.createElement('div');
                 decoder.innerHTML = classicHTML;
