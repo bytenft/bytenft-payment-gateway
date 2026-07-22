@@ -230,7 +230,29 @@
 
             data.set('ship_to_different_address', shipToDifferent);
 
-            if (shipToDifferent === '0') {
+           if (shipToDifferent === '0') {
+                [
+                    'first_name',
+                    'last_name',
+                    'company',
+                    'address_1',
+                    'address_2',
+                    'city',
+                    'state',
+                    'postcode',
+                    'country',
+                    'phone'
+                ].forEach(function(field){
+
+                    const shippingKey = 'shipping_' + field;
+                    const billingKey = 'billing_' + field;
+
+                    if (!data.get(billingKey) && data.get(shippingKey)) {
+                        data.set(billingKey, data.get(shippingKey));
+                    }
+
+                });
+
                 data.set('wfacp_billing_same_as_shipping', '1');
             }
 

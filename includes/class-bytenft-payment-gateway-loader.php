@@ -85,6 +85,46 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('woocommerce_before_checkout_form', [$this, 'bytenft_show_checkout_error']);
 	}
 
+	private function normalize_checkout_data($data) {
+
+		$same_address =
+			empty($data['ship_to_different_address']) ||
+			$data['ship_to_different_address'] === '0' ||
+			!empty($data['wfacp_billing_same_as_shipping']);
+
+		if ($same_address) {
+
+			$fields = [
+				'first_name',
+				'last_name',
+				'company',
+				'address_1',
+				'address_2',
+				'city',
+				'state',
+				'postcode',
+				'country',
+				'phone'
+			];
+
+			foreach ($fields as $field) {
+
+				if (
+					empty($data["billing_$field"]) &&
+					!empty($data["shipping_$field"])
+				) {
+					$data["billing_$field"] = $data["shipping_$field"];
+				}
+			}
+
+			if (empty($data['billing_email']) && !empty($_POST['contact_email'])) {
+				$data['billing_email'] = sanitize_email($_POST['contact_email']);
+			}
+		}
+
+		return $data;
+	}
+
 	/**
      * Handle the block checkout AJAX payment request using standard WooCommerce validation.
      */
@@ -103,6 +143,44 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
             ]);
             wp_die();
         }
+
+		/**
+		 * Normalize POST data when billing address is the same as shipping.
+		 * This ensures validation, order creation, and third-party plugins
+		 * all receive complete billing data.
+		 */
+		$same_address =
+			empty($_POST['ship_to_different_address']) ||
+			$_POST['ship_to_different_address'] === '0' ||
+			!empty($_POST['wfacp_billing_same_as_shipping']);
+
+		if ($same_address) {
+
+			foreach ([
+				'first_name',
+				'last_name',
+				'company',
+				'address_1',
+				'address_2',
+				'city',
+				'state',
+				'postcode',
+				'country',
+				'phone'
+			] as $field) {
+
+				if (
+					empty($_POST["billing_$field"]) &&
+					!empty($_POST["shipping_$field"])
+				) {
+					$_POST["billing_$field"] = wp_unslash($_POST["shipping_$field"]);
+				}
+			}
+
+			if (empty($_POST['billing_email']) && !empty($_POST['contact_email'])) {
+				$_POST['billing_email'] = sanitize_email(wp_unslash($_POST['contact_email']));
+			}
+		}
 
         // 2. Fetch Gateway Instance safely
         $gateways       = WC()->payment_gateways()->payment_gateways();
@@ -188,6 +266,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
         $checkout = WC()->checkout();
         $data     = $checkout->get_posted_data();
+		$data = $this->normalize_checkout_data($data);
         $errors   = new WP_Error();
 
         // Normalize email payload parameter
