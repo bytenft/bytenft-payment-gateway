@@ -122,6 +122,17 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return;
 		}
 
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Checkout validation data',
+			[
+				'billing_first_name' => $data['billing_first_name'] ?? null,
+				'billing_last_name'  => $data['billing_last_name'] ?? null,
+				'post_first_name'    => $_POST['billing_first_name'] ?? null,
+				'post_last_name'     => $_POST['billing_last_name'] ?? null,
+				'all_data'           => $data,
+			]
+		);
+
 		$first_name = trim($data['billing_first_name'] ?? '');
 		$last_name  = trim($data['billing_last_name'] ?? '');
 
