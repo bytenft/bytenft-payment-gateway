@@ -1097,28 +1097,45 @@
                     blockCheckoutWrapper.parentNode.insertBefore(container, blockCheckoutWrapper);
                 }
 
-                // Parse incoming string to strip out double-wrapped blocks markup
+                // Parse incoming string while preserving HTML
                 if (typeof finalMessage === 'string') {
+
                     const decoder = document.createElement('div');
                     decoder.innerHTML = finalMessage;
-                    let decodedHTML = decoder.textContent || decoder.innerText || finalMessage;
 
-                    if (decodedHTML.includes('wc-block-components-notice-banner__content')) {
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = decodedHTML;
-                        const actualContent = tempDiv.querySelector('.wc-block-components-notice-banner__content');
-                        finalMessage = actualContent ? actualContent.innerHTML.trim() : tempDiv.textContent.trim();
-                    } else if (decodedHTML.includes('<ul')) {
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = decodedHTML;
-                        const listItems = tempDiv.querySelectorAll('li');
-                        if (listItems.length) {
-                            finalMessage = Array.from(listItems)
-                                .map(li => '<p style="margin: 0 0 8px 0; padding: 0;">' + li.innerHTML + '</p>')
-                                .join('');
-                        }
-                    } else {
-                        finalMessage = decodedHTML;
+                    // 1. WooCommerce Blocks notice already exists
+                    const blockNotice = decoder.querySelector('.wc-block-components-notice-banner__content');
+
+                    if (blockNotice) {
+
+                        finalMessage = blockNotice.innerHTML.trim();
+
+                    }
+                    // 2. WooCommerce <ul class="woocommerce-error">
+                    else if (decoder.querySelector('ul.woocommerce-error')) {
+
+                        const listItems = decoder.querySelectorAll('ul.woocommerce-error li');
+
+                        finalMessage = Array.from(listItems)
+                            .map(li => `<div style="margin:0 0 8px 0;">${li.innerHTML}</div>`)
+                            .join('');
+
+                    }
+                    // 3. Any generic <ul>
+                    else if (decoder.querySelector('ul')) {
+
+                        const listItems = decoder.querySelectorAll('ul li');
+
+                        finalMessage = Array.from(listItems)
+                            .map(li => `<div style="margin:0 0 8px 0;">${li.innerHTML}</div>`)
+                            .join('');
+
+                    }
+                    // 4. Preserve existing HTML
+                    else {
+
+                        finalMessage = decoder.innerHTML;
+
                     }
                 }
 
@@ -1152,14 +1169,22 @@
              */
             let classicHTML = finalMessage;
             
-            if (typeof classicHTML === 'string' && (classicHTML.includes('&lt;') || classicHTML.includes('wc-block'))) {
+            if (typeof classicHTML === 'string') {
+
                 const decoder = document.createElement('div');
                 decoder.innerHTML = classicHTML;
-                let decodedHTML = decoder.textContent || decoder.innerText || classicHTML;
-                
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = decodedHTML;
-                classicHTML = tempDiv.querySelector('.wc-block-components-notice-banner__content')?.innerHTML || tempDiv.textContent;
+
+                const blockNotice = decoder.querySelector('.wc-block-components-notice-banner__content');
+
+                if (blockNotice) {
+
+                    classicHTML = blockNotice.innerHTML;
+
+                } else {
+
+                    classicHTML = decoder.innerHTML;
+
+                }
             }
 
             const html = `
