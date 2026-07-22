@@ -281,17 +281,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
         do_action('woocommerce_checkout_process');
         do_action('woocommerce_after_checkout_validation', $data, $errors);
 
-        // Optional custom 3-character length rule on names
-        foreach (['billing_first_name', 'billing_last_name', 'shipping_first_name', 'shipping_last_name'] as $name_key) {
-            if (!empty($data[$name_key]) && mb_strlen($data[$name_key]) < 3) {
-                $errors->add(
-                    'bytenft_len_error',
-                    sprintf(__('Name fields must be at least 3 characters long.', 'bytenft-payment-gateway'))
-                );
-                break;
-            }
-        }
-
         // 5. RETURN ERRORS IF ANY VALIDATION FAILED
         $has_wp_errors = $errors->has_errors();
 		$has_wc_errors = (function_exists('wc_notice_count') && wc_notice_count('error') > 0);
