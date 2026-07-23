@@ -333,8 +333,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			return;
 		}
 
-		// class-bytenft-checkout-validator.php no longer loaded (field-level checkout validation disabled).
-		
 		// Check if the environment is compatible
 		$environment_warning = bytenft_check_system_requirements();
 		if ($environment_warning) {
