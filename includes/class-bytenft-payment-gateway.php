@@ -2145,16 +2145,6 @@ if (!empty($phone)) {
 				$consent = isset( $_POST['bytenft_consent'] )
 					? sanitize_text_field( wp_unslash( $_POST['bytenft_consent'] ) )
 					: '';
-
-				if ( 'on' !== $consent ) {
-
-					wc_add_notice(
-						__( 'You must consent to the collection of your data to process this payment.', 'bytenft-payment-gateway' ),
-						'error'
-					);
-
-					return false;
-				}
 			}
 		}
 

@@ -106,23 +106,6 @@
                     self.setStatus('validating');
                     self.clearCheckoutErrors();
 
-                    const requiredError = self.validateRequiredFields($form);
-                    if (requiredError) {
-                        self.releaseLock('Classic');
-                        self.setStatus('idle');
-                        self.reset();
-                        return false;
-                    }
-
-                    const validationError = self.validateAll($form);
-                    if (validationError) {
-                        self.releaseLock('Classic');
-                        self.setStatus('idle');
-                        self.reset();
-                        self.showCheckoutError(validationError);
-                        return false;
-                    }
-
                     self.setStatus('popup');
 
                    const popup = self.openPopupImmediately();
@@ -379,24 +362,8 @@
                 self.setStatus('validating');
                 self.clearCheckoutErrors();
 
-                const requiredError = self.validateRequiredFields($form);
-                if (requiredError) {
-                    self.releaseLock('Block');
-                    self.setStatus('idle');
-                    self.reset();
-                    return;
-                }
-
-                const validationError = self.validateAll($form);
-                if (validationError) {
-                    self.releaseLock('Block');
-                    self.setStatus('idle');
-                    self.reset();
-                    self.showCheckoutError(validationError);
-                    return;
-                }
-
-                self.setStatus('popup');
+                self.setStatus('popup'); 
+                
                 const popup = self.openPopupImmediately();
 
                 if (!popup) {
