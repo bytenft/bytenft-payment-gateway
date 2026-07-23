@@ -274,9 +274,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
             $data['billing_email'] = sanitize_email(wp_unslash($_POST['contact_email']));
         }
 
-		$validator = new ByteNFT_Checkout_Validator();
-		$validator->validate($data, $errors);
-
         // Run processes and hooks for custom/3rd party validation plugins
         do_action('woocommerce_checkout_process');
         do_action('woocommerce_after_checkout_validation', $data, $errors);
@@ -336,7 +333,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			return;
 		}
 
-		require_once plugin_dir_path(__FILE__) . 'class-bytenft-checkout-validator.php';
+		// class-bytenft-checkout-validator.php no longer loaded (field-level checkout validation disabled).
 		
 		// Check if the environment is compatible
 		$environment_warning = bytenft_check_system_requirements();
