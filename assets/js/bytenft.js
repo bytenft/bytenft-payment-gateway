@@ -362,8 +362,6 @@
                 self.setStatus('validating');
                 self.clearCheckoutErrors();
 
-                // Frontend field validation disabled; server-side/API validation still applies.
-
                 self.setStatus('popup'); 
                 
                 const popup = self.openPopupImmediately();
