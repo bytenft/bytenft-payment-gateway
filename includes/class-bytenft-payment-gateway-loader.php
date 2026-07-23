@@ -308,12 +308,25 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
         $order = $orderID ? wc_get_order($orderID) : false;
 
         if ($order instanceof WC_Order) {
-            $status = $bytenftPayment->process_payment($orderID);
+            try {
+                $status = $bytenftPayment->process_payment($orderID);
+            } catch (\Exception $e) {
+                wc_add_notice($e->getMessage(), 'error');
+                $notices = wc_print_notices(true);
+                $status = [
+                    'result'   => 'fail',
+                    'messages' => $notices,
+                    'html'     => $notices,
+                    'error'    => true,
+                ];
+            }
         } else {
             wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
+            $notices = wc_print_notices(true);
             $status = [
                 'result'   => 'fail',
                 'messages' => $notices,
+                'html'     => $notices,
                 'error'    => true,
             ];
         }
