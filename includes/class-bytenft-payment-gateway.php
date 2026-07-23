@@ -2145,7 +2145,6 @@ if (!empty($phone)) {
 				$consent = isset( $_POST['bytenft_consent'] )
 					? sanitize_text_field( wp_unslash( $_POST['bytenft_consent'] ) )
 					: '';
-				// Consent checkbox field requirement removed (field-level checkout validation disabled).
 			}
 		}
 
