@@ -86,7 +86,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_filter('woocommerce_admin_order_preview_line_items', [$this, 'bytenft_add_custom_label_to_order_row'], 10, 2);
 		add_filter('woocommerce_available_payment_gateways', [$this, 'bytenft_hide_custom_payment_gateway_conditionally']);
 
-		add_action('woocommerce_after_checkout_validation', [$this, 'bytenft_validate_checkout_fields'], 10, 2);
+		// add_action('woocommerce_after_checkout_validation', [$this, 'bytenft_validate_checkout_fields'], 10, 2);
 		add_action(
 			'woocommerce_store_api_checkout_update_order_from_request',
 			[$this, 'bytenft_validate_blocks_checkout'],
@@ -1226,7 +1226,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					]
 				);
 
-				return $this->build_response('fail', 'An internal error occurred.', [], 500, $order_id);
+				throw $e;
 
 			} finally {
 
@@ -1246,13 +1246,17 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	) {
 		$message = (string)($message ?? '');
 
+		if ( $result === 'fail' || $result === 'failure' ) {
+			throw new \Exception( $message ? $message : 'Payment failed.' );
+		}
+
 		$response = [
-			'result'   => ($result === 'fail') ? 'failure' : $result,
+			'result'   => 'success',
 			'message'  => $message,
 			'data'     => $data,
 			'order_id' => $order_id,
 			'code'     => $code,
-			'success'  => $result === 'success',
+			'success'  => true,
 		];
 
 		if (!empty($data['redirect'])) {
@@ -1313,21 +1317,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$billing_country   = sanitize_text_field($order->get_billing_country());
 		$billing_state     = sanitize_text_field($order->get_billing_state());
 
-		if (strlen(trim($first_name)) < 3) {
-			wc_add_notice(__('First name must contain at least 3 characters.', 'bytenft-payment-gateway'), 'error');
-		}
-
-		if (strlen(trim($last_name)) < 3) {
-			wc_add_notice(__('Last name must contain at least 3 characters.', 'bytenft-payment-gateway'), 'error');
-		}
-
-		if (strlen(trim($billing_address_1)) < 3) {
-			wc_add_notice(__('Please enter a valid address (minimum 3 characters).', 'bytenft-payment-gateway'), 'error');
-		}
-
-		if (strlen(trim($billing_city)) < 3) {
-			wc_add_notice(__('Please enter a valid city name (minimum 3 characters).', 'bytenft-payment-gateway'), 'error');
-		}
 
 		$redirect_url = esc_url_raw(add_query_arg([
 			'order_id' => $order_id,
