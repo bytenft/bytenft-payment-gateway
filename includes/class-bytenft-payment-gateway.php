@@ -1813,23 +1813,6 @@ if (!empty($phone)) {
 		}
 
 		// =====================================================
-		// STEP 3A: RESTRICTED STATES CHECK
-		// =====================================================
-		if ( $this->is_restricted_state() ) {
-
-			ByteNFT_Payment_Gateway_Logger::info(
-				'ByteNFT Gateway Decision',
-				[
-					'result' => 'HIDDEN',
-					'reason' => 'Restricted billing/shipping state',
-					'flow'   => $flow,
-				]
-			);
-
-			return $this->hide_gateway( $available_gateways, $gateway_id );
-		}
-
-		// =====================================================
 		// STEP 4: CART INFO
 		// =====================================================
 		$amount = (float) WC()->cart->get_total('raw');
@@ -1840,23 +1823,33 @@ if (!empty($phone)) {
 		$items = count(WC()->cart->get_cart());
 
 		// =====================================================
-		// STEP 5: REQUEST FINGERPRINT
+		// STEP 5: LOGGING FINGERPRINT
 		// =====================================================
-		static $executed = false;
-
-		$fingerprint = md5(json_encode([
-			'flow'   => $flow,
+		$log_fingerprint = 'bytenft_log_' . md5(json_encode([
 			'items'  => $items,
 			'total'  => $amount,
-			'ajax'   => $is_ajax,
-			'blocks' => $is_blocks
+			'ip'     => $_SERVER['REMOTE_ADDR'] ?? 'unknown'
 		]));
 
-		if ($executed === $fingerprint) {
-			return $available_gateways;
-		}
+		// =====================================================
+		// STEP 3A: RESTRICTED STATES CHECK
+		// =====================================================
+		if ( $this->is_restricted_state() ) {
 
-		$executed = $fingerprint;
+			if ( false === get_transient( $log_fingerprint ) ) {
+				ByteNFT_Payment_Gateway_Logger::info(
+					'ByteNFT Gateway Decision',
+					[
+						'result' => 'HIDDEN',
+						'reason' => 'Restricted billing/shipping state',
+						'flow'   => $flow,
+					]
+				);
+				set_transient( $log_fingerprint, true, 300 );
+			}
+
+			return $this->hide_gateway( $available_gateways, $gateway_id );
+		}
 
 		// =====================================================
 		// STEP 6: LOAD ACCOUNTS
@@ -1872,16 +1865,19 @@ if (!empty($phone)) {
 		// =====================================================
 		if (empty($accounts)) {
 
-			ByteNFT_Payment_Gateway_Logger::info(
-				"ByteNFT Gateway Decision",
-				[
-					'result' => 'HIDDEN',
-					'reason' => 'No merchant accounts configured',
-					'items'  => $items,
-					'total'  => $amount,
-					'flow'   => $flow
-				]
-			);
+			if ( false === get_transient( $log_fingerprint ) ) {
+				ByteNFT_Payment_Gateway_Logger::info(
+					"ByteNFT Gateway Decision",
+					[
+						'result' => 'HIDDEN',
+						'reason' => 'No merchant accounts configured',
+						'items'  => $items,
+						'total'  => $amount,
+						'flow'   => $flow
+					]
+				);
+				set_transient( $log_fingerprint, true, 300 );
+			}
 
 			return $this->hide_gateway($available_gateways, $gateway_id);
 		}
@@ -1972,17 +1968,20 @@ if (!empty($phone)) {
 		// =====================================================
 		// STEP 10: SINGLE FINAL LOG ONLY
 		// =====================================================
-		ByteNFT_Payment_Gateway_Logger::info(
-			"ByteNFT Gateway Decision",
-			[
-				'result' => $selected ? 'SHOWN' : 'HIDDEN',
-				'reason' => $reason,
-				'items'  => $items,
-				'total'  => $amount,
-				'flow'   => $flow,
-				'account'=> $selected['title'] ?? null
-			]
-		);
+		if ( false === get_transient( $log_fingerprint ) ) {
+			ByteNFT_Payment_Gateway_Logger::info(
+				"ByteNFT Gateway Decision",
+				[
+					'result' => $selected ? 'SHOWN' : 'HIDDEN',
+					'reason' => $reason,
+					'items'  => $items,
+					'total'  => $amount,
+					'flow'   => $flow,
+					'account'=> $selected['title'] ?? null
+				]
+			);
+			set_transient( $log_fingerprint, true, 300 );
+		}
 
 		// =====================================================
 		// STEP 11: RETURN RESULT
