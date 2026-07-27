@@ -1944,7 +1944,7 @@ if (!empty($phone)) {
 				}
 			}
 
-			// Check daily transaction limit for THIS account (Priority 1, 2, 3...).
+			
 			$limit_check = $this->get_cached_api_response(
 				$this->get_api_url('/api/dailylimit'),
 				$data,
@@ -1953,7 +1953,6 @@ if (!empty($phone)) {
 				$force_refresh
 			);
 
-			// TEMP DEBUG — remove after confirming the response shape.
 			ByteNFT_Payment_Gateway_Logger::info(
 				'DEBUG dailylimit raw response for ' . ($account['title'] ?? ''),
 				['response' => $limit_check]
@@ -2347,9 +2346,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				continue;
 			}
 
-			// Check transaction/daily limit for THIS account (Priority 1, 2, 3...).
-			// If it has hit its limit, skip it so the code falls through to the
-			// NEXT priority account automatically.
+			
 			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 45, $force_refresh);
 
 			if (($limit_data['status'] ?? '') === 'error') {
