@@ -2199,7 +2199,8 @@ if (!empty($phone)) {
 				$status   = strtolower($account['live_status'] ?? '');
 				$has_keys = !empty($account['live_public_key']) && !empty($account['live_secret_key']);
 			}
-			if ($has_keys) $valid_accounts[] = $account;
+			// Only include accounts that are active AND have valid keys
+			if ($has_keys && $status === 'active') $valid_accounts[] = $account;
 		}
 
 		$this->accounts = $valid_accounts;
@@ -2395,6 +2396,10 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				continue;
 			}
 
+			// Only include accounts whose status is active
+			if (strtolower($account[$status_key] ?? '') !== 'active') {
+				continue;
+			}
 
 			$available[] = $account;
 		}
