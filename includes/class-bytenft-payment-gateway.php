@@ -917,28 +917,24 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$limit_data = json_decode(wp_remote_retrieve_body($limit_resp), true);
 
 			if (($limit_data['status'] ?? '') === 'error') {
-				if ($this->sandbox) {
-					ByteNFT_Payment_Gateway_Logger::info('Bypassed daily limit check failure in process_payment for sandbox testing', $data);
-				} else {
-					ByteNFT_Payment_Gateway_Logger::warning(
-						$log_prefix . ' Account rejected by daily limit API',
-						[
-							'account_title' => $account['title'] ?? null,
-							'response'      => $limit_data,
-						]
-					);
+				ByteNFT_Payment_Gateway_Logger::warning(
+					$log_prefix . ' Account rejected by daily limit API',
+					[
+						'account_title' => $account['title'] ?? null,
+						'response'      => $limit_data,
+					]
+				);
 
-					$last_error_data = $limit_data;
+				$last_error_data = $limit_data;
 
-					$used_accounts[] = $public_key;
-					$failed_accounts[] = [
-						'account' => $account['title'] ?? null,
-						'reason'  => 'limit_error',
-						'response'=> $limit_data,
-					];
+				$used_accounts[] = $public_key;
+				$failed_accounts[] = [
+					'account' => $account['title'] ?? null,
+					'reason'  => 'limit_error',
+					'response'=> $limit_data,
+				];
 
-					continue;
-				}
+				continue; // skip to next priority account (e.g. wert fail), sandbox or not
 			}
 
 			// ✅ SUCCESS
@@ -1933,6 +1929,29 @@ $payload['country_code'] = '+' . $countryCode;
 				}
 			}
 
+			// Check daily transaction limit for THIS account (Priority 1, 2, 3...).
+			$limit_check = $this->get_cached_api_response(
+				$this->get_api_url('/api/dailylimit'),
+				$data,
+				$cache . '_limit',
+				10,
+				$force_refresh
+			);
+
+			// TEMP DEBUG — remove after confirming the response shape.
+			ByteNFT_Payment_Gateway_Logger::info(
+				'DEBUG dailylimit raw response for ' . ($account['title'] ?? ''),
+				['response' => $limit_check]
+			);
+
+			if (($limit_check['status'] ?? '') === 'error') {
+				ByteNFT_Payment_Gateway_Logger::info(
+					'Account skipped at display-time: daily transaction limit reached',
+					$data + ['response' => $limit_check]
+				);
+				continue; // moves to NEXT priority account (works in sandbox too)
+			}
+
 			$all_accounts_limited = false;
 
 			$this->send_plugin_logs(
@@ -2309,6 +2328,18 @@ private function get_routing_sorted_accounts(array $accounts): array {
 			if (($status_data['status'] ?? '') !== 'success') {
 				$this->log_info_once_per_session('skip_status_' . $acc_title, "Skipping '{$acc_title}': merchant status check failed", [
 					'response_status' => $status_data['status'] ?? 'unknown',
+				]);
+				continue;
+			}
+
+			// Check transaction/daily limit for THIS account (Priority 1, 2, 3...).
+			// If it has hit its limit, skip it so the code falls through to the
+			// NEXT priority account automatically.
+			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 45, $force_refresh);
+
+			if (($limit_data['status'] ?? '') === 'error') {
+				$this->log_info_once_per_session('skip_limit_' . $acc_title, "Skipping '{$acc_title}': transaction limit reached", [
+					'response' => $limit_data,
 				]);
 				continue;
 			}
