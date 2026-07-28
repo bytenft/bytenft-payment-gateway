@@ -91,6 +91,28 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_action('wp_ajax_bytenft_log_event', [$this, 'handle_log_event']);
 		add_action('wp_ajax_nopriv_bytenft_log_event', [$this, 'handle_log_event']);
 
+		add_action('woocommerce_checkout_process', [$this, 'bytenft_prevent_order_reuse_on_details_change']);
+	}
+
+	public function bytenft_prevent_order_reuse_on_details_change() {
+		if ( isset( $_POST['payment_method'] ) && $_POST['payment_method'] === $this->id ) {
+			if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+				return;
+			}
+			$order_id = WC()->session->get( 'order_awaiting_payment' );
+			if ( $order_id ) {
+				$order = wc_get_order( $order_id );
+				if ( $order && ( $order->has_status( 'pending' ) || $order->has_status( 'failed' ) ) ) {
+					$posted_email = isset( $_POST['billing_email'] ) ? sanitize_email( wp_unslash( $_POST['billing_email'] ) ) : '';
+					$posted_phone = isset( $_POST['billing_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['billing_phone'] ) ) : '';
+					
+					if ( ( $posted_email && $order->get_billing_email() !== $posted_email ) || 
+					     ( $posted_phone && $order->get_billing_phone() !== $posted_phone ) ) {
+						WC()->session->set( 'order_awaiting_payment', '' );
+					}
+				}
+			}
+		}
 	}
 
 	private function get_api_url($endpoint) {
