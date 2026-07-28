@@ -927,6 +927,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				$last_error_data = $limit_data;
 
+				// Save failed account in WooCommerce session
+				$failed = WC()->session->get('bytenft_failed_accounts', []);
+
+				if (!in_array($public_key, $failed, true)) {
+					$failed[] = $public_key;
+					WC()->session->set('bytenft_failed_accounts', $failed);
+				}
+
 				$used_accounts[] = $public_key;
 				$failed_accounts[] = [
 					'account' => $account['title'] ?? null,
@@ -1192,6 +1200,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 						'payment_link'=> $payment_link,
 					]
 				);
+
+				WC()->session->__unset('bytenft_failed_accounts');
 
 				return $this->build_response(
 					'success',
@@ -2398,6 +2408,18 @@ private function get_routing_sorted_accounts(array $accounts): array {
 			return [];
 		}
 
+		$failed = WC()->session->get('bytenft_failed_accounts', []);
+
+		$settings = array_filter($settings, function ($account) use ($failed) {
+
+			$public_key = $this->sandbox
+				? ($account['sandbox_public_key'] ?? '')
+				: ($account['live_public_key'] ?? '');
+
+			return !in_array($public_key, $failed, true);
+		});
+
+
 		$mode = $this->sandbox ? 'sandbox' : 'live';
 
 		$status_key = $mode . '_status';
@@ -2604,4 +2626,4 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 		return false;
 	}
-}
+}               
