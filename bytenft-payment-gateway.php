@@ -239,27 +239,17 @@ function bytenft_cancelled_order_sync($order_id)
         return;
     }
 
-	// Prevent duplicate cancellation for the same payment link (UUID).
-	$last_cancelled_uuid = sanitize_text_field(
-		$order->get_meta('_bytenft_last_cancelled_uuid', true)
+	ByteNFT_Payment_Gateway_Logger::info(
+		'Cancel API payload',
+		[
+			'source' => 'bytenft-payment-gateway',
+			'context' => [
+				'order_id' => $order_id,
+				'uuid' => $uuid,
+				'last_cancelled_uuid' => $last_cancelled_uuid,
+			],
+		]
 	);
-
-	if (!empty($last_cancelled_uuid) && $last_cancelled_uuid === $uuid) {
-
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Cancel API already synced for this payment link. Skipping.',
-			[
-				'source' => 'bytenft-payment-gateway',
-				'context' => [
-					'order_id'             => $order_id,
-					'uuid'                 => $uuid,
-					'last_cancelled_uuid'  => $last_cancelled_uuid,
-				],
-			]
-		);
-
-		return;
-	}
 
     $api_url = BYTENFT_BASE_URL . '/api/cancel-order-link';
 
@@ -293,6 +283,16 @@ function bytenft_cancelled_order_sync($order_id)
         ]
     );
 
+	ByteNFT_Payment_Gateway_Logger::info(
+		'Calling cancel API',
+		[
+			'source' => 'bytenft-payment-gateway',
+			'context' => [
+				'order_id' => $order_id,
+				'uuid' => $uuid,
+			],
+		]
+	);
 
     if (is_wp_error($response)) {
 
