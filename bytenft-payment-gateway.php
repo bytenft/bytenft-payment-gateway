@@ -156,24 +156,6 @@ function bytenft_cancelled_order_sync($order_id)
         return;
     }
 
-
-    // Prevent duplicate API calls.
-    if ($order->get_meta('_bytenft_cancel_api_synced', true)) {
-
-        ByteNFT_Payment_Gateway_Logger::info(
-            'Cancel API already synced. Skipping.',
-            [
-                'source' => 'bytenft-payment-gateway',
-                'context' => [
-                    'order_id' => $order_id,
-                ],
-            ]
-        );
-
-        return;
-    }
-
-
     $table_name  = $GLOBALS['wpdb']->prefix . 'order_payment_link';
     $cache_key   = 'bytenft_payment_row_' . intval($order_id);
     $cache_group = 'bytenft_payment_gateway';
@@ -257,6 +239,27 @@ function bytenft_cancelled_order_sync($order_id)
         return;
     }
 
+	// Prevent duplicate cancellation for the same payment link (UUID).
+	$last_cancelled_uuid = sanitize_text_field(
+		$order->get_meta('_bytenft_last_cancelled_uuid', true)
+	);
+
+	if (!empty($last_cancelled_uuid) && $last_cancelled_uuid === $uuid) {
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Cancel API already synced for this payment link. Skipping.',
+			[
+				'source' => 'bytenft-payment-gateway',
+				'context' => [
+					'order_id'             => $order_id,
+					'uuid'                 => $uuid,
+					'last_cancelled_uuid'  => $last_cancelled_uuid,
+				],
+			]
+		);
+
+		return;
+	}
 
     $api_url = BYTENFT_BASE_URL . '/api/cancel-order-link';
 
@@ -330,21 +333,24 @@ function bytenft_cancelled_order_sync($order_id)
     );
 
 
-    // Mark as synced only after successful request.
-    $order->update_meta_data(
-        '_bytenft_cancel_api_synced',
-        current_time('mysql')
-    );
+    // Mark this payment link (UUID) as cancelled.
+	$order->update_meta_data(
+		'_bytenft_last_cancelled_uuid',
+		$uuid
+	);
 
-    $order->save();
+	$order->update_meta_data(
+		'_bytenft_last_cancelled_at',
+		current_time('mysql')
+	);
 
+	$order->save();
 
     // Clear cache.
     wp_cache_delete(
         'bytenft_payment_link_uuid_' . $order_id,
         'bytenft_payment_gateway'
     );
-
 
     wp_cache_delete(
         'bytenft_payment_row_' . $order_id,
