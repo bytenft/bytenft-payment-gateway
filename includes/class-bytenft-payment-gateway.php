@@ -1360,24 +1360,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'plugin_source'    => 'bytenft',
 		];
 
-		$normalized = $this->bytenft_normalize_phone($phone, $country_code);
+			$countryCode = preg_replace('/[^0-9]/', '', $country_code ?? '');
+$payload['country_code'] = '+' . $countryCode;
 
-// Always send country code
-$payload['country_code'] = $normalized['country_code'];
-
-if (!empty($phone)) {
-
-    if (!$normalized['is_valid']) {
-        wc_add_notice($normalized['error'], 'error');
-
-        return [
-            'result' => 'fail',
-            'error'  => $normalized['error'],
-        ];
-    }
-
-    $payload['phone_number'] = $normalized['phone'];
-}
 		return $payload;
 	}
 
