@@ -795,10 +795,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			if ($status === 'completed' || $status === 'processing') {
 
-				if (is_checkout()) {
-					wc_add_notice(__('Order has already been completed.', 'bytenft-payment-gateway'), 'notice');
-				}
-
 				if (WC()->cart) {
 					WC()->cart->empty_cart();
 					WC()->session->cleanup_sessions();
@@ -806,12 +802,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					WC()->session->set_customer_session_cookie(false);
 				}
 
-				
+
 				$redirect = $order->get_checkout_order_received_url();
 
 				return $this->build_response(
 					'success',
-					'Order has already been completed.',
+					'Order already processed.',
 					['redirect' => esc_url($redirect)],
 					200,
 					$order->get_id()
