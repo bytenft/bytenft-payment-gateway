@@ -7,6 +7,7 @@ if (!defined('ABSPATH')) {
 require_once plugin_dir_path(__FILE__) . 'config.php';
 require_once plugin_dir_path(__FILE__) . 'class-bytenft-payment-state-engine.php';
 require_once plugin_dir_path(__FILE__) . 'class-bytenft-payment-logger.php';
+
 /**
  * Class BYTENFT_PAYMENT_GATEWAY_Loader
  * Handles the loading and initialization of the ByteNFT Payment Gateway plugin.
@@ -58,19 +59,18 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('wp_ajax_bytenft_block_gateway_process', [$this,'handle_bytenft_gateway_ajax']);
 		add_action('wp_ajax_nopriv_bytenft_block_gateway_process', [$this,'handle_bytenft_gateway_ajax']); 
 		add_action('wp', function () {
-		    // Allow notices ONLY on checkout page
-		    if ( ! is_checkout() ) {
-			remove_action(
-			    'woocommerce_before_checkout_form',
-			    'woocommerce_output_all_notices',
-			    10
-			);
-			// Clear queued notices (errors, success, info)
-			if ( function_exists( 'wc_clear_notices' ) ) {
-				wc_clear_notices();
+			// Allow notices on the checkout page, and preserve them during AJAX or REST requests
+			if ( ! is_checkout() && ! wp_doing_ajax() && ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+				remove_action(
+					'woocommerce_before_checkout_form',
+					'woocommerce_output_all_notices',
+					10
+				);
+				// Clear queued notices (errors, success, info)
+				if ( function_exists( 'wc_clear_notices' ) ) {
+					wc_clear_notices();
+				}
 			}
-		    }
-
 		});
 
 		add_action('woocommerce_checkout_create_order', function($order){
@@ -85,64 +85,270 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('woocommerce_before_checkout_form', [$this, 'bytenft_show_checkout_error']);
 	}
 
-	/**
-	 * ── FIXED ──────────────────────────────────────────────────────────────────
-	 * Handle the block checkout AJAX payment request.
-	 *
-	 * Root cause of "No available payment accounts":
-	 * `new BYTENFT_PAYMENT_GATEWAY()` creates a cold instance. In an AJAX
-	 * context WooCommerce has not called init_settings() on it, so
-	 * $this->sandbox defaults to false and get_option() returns empty values.
-	 * get_next_available_account() then finds no matching keys → returns false.
-	 *
-	 * Fix: pull the already-booted instance from WC()->payment_gateways().
-	 * That instance was fully initialised during the normal WC boot cycle so
-	 * sandbox mode and account keys are correct.
-	 * ───────────────────────────────────────────────────────────────────────────
-	 */
-	function handle_bytenft_gateway_ajax(){
+	private function normalize_checkout_data($data) {
 
-		// Nonce verification
-		$nonce = isset($_POST['nonce'])
-			? sanitize_text_field(wp_unslash($_POST['nonce']))
-			: '';
+		$same_address =
+			empty($data['ship_to_different_address']) ||
+			$data['ship_to_different_address'] === '0' ||
+			!empty($data['wfacp_billing_same_as_shipping']);
 
-		if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
-			wp_send_json(['result' => 'fail', 'error' => 'Security check failed.']);
-			die;
+		if ($same_address) {
+
+			$fields = [
+				'first_name',
+				'last_name',
+				'company',
+				'address_1',
+				'address_2',
+				'city',
+				'state',
+				'postcode',
+				'country',
+				'phone'
+			];
+
+			foreach ($fields as $field) {
+
+				if (
+					empty($data["billing_$field"]) &&
+					!empty($data["shipping_$field"])
+				) {
+					$data["billing_$field"] = $data["shipping_$field"];
+				}
+			}
+
+			if (empty($data['billing_email']) && !empty($_POST['contact_email'])) {
+				$data['billing_email'] = sanitize_email($_POST['contact_email']);
+			}
 		}
 
-		// Pull the already-initialised gateway from the WC registry.
-		// Never use `new BYTENFT_PAYMENT_GATEWAY()` here — see note above.
-		$gateways       = WC()->payment_gateways()->payment_gateways();
-		$bytenftPayment = $gateways['bytenft'] ?? null;
-
-		if (!$bytenftPayment) {
-			// Fallback: manually instantiate and force-load settings from DB.
-			// Should never happen in normal operation.
-			$bytenftPayment = new BYTENFT_PAYMENT_GATEWAY();
-			$bytenftPayment->init_settings();
-			$bytenftPayment->load_gateway_settings();
-
-			ByteNFT_Payment_Gateway_Logger::warning(
-				'ByteNFT: gateway not found in WC registry during AJAX — fell back to manual instantiation.',
-				['source' => 'bytenft-payment-gateway']
-			);
-		}
-
-		$orderID = WC()->session ? WC()->session->get('store_api_draft_order') : null;
-
-		$status = [];
-		if($orderID){
-			$status = $bytenftPayment->process_payment($orderID);
-		}else{
-			wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
-			$status = ['result' => 'fail','error' => 'Invalid order.'];
-		}
-		
-		wp_send_json($status);
-		die;
+		return $data;
 	}
+
+	/**
+     * Handle the block checkout AJAX payment request using standard WooCommerce validation.
+     */
+    function handle_bytenft_gateway_ajax() {
+
+        // 1. Nonce verification
+        $nonce = isset($_POST['nonce'])
+            ? sanitize_text_field(wp_unslash($_POST['nonce']))
+            : '';
+
+        if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
+            wp_send_json([
+                'result'   => 'fail',
+                'messages' => '<ul class="woocommerce-error"><li>' . esc_html__('Security check failed. Please refresh the page.', 'bytenft-payment-gateway') . '</li></ul>',
+                'error'    => true
+            ]);
+            wp_die();
+        }
+
+		/**
+		 * Normalize POST data when billing address is the same as shipping.
+		 * This ensures validation, order creation, and third-party plugins
+		 * all receive complete billing data.
+		 */
+		$same_address =
+			empty($_POST['ship_to_different_address']) ||
+			$_POST['ship_to_different_address'] === '0' ||
+			!empty($_POST['wfacp_billing_same_as_shipping']);
+
+		if ($same_address) {
+
+			foreach ([
+				'first_name',
+				'last_name',
+				'company',
+				'address_1',
+				'address_2',
+				'city',
+				'state',
+				'postcode',
+				'country',
+				'phone'
+			] as $field) {
+
+				if (
+					empty($_POST["billing_$field"]) &&
+					!empty($_POST["shipping_$field"])
+				) {
+					$_POST["billing_$field"] = wp_unslash($_POST["shipping_$field"]);
+				}
+			}
+
+			if (empty($_POST['billing_email']) && !empty($_POST['contact_email'])) {
+				$_POST['billing_email'] = sanitize_email(wp_unslash($_POST['contact_email']));
+			}
+		}
+
+        // 2. Fetch Gateway Instance safely
+        $gateways       = WC()->payment_gateways()->payment_gateways();
+        $bytenftPayment = $gateways['bytenft'] ?? null;
+
+        if (!$bytenftPayment) {
+            $bytenftPayment = new BYTENFT_PAYMENT_GATEWAY();
+            $bytenftPayment->init_settings();
+            $bytenftPayment->load_gateway_settings();
+        }
+
+        // 3. Obtain or prepare order
+        $orderID = 0;
+        if (WC()->session) {
+            $orderID = WC()->session->get('store_api_draft_order') ?: WC()->session->get('order_awaiting_payment');
+        }
+
+        if (function_exists('wc_get_order')) {
+            $order = $orderID ? wc_get_order($orderID) : false;
+            
+            // Check if customer details changed to prevent order reuse
+            if ($order && ($order->has_status('checkout-draft') || $order->has_status('pending'))) {
+                $posted_email = sanitize_email($_POST['contact_email'] ?? $_POST['billing_email'] ?? '');
+                $posted_phone = sanitize_text_field($_POST['billing_phone'] ?? '');
+
+                if ( ($posted_email && $order->get_billing_email() !== $posted_email) || 
+                     ($posted_phone && $order->get_billing_phone() !== $posted_phone) ) {
+                    $order = false;
+                    if (WC()->session) {
+                        WC()->session->set('order_awaiting_payment', '');
+                        WC()->session->set('store_api_draft_order', '');
+                    }
+                }
+            }
+            
+            if (!$order && !empty(WC()->cart) && !WC()->cart->is_empty()) {
+                $order = wc_create_order();
+                if ($order) {
+                    $orderID = $order->get_id();
+                }
+            }
+
+            if ($order && ($order->has_status('checkout-draft') || $order->has_status('pending'))) {
+                try {
+                    if (count($order->get_items()) === 0 && !empty(WC()->cart) && !WC()->cart->is_empty()) {
+                        foreach (WC()->cart->get_cart() as $cart_item_key => $values) {
+                            $item = new WC_Order_Item_Product();
+                            $item->set_product($values['data']);
+                            $item->set_quantity($values['quantity']);
+                            $item->set_total($values['line_total']);
+                            $item->set_subtotal($values['line_subtotal']);
+                            $order->add_item($item);
+                        }
+                    }
+
+                    $customer = WC()->customer;
+                    if ($customer) {
+                        $order->set_billing_first_name(sanitize_text_field($_POST['billing_first_name'] ?? $customer->get_billing_first_name()));
+                        $order->set_billing_last_name(sanitize_text_field($_POST['billing_last_name'] ?? $customer->get_billing_last_name()));
+                        $order->set_billing_company(sanitize_text_field($_POST['billing_company'] ?? $customer->get_billing_company()));
+                        $order->set_billing_address_1(sanitize_text_field($_POST['billing_address_1'] ?? $customer->get_billing_address_1()));
+                        $order->set_billing_address_2(sanitize_text_field($_POST['billing_address_2'] ?? $customer->get_billing_address_2()));
+                        $order->set_billing_city(sanitize_text_field($_POST['billing_city'] ?? $customer->get_billing_city()));
+                        $order->set_billing_state(sanitize_text_field($_POST['billing_state'] ?? $customer->get_billing_state()));
+                        $order->set_billing_postcode(sanitize_text_field($_POST['billing_postcode'] ?? $customer->get_billing_postcode()));
+                        $order->set_billing_country(sanitize_text_field($_POST['billing_country'] ?? ($customer->get_billing_country() ?: 'US')));
+                        $order->set_billing_email(sanitize_email($_POST['contact_email'] ?? $_POST['billing_email'] ?? $customer->get_billing_email()));
+                        $order->set_billing_phone(sanitize_text_field($_POST['billing_phone'] ?? $customer->get_billing_phone()));
+
+                        $order->set_shipping_first_name(sanitize_text_field($_POST['shipping_first_name'] ?? $customer->get_shipping_first_name()));
+                        $order->set_shipping_last_name(sanitize_text_field($_POST['shipping_last_name'] ?? $customer->get_shipping_last_name()));
+                        $order->set_shipping_company(sanitize_text_field($_POST['shipping_company'] ?? $customer->get_shipping_company()));
+                        $order->set_shipping_address_1(sanitize_text_field($_POST['shipping_address_1'] ?? $customer->get_shipping_address_1()));
+                        $order->set_shipping_address_2(sanitize_text_field($_POST['shipping_address_2'] ?? $customer->get_shipping_address_2()));
+                        $order->set_shipping_city(sanitize_text_field($_POST['shipping_city'] ?? $customer->get_shipping_city()));
+                        $order->set_shipping_state(sanitize_text_field($_POST['shipping_state'] ?? $customer->get_shipping_state()));
+                        $order->set_shipping_postcode(sanitize_text_field($_POST['shipping_postcode'] ?? $customer->get_shipping_postcode()));
+                        $order->set_shipping_country(sanitize_text_field($_POST['shipping_country'] ?? ($customer->get_shipping_country() ?: 'US')));
+                    }
+
+                    $order->set_currency(get_woocommerce_currency());
+                    
+                    if ((float) $order->get_total() < 0.01) {
+                        $order->calculate_totals();
+                    }
+                    
+                    $order->save();
+                } catch (Exception $e) {
+                    ByteNFT_Payment_Gateway_Logger::error('Order sync error: ' . $e->getMessage(), ['source' => 'bytenft-payment-gateway']);
+                }
+            }
+        }
+
+        // 4. FUTURE-PROOF NATIVE WOOCOMMERCE VALIDATION
+        if (function_exists('wc_clear_notices')) {
+            wc_clear_notices();
+        }
+
+        $checkout = WC()->checkout();
+        $data     = $checkout->get_posted_data();
+		$data = $this->normalize_checkout_data($data);
+        $errors   = new WP_Error();
+
+        // Normalize email payload parameter
+        if (empty($data['billing_email']) && !empty($_POST['contact_email'])) {
+            $data['billing_email'] = sanitize_email(wp_unslash($_POST['contact_email']));
+        }
+
+        // Run processes and hooks for custom/3rd party validation plugins
+        do_action('woocommerce_checkout_process');
+        do_action('woocommerce_after_checkout_validation', $data, $errors);
+
+        // 5. RETURN ERRORS IF ANY VALIDATION FAILED
+        $has_wp_errors = $errors->has_errors();
+		$has_wc_errors = (function_exists('wc_notice_count') && wc_notice_count('error') > 0);
+
+		if ($has_wp_errors || $has_wc_errors) {
+
+			wc_clear_notices();
+
+			$messages = array_unique($errors->get_error_messages());
+
+			foreach ($messages as $message) {
+				wc_add_notice($message, 'error');
+			}
+
+			$notices = wc_print_notices(true);
+
+			wp_send_json([
+				'result'   => 'fail',
+				'messages' => $notices,
+				'html'     => $notices,
+				'error'    => true,
+			]);
+
+			wp_die();
+		}
+
+        // 6. PROCESS PAYMENT
+        $order = $orderID ? wc_get_order($orderID) : false;
+
+        if ($order instanceof WC_Order) {
+            try {
+                $status = $bytenftPayment->process_payment($orderID);
+            } catch (\Exception $e) {
+                wc_add_notice($e->getMessage(), 'error');
+                $notices = wc_print_notices(true);
+                $status = [
+                    'result'   => 'fail',
+                    'messages' => $notices,
+                    'html'     => $notices,
+                    'error'    => true,
+                ];
+            }
+        } else {
+            wc_add_notice(__('Invalid order.', 'bytenft-payment-gateway'), 'error');
+            $notices = wc_print_notices(true);
+            $status = [
+                'result'   => 'fail',
+                'messages' => $notices,
+                'html'     => $notices,
+                'error'    => true,
+            ];
+        }
+        
+        wp_send_json($status);
+        wp_die();
+    }
 
 	/**
 	 * Initializes the plugin.
@@ -150,6 +356,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	 */
 	public function bytenft_init()
 	{
+
+		if (!class_exists('WC_Checkout')) {
+			return;
+		}
+
 		// Check if the environment is compatible
 		$environment_warning = bytenft_check_system_requirements();
 		if ($environment_warning) {
@@ -655,12 +866,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order);
 
 			wp_send_json([
-				'success' => ($state === 'success'),
+				'success' => ($state === 'success' || in_array($payment_status, ['success', 'paid'], true)),
 				'message' => '',
 				'data' => [
 					'state'          => $state ?: 'processing',
 					'payment_status' => $payment_status,
-					'redirect'       => $state === 'success'
+					'redirect'       => ($state === 'success' || in_array($payment_status, ['success', 'paid'], true))
 						? $order->get_checkout_order_received_url()
 						: null,
 					'order_id'       => $order_id,
@@ -711,8 +922,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			'cancelled' =>
 				'You cancelled the payment.',
 
-			'processing' =>
-				'Payment is being processed.',
+			'processing' => (
+				in_array($payment_status, ['pending', null, ''], true)
+				&& $order->has_status('pending')
+			)
+				? "We couldn't confirm the payment status. If you completed the payment, your order will be updated automatically. Otherwise, you can try placing the order again."
+				: 'Your payment is currently being processed.',
 
 			default =>
 				'We couldn’t confirm your payment status yet. If needed, you can try placing the order again after checking your order status.'
@@ -816,7 +1031,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 					'secret_key'   => $account['live_secret_key'],
 					'mode'         => 'live',
 				];
-			}
+		}
 
 			if ($isSandboxEnabled && !empty($account['sandbox_public_key']) && !empty($account['sandbox_secret_key'])) {
 				$accountsData[] = [
@@ -871,7 +1086,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 								'mode'   => $statusData['mode'],
 								'status' => $statusData['status'],
 							];
-						}
+		}
 
 						if (
 							$statusData['mode'] === 'sandbox' &&
@@ -898,7 +1113,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 					'source'  => 'bytenft-payment-gateway',
 					'context' => ['updated_accounts' => $statusSummary],
 				]);
-			} else {
+		} else {
 				ByteNFT_Payment_Gateway_Logger::info('Payment accounts were checked, but no updates were necessary.', [
 					'source'  => 'bytenft-payment-gateway',
 					'context' => ['checked_accounts' => $statusSummary],
@@ -943,7 +1158,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			if (!empty($output)) {
 				ByteNFT_Payment_Gateway_Logger::warning('Unexpected output generated during sync: ' . $output, $logger_context);
-			}
+	}
 
 			ByteNFT_Payment_Gateway_Logger::info('Payment accounts sync completed successfully.', $logger_context);
 
