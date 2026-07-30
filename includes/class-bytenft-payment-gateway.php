@@ -91,6 +91,28 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_action('wp_ajax_bytenft_log_event', [$this, 'handle_log_event']);
 		add_action('wp_ajax_nopriv_bytenft_log_event', [$this, 'handle_log_event']);
 
+		add_action('woocommerce_checkout_process', [$this, 'bytenft_prevent_order_reuse_on_details_change']);
+	}
+
+	public function bytenft_prevent_order_reuse_on_details_change() {
+		if ( isset( $_POST['payment_method'] ) && $_POST['payment_method'] === $this->id ) {
+			if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+				return;
+			}
+			$order_id = WC()->session->get( 'order_awaiting_payment' );
+			if ( $order_id ) {
+				$order = wc_get_order( $order_id );
+				if ( $order && ( $order->has_status( 'pending' ) || $order->has_status( 'failed' ) ) ) {
+					$posted_email = isset( $_POST['billing_email'] ) ? sanitize_email( wp_unslash( $_POST['billing_email'] ) ) : '';
+					$posted_phone = isset( $_POST['billing_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['billing_phone'] ) ) : '';
+					
+					if ( ( $posted_email && $order->get_billing_email() !== $posted_email ) || 
+					     ( $posted_phone && $order->get_billing_phone() !== $posted_phone ) ) {
+						WC()->session->set( 'order_awaiting_payment', '' );
+					}
+				}
+			}
+		}
 	}
 
 	private function get_api_url($endpoint) {
@@ -917,28 +939,32 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$limit_data = json_decode(wp_remote_retrieve_body($limit_resp), true);
 
 			if (($limit_data['status'] ?? '') === 'error') {
-				if ($this->sandbox) {
-					ByteNFT_Payment_Gateway_Logger::info('Bypassed daily limit check failure in process_payment for sandbox testing', $data);
-				} else {
-					ByteNFT_Payment_Gateway_Logger::warning(
-						$log_prefix . ' Account rejected by daily limit API',
-						[
-							'account_title' => $account['title'] ?? null,
-							'response'      => $limit_data,
-						]
-					);
+				ByteNFT_Payment_Gateway_Logger::warning(
+					$log_prefix . ' Account rejected by daily limit API',
+					[
+						'account_title' => $account['title'] ?? null,
+						'response'      => $limit_data,
+					]
+				);
 
-					$last_error_data = $limit_data;
+				$last_error_data = $limit_data;
 
-					$used_accounts[] = $public_key;
-					$failed_accounts[] = [
-						'account' => $account['title'] ?? null,
-						'reason'  => 'limit_error',
-						'response'=> $limit_data,
-					];
+				// Save failed account in WooCommerce session
+				$failed = WC()->session->get('bytenft_failed_accounts', []);
 
-					continue;
+				if (!in_array($public_key, $failed, true)) {
+					$failed[] = $public_key;
+					WC()->session->set('bytenft_failed_accounts', $failed);
 				}
+
+				$used_accounts[] = $public_key;
+				$failed_accounts[] = [
+					'account' => $account['title'] ?? null,
+					'reason'  => 'limit_error',
+					'response'=> $limit_data,
+				];
+
+				continue; // skip to next priority account (e.g. wert fail), sandbox or not
 			}
 
 			// ✅ SUCCESS
@@ -1197,6 +1223,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					]
 				);
 
+				WC()->session->__unset('bytenft_failed_accounts');
+
 				return $this->build_response(
 					'success',
 					'Payment initiated',
@@ -1360,24 +1388,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'plugin_source'    => 'bytenft',
 		];
 
-		$normalized = $this->bytenft_normalize_phone($phone, $country_code);
+			$countryCode = preg_replace('/[^0-9]/', '', $country_code ?? '');
+$payload['country_code'] = '+' . $countryCode;
 
-// Always send country code
-$payload['country_code'] = $normalized['country_code'];
-
-if (!empty($phone)) {
-
-    if (!$normalized['is_valid']) {
-        wc_add_notice($normalized['error'], 'error');
-
-        return [
-            'result' => 'fail',
-            'error'  => $normalized['error'],
-        ];
-    }
-
-    $payload['phone_number'] = $normalized['phone'];
-}
 		return $payload;
 	}
 
@@ -1948,6 +1961,29 @@ if (!empty($phone)) {
 				}
 			}
 
+			// Check daily transaction limit for THIS account (Priority 1, 2, 3...).
+			$limit_check = $this->get_cached_api_response(
+				$this->get_api_url('/api/dailylimit'),
+				$data,
+				$cache . '_limit',
+				10,
+				$force_refresh
+			);
+
+			// TEMP DEBUG — remove after confirming the response shape.
+			ByteNFT_Payment_Gateway_Logger::info(
+				'DEBUG dailylimit raw response for ' . ($account['title'] ?? ''),
+				['response' => $limit_check]
+			);
+
+			if (($limit_check['status'] ?? '') === 'error') {
+				ByteNFT_Payment_Gateway_Logger::info(
+					'Account skipped at display-time: daily transaction limit reached',
+					$data + ['response' => $limit_check]
+				);
+				continue; // moves to NEXT priority account (works in sandbox too)
+			}
+
 			$all_accounts_limited = false;
 
 			$this->send_plugin_logs(
@@ -2199,7 +2235,8 @@ if (!empty($phone)) {
 				$status   = strtolower($account['live_status'] ?? '');
 				$has_keys = !empty($account['live_public_key']) && !empty($account['live_secret_key']);
 			}
-			if ($has_keys) $valid_accounts[] = $account;
+			// Only include accounts that are active AND have valid keys
+			if ($has_keys && $status === 'active') $valid_accounts[] = $account;
 		}
 
 		$this->accounts = $valid_accounts;
@@ -2327,6 +2364,18 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				continue;
 			}
 
+			// Check transaction/daily limit for THIS account (Priority 1, 2, 3...).
+			// If it has hit its limit, skip it so the code falls through to the
+			// NEXT priority account automatically.
+			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 45, $force_refresh);
+
+			if (($limit_data['status'] ?? '') === 'error') {
+				$this->log_info_once_per_session('skip_limit_' . $acc_title, "Skipping '{$acc_title}': transaction limit reached", [
+					'response' => $limit_data,
+				]);
+				continue;
+			}
+
 			$eligible_accounts[] = $account;
 			$all_accounts_limited = false;
 
@@ -2381,6 +2430,18 @@ private function get_routing_sorted_accounts(array $accounts): array {
 			return [];
 		}
 
+		$failed = WC()->session->get('bytenft_failed_accounts', []);
+
+		$settings = array_filter($settings, function ($account) use ($failed) {
+
+			$public_key = $this->sandbox
+				? ($account['sandbox_public_key'] ?? '')
+				: ($account['live_public_key'] ?? '');
+
+			return !in_array($public_key, $failed, true);
+		});
+
+
 		$mode = $this->sandbox ? 'sandbox' : 'live';
 
 		$status_key = $mode . '_status';
@@ -2395,6 +2456,10 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				continue;
 			}
 
+			// Only include accounts whose status is active
+			if (strtolower($account[$status_key] ?? '') !== 'active') {
+				continue;
+			}
 
 			$available[] = $account;
 		}
@@ -2583,4 +2648,4 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 		return false;
 	}
-}
+}               

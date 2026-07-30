@@ -201,6 +201,21 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
         if (function_exists('wc_get_order')) {
             $order = $orderID ? wc_get_order($orderID) : false;
             
+            // Check if customer details changed to prevent order reuse
+            if ($order && ($order->has_status('checkout-draft') || $order->has_status('pending'))) {
+                $posted_email = sanitize_email($_POST['contact_email'] ?? $_POST['billing_email'] ?? '');
+                $posted_phone = sanitize_text_field($_POST['billing_phone'] ?? '');
+
+                if ( ($posted_email && $order->get_billing_email() !== $posted_email) || 
+                     ($posted_phone && $order->get_billing_phone() !== $posted_phone) ) {
+                    $order = false;
+                    if (WC()->session) {
+                        WC()->session->set('order_awaiting_payment', '');
+                        WC()->session->set('store_api_draft_order', '');
+                    }
+                }
+            }
+            
             if (!$order && !empty(WC()->cart) && !WC()->cart->is_empty()) {
                 $order = wc_create_order();
                 if ($order) {
