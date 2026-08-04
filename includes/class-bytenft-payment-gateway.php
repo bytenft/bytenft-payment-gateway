@@ -1377,6 +1377,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'meta_data'        => $meta_data_array,
 			'remarks'          => 'Order ' . $order->get_order_number(),
 			'email'            => $email,
+			'phone_number'     => $phone,
 			'billing_address_1'=> $billing_address_1,
 			'billing_address_2'=> $billing_address_2,
 			'billing_city'     => $billing_city,
