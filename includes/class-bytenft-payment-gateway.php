@@ -1402,7 +1402,6 @@ $payload['country_code'] = '+' . $countryCode;
 		$cleanedPhone = preg_replace('/[^\d+]/', '', $phone);
 		$countryCode  = preg_replace('/[^0-9]/', '', $country_code ?? '');
 		$phoneNumber  = preg_replace('/[^\d]/', '', $cleanedPhone);
-
 		if (!empty($countryCode) && strlen($phoneNumber) > strlen($countryCode) && strpos($phoneNumber, $countryCode) === 0) {
 			$normalizedPhone = substr($phoneNumber, strlen($countryCode));
 		} else {
