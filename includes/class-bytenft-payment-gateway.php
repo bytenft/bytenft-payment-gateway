@@ -1394,13 +1394,38 @@ $payload['country_code'] = '+' . $countryCode;
 		return $payload;
 	}
 
+	private function bytenft_get_local_length_range($countryCode) {
+
+		if ($countryCode === '1') {
+			return [10, 10];
+		}
+
+		$europeCodes = [
+			'33', '34', '39', '31', '44', '46', '47', '48', '49', '41', '45', '358'
+		];
+
+		if (in_array($countryCode, $europeCodes, true)) {
+			$min = ($countryCode === '49' || $countryCode === '358') ? 5 : 8;
+			$max = ($countryCode === '49' || $countryCode === '358') ? 11 : 10;
+			return [$min, $max];
+		}
+
+		return [10, 15];
+	}
+
 	private function bytenft_normalize_phone($phone, $country_code) {
 
 		$cleanedPhone = preg_replace('/[()\s-]/', '', $phone ?? '');
 		$countryCode  = preg_replace('/[^0-9]/', '', $country_code ?? '');
 		$phoneNumber  = preg_replace('/[^\d]/', '', $cleanedPhone);
 
-		if (!empty($countryCode) && strlen($phoneNumber) > strlen($countryCode) && strpos($phoneNumber, $countryCode) === 0) {
+		list($minLocalLength, $maxLocalLength) = $this->bytenft_get_local_length_range($countryCode);
+
+		if (
+			!empty($countryCode) &&
+			strlen($phoneNumber) > $maxLocalLength &&
+			strpos($phoneNumber, $countryCode) === 0
+		) {
 			$normalizedPhone = substr($phoneNumber, strlen($countryCode));
 		} else {
 			$normalizedPhone = $phoneNumber;
@@ -1429,8 +1454,7 @@ $payload['country_code'] = '+' . $countryCode;
 			// Reject common test numbers
 			$invalidNumbers = [
 				'1234567890',
-				'0123456789',
-				'9876543210'
+				'0123456789'
 			];
 
 			if (in_array($phoneNumber, $invalidNumbers, true)) {
