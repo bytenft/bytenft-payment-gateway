@@ -370,14 +370,6 @@
                 self.setStatus('validating');
                 self.clearCheckoutErrors();
 
-                const phone = self.getPhoneNumber($form);
-                if (phone && /[^0-9]/.test(phone)) {
-                    self.showCheckoutError('Please enter a valid phone number (numeric values only).');
-                    self.releaseLock('Block');
-                    self.setStatus('idle');
-                    return;
-                }
-
                 self.setStatus('popup'); 
                 
                 const popup = self.openPopupImmediately();
