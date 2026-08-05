@@ -1244,7 +1244,7 @@
 
             if (!p) return true;
 
-            const cleaned = p.replace(/[\s\-().]/g, '');
+            const cleaned = p.trim().replace(/[^\d+]/g, '');
 
             // digits only
             if (!/^\+?\d+$/.test(cleaned)) {

@@ -1397,7 +1397,9 @@ $payload['country_code'] = '+' . $countryCode;
 
 	private function bytenft_normalize_phone($phone, $country_code) {
 
-		$cleanedPhone = preg_replace('/[()\s-]/', '', $phone ?? '');
+		$phone = trim((string) $phone);
+		// Remove all characters except digits and the plus sign
+		$cleanedPhone = preg_replace('/[^\d+]/', '', $phone);
 		$countryCode  = preg_replace('/[^0-9]/', '', $country_code ?? '');
 		$phoneNumber  = preg_replace('/[^\d]/', '', $cleanedPhone);
 
