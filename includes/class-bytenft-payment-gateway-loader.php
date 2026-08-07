@@ -823,13 +823,35 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if (!$payment_status) {
 
+			// Status API late-a reply pannalam (webhook innum varala).
+			// Neradiya "failed" nu solradhukku munnadi, order/engine state-ah check pannunga.
+			$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order);
+
+			if ($state === 'success' || $order->has_status(['processing', 'completed'])) {
+
+				wp_send_json([
+					'success' => true,
+					'message' => 'Your payment was completed successfully.',
+					'data' => [
+						'payment_status' => 'success',
+						'order_status'   => $order->get_status(),
+						'state'          => 'success',
+						'redirect'       => $order->get_checkout_order_received_url(),
+					]
+				]);
+
+				wp_die();
+			}
+
+			// Ippodhaikku unknown-a irukku -> "failed" nu solradhukku badhila
+			// "processing" nu solli, frontend polling continue pannattum.
 			wp_send_json([
 				'success' => false,
-				'message' => 'Payment was not completed.',
+				'message' => "We couldn't confirm the payment status yet. If you completed the payment, your order will be updated automatically.",
 				'data' => [
-					'payment_status' => 'abandoned',
+					'payment_status' => 'processing',
 					'order_status'   => $order->get_status(),
-					'state'          => 'abandoned',
+					'state'          => 'processing',
 					'redirect'       => null,
 				]
 			]);
