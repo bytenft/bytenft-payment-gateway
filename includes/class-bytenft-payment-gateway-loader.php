@@ -823,8 +823,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if (!$payment_status) {
 
-			// Status API late-a reply pannalam (webhook innum varala).
-			// Neradiya "failed" nu solradhukku munnadi, order/engine state-ah check pannunga.
+	
 			$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order);
 
 			if ($state === 'success' || $order->has_status(['processing', 'completed'])) {
