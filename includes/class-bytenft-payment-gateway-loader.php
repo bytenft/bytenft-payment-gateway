@@ -842,8 +842,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				wp_die();
 			}
 
-			// Ippodhaikku unknown-a irukku -> "failed" nu solradhukku badhila
-			// "processing" nu solli, frontend polling continue pannattum.
+			
 			wp_send_json([
 				'success' => false,
 				'message' => "We couldn't confirm the payment status yet. If you completed the payment, your order will be updated automatically.",
