@@ -711,14 +711,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		}
 	}
 
-	/**
-	 * Handles the AJAX event triggered when a customer closes the payment popup.
-	 */
 	public function handle_popup_close()
 	{
 		$order_id = isset($_POST['order_id'])
-			? absint(wp_unslash($_POST['order_id']))
-			: 0;
+			? sanitize_text_field(wp_unslash($_POST['order_id']))
+			: 'unknown';
 
 		$security = isset($_POST['security'])
 			? sanitize_text_field(wp_unslash($_POST['security']))
@@ -727,12 +724,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$log_prefix = "[Order #{$order_id}]";
 
 		// -------------------------
-		// 1. NONCE CHECK
+		// NONCE CHECK
 		// -------------------------
-		if (
-			empty($security) ||
-			!wp_verify_nonce($security, 'bytenft_payment')
-		) {
+		if (empty($security) || !wp_verify_nonce($security, 'bytenft_payment')) {
+
 			ByteNFT_Payment_Gateway_Logger::info(
 				$log_prefix . ' PopupClose | Invalid nonce'
 			);
@@ -740,24 +735,17 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			wp_send_json_error([
 				'reload' => true
 			]);
+
+			wp_die();
 		}
 
 		// -------------------------
-		// 2. ORDER CHECK
+		// ORDER CHECK
 		// -------------------------
-		if ($order_id <= 0) {
-			ByteNFT_Payment_Gateway_Logger::warning(
-				$log_prefix . ' PopupClose | Invalid order ID'
-			);
-
-			wp_send_json_error([
-				'reload' => true
-			]);
-		}
-
 		$order = wc_get_order($order_id);
 
 		if (!$order) {
+
 			ByteNFT_Payment_Gateway_Logger::info(
 				$log_prefix . ' PopupClose | Order not found'
 			);
@@ -765,10 +753,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			wp_send_json_error([
 				'reload' => true
 			]);
+
+			wp_die();
 		}
 
 		// -------------------------
-		// 3. PAYMENT TOKEN
+		// API CALL
 		// -------------------------
 		$payment_token = $order->get_meta('_bytenft_active_pay_id');
 
@@ -776,12 +766,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$payment_token = $order->get_meta('_bytenft_pay_id');
 		}
 
-		// Retrieve configured API key for backend API communication.
-		$api_key = $this->get_option('api_key');
-
-		// -------------------------
-		// 4. API CALL
-		// -------------------------
 		$response = wp_remote_post(
 			$this->get_api_url('/api/update-txn-status'),
 			[
@@ -792,22 +776,23 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				]),
 				'headers' => [
 					'Content-Type'  => 'application/json',
-					'Authorization' => 'Bearer ' . $api_key,
+					'Authorization' => 'Bearer ' . $security,
 				],
 				'timeout' => 15,
 			]
 		);
 
 		if (is_wp_error($response)) {
+
 			ByteNFT_Payment_Gateway_Logger::info(
-				$log_prefix .
-				' PopupClose | API error: ' .
-				$response->get_error_message()
+				$log_prefix . ' PopupClose | API error'
 			);
 
 			wp_send_json_error([
 				'reload' => true
 			]);
+
+			wp_die();
 		}
 
 		$response_data = json_decode(
@@ -816,6 +801,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		);
 
 		if (!is_array($response_data)) {
+
 			ByteNFT_Payment_Gateway_Logger::info(
 				$log_prefix . ' PopupClose | Invalid API response'
 			);
@@ -823,6 +809,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			wp_send_json_error([
 				'reload' => true
 			]);
+
+			wp_die();
 		}
 
 		$payment_status =
@@ -831,62 +819,26 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			?? null;
 
 		// -------------------------
-		// 5. NO PAYMENT STATUS
+		// NO STATUS
 		// -------------------------
-		//
-		// Do not immediately treat this as abandoned.
-		// The webhook may still be processing asynchronously.
-		//
 		if (!$payment_status) {
 
-			// Reload the order in case the webhook updated it
-			// while the popup-close request was running.
-			$order = wc_get_order($order_id);
-
-			$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order);
-			$wc_status = $order->get_status();
-
-			// Existing success business rule:
-			// processing/completed + payment_success=yes = success.
-			if (
-				$order->get_meta('_bytenft_state') === 'success' ||
-				(
-					in_array($wc_status, ['processing', 'completed'], true) &&
-					$order->get_meta('_bytenft_payment_success') === 'yes'
-				)
-			) {
-				$state = 'success';
-			}
-
-			$is_success = ($state === 'success');
-
-			ByteNFT_Payment_Gateway_Logger::info(
-				$log_prefix .
-				' PopupClose | No payment status | ' .
-				'State: ' . $state .
-				' | WC: ' . $wc_status .
-				' | Success: ' . ($is_success ? 'YES' : 'NO')
-			);
-
 			wp_send_json([
-				'success' => $is_success,
-				'message' => $is_success
-					? 'Your payment was completed successfully.'
-					: 'Payment status is being verified.',
+				'success' => false,
+				'message' => 'Payment was not completed.',
 				'data' => [
-					'payment_status' => null,
-					'order_status'   => $wc_status,
-					'state'          => $is_success ? 'success' : ($state ?: 'processing'),
-					'redirect'       => $is_success
-						? $order->get_checkout_order_received_url()
-						: null,
-					'order_id'       => $order_id,
+					'payment_status' => 'abandoned',
+					'order_status'   => $order->get_status(),
+					'state'          => 'abandoned',
+					'redirect'       => null,
 				]
 			]);
+
+			wp_die();
 		}
 
 		// -------------------------
-		// 6. ENGINE CALL
+		// ENGINE CALL
 		// -------------------------
 		$result = BYTENFT_PAYMENT_ENGINE::handle_event(
 			$order_id,
@@ -897,109 +849,67 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			]
 		);
 
+		// ❌ REMOVE locked_skip handling completely
+
 		ByteNFT_Payment_Gateway_Logger::info(
-			$log_prefix .
-			' PopupClose | Engine result: ' .
-			wp_json_encode($result)
+			$log_prefix . ' PopupClose | Engine result: ' . wp_json_encode($result)
 		);
 
-		// -------------------------
-		// 7. ALWAYS RELOAD ORDER
-		// -------------------------
-		//
-		// This is important for webhook/popup-close race conditions.
-		// The webhook may have updated the order while the engine call
-		// was being processed.
-		//
-		$order = wc_get_order($order_id);
+		// Ignore lock races and wait for next poll
+		if (
+			is_array($result) &&
+			(($result['reason'] ?? '') === 'locked_skip')
+		)
+		{
+			$order = wc_get_order($order_id);
 
-		if (!$order) {
-			ByteNFT_Payment_Gateway_Logger::error(
-				$log_prefix .
-				' PopupClose | Order unavailable after engine call'
-			);
+			$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order);
 
-			wp_send_json_error([
-				'reload' => true
+			wp_send_json([
+				'success' => ($state === 'success' || in_array($payment_status, ['success', 'paid'], true)),
+				'message' => '',
+				'data' => [
+					'state'          => $state ?: 'processing',
+					'payment_status' => $payment_status,
+					'redirect'       => ($state === 'success' || in_array($payment_status, ['success', 'paid'], true))
+						? $order->get_checkout_order_received_url()
+						: null,
+					'order_id'       => $order_id,
+				],
 			]);
+
+			wp_die();
 		}
 
-		$wc_status = $order->get_status();
+		// -------------------------
+		// ALWAYS RELOAD ORDER AFTER ENGINE
+		// -------------------------
+		$order = wc_get_order($order_id);
 
-		// -------------------------
-		// 8. RESOLVE FINAL ENGINE STATE
-		// -------------------------
+		// 🔥 PRIMARY STATE = ENGINE STORED STATE ONLY
 		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order);
 
 		// -------------------------
-		// 9. SUCCESS SAFETY OVERRIDE
+		// HARD OVERRIDE SAFETY (ONLY ONE SOURCE)
 		// -------------------------
-		//
-		// Preserve the existing ByteNFT business rule:
-		//
-		// - Engine state = success
-		// OR
-		// - WooCommerce processing/completed AND
-		//   _bytenft_payment_success = yes
-		//
-		// Both represent successful payment.
-		//
-		if (
-			$order->get_meta('_bytenft_state') === 'success' ||
-			(
-				in_array($wc_status, ['processing', 'completed'], true) &&
-				$order->get_meta('_bytenft_payment_success') === 'yes'
-			)
-		) {
+		if ($order->get_meta('_bytenft_state') === 'success') {
 			$state = 'success';
 		}
 
 		// -------------------------
-		// 10. PROCESSING FALLBACK
-		// -------------------------
-		//
-		// If the provider reports processing but the engine has not
-		// reached a terminal state yet, keep the state as processing.
-		//
-		if (
-			$state !== 'success' &&
-			(
-				($response_data['transaction_status'] ?? null) === 'processing' ||
-				($payment_status === 'processing')
-			)
-		) {
-			$state = 'processing';
-		}
-
-		// -------------------------
-		// 11. LOCK RACE HANDLING
-		// -------------------------
-		//
-		// Do NOT return a separate response here.
-		//
-		// A locked_skip means another process currently owns the engine
-		// update. We already reloaded the order and resolved its persisted
-		// state above, so the same final-state logic applies.
-		//
-		if (
-			is_array($result) &&
-			(($result['reason'] ?? '') === 'locked_skip')
-		) {
-			ByteNFT_Payment_Gateway_Logger::info(
-				$log_prefix .
-				' PopupClose | Engine locked by another process | ' .
-				'Using persisted order state: ' . $state .
-				' | WC: ' . $wc_status
-			);
-		}
-
-		// -------------------------
-		// 12. FINAL SUCCESS CHECK
+		// FINAL SUCCESS CHECK
 		// -------------------------
 		$is_success = ($state === 'success');
 
+		if (
+			$state !== 'success' &&
+			!empty($response_data['transaction_status']) &&
+			$response_data['transaction_status'] === 'processing'
+		) {
+			$state = 'processing';
+		}
 		// -------------------------
-		// 13. MESSAGE GENERATION
+		// MESSAGE
 		// -------------------------
 		$message = match ($state) {
 
@@ -1012,29 +922,23 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			'cancelled' =>
 				'You cancelled the payment.',
 
-			'expired' =>
-				'Your payment session has expired. Please try again.',
-
-			'processing' =>
-				(
-					in_array($payment_status, ['pending', null, ''], true) &&
-					$order->has_status('pending')
-				)
-					? "We couldn't confirm the payment status. If you completed the payment, your order will be updated automatically. Otherwise, you can try placing the order again."
-					: 'Your payment is currently being processed.',
-
-			'pending' =>
-				'Payment status is still being verified.',
+			'processing' => (
+				in_array($payment_status, ['pending', null, ''], true)
+				&& $order->has_status('pending')
+			)
+				? "We couldn't confirm the payment status. If you completed the payment, your order will be updated automatically. Otherwise, you can try placing the order again."
+				: 'Your payment is currently being processed.',
 
 			default =>
 				'We couldn’t confirm your payment status yet. If needed, you can try placing the order again after checking your order status.'
 		};
 
 		// -------------------------
-		// 14. REDIRECT CALCULATION
+		// REDIRECT
 		// -------------------------
 		$redirect = null;
 
+		// 🔥 ONLY ENGINE STATE DECIDES REDIRECT
 		if ($state === 'success') {
 
 			$redirect = $order->get_checkout_order_received_url();
@@ -1045,39 +949,25 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		} else {
 
-			// pending / processing:
-			// Do not redirect yet.
-			// Frontend should poll/check again.
-			$redirect = null;
+			$redirect = null; // processing → no redirect
 		}
 
 		// -------------------------
-		// 15. FINAL LOG
-		// -------------------------
-		ByteNFT_Payment_Gateway_Logger::info(
-			$log_prefix .
-			' PopupClose | Final decision | ' .
-			'State: ' . $state .
-			' | Success: ' . ($is_success ? 'YES' : 'NO') .
-			' | Payment Status: ' . ($payment_status ?: 'none') .
-			' | WC Status: ' . $wc_status .
-			' | Redirect: ' . ($redirect ?: 'none')
-		);
-
-		// -------------------------
-		// 16. FINAL RESPONSE
+		// RESPONSE
 		// -------------------------
 		wp_send_json([
 			'success' => $is_success,
 			'message' => $message,
-			'data'    => [
+			'data' => [
 				'payment_status' => $payment_status,
-				'order_status'   => $wc_status,
+				'order_status'   => $order->get_status(),
 				'state'          => $state,
 				'redirect'       => $redirect,
 				'order_id'       => $order_id,
 			]
 		]);
+
+		wp_die();
 	}
 
 	/**
