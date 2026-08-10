@@ -451,7 +451,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'title'       => __('Instructions', 'bytenft-payment-gateway'),
 				'type'        => 'title',
 				// translators: %1$s is an opening HTML link tag, %2$s is the closing tag.
-				'description' => sprintf(__('To configure this gateway, %1$sGet your API keys from your merchant account: Developer Settings > API Keys.%2$s', 'bytenft-payment-gateway'), $dev_instructions_link, ''),
+				'description' => sprintf(__('To configure this gateway, %1$sGet your API keys from your merchant account: Developer Settings > API Keys.%2$s', 'bytenft-payment-gateway'), $dev_instructions_link, '') . '<br><br><strong>' . __('Going Live?', 'bytenft-payment-gateway') . '</strong> ' . sprintf(__('Please review the %1$sIntegration Verification Checklist%2$s to verify your setup.', 'bytenft-payment-gateway'), '<a href="' . esc_url(plugins_url('../INTEGRATION_CHECKLIST.md', __FILE__)) . '" target="_blank">', '</a>'),
 				'desc_tip'    => true,
 			],
 
@@ -1194,7 +1194,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				);
 
 				$payment_link = $resp_data['data']['payment_link'] ?? null;
-
+ 
+				ByteNFT_Payment_Gateway_Logger::info(
+			 'Response Data',
+			[
+				'resp_data' => $resp_data
+			]
+		);
 				if (empty($payment_link)) {
 
 					ByteNFT_Payment_Gateway_Logger::error(
@@ -1708,13 +1714,6 @@ $payload['country_code'] = '+' . $countryCode;
 	}
 
 	public function validate_fields() {
-
-		// ---------------------------------------------------------------------
-		// Security
-		// ---------------------------------------------------------------------
-		if ( ! $this->check_for_sql_injection() ) {
-			return false;
-		}
 
 		// ---------------------------------------------------------------------
 		// Restricted States
@@ -2545,40 +2544,6 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 	private function release_lock($lock_key) {
 		delete_option($lock_key);
-	}
-
-	function check_for_sql_injection() {
-		$sql_injection_patterns = [
-			'/\b(SELECT|INSERT|UPDATE|DELETE|DROP|ALTER)\b(?![^{}]*})/i',
-			'/(\-\-|\/\*|\*\/)/i',
-			'/(\b(AND|OR)\b\s*\d+\s*[=<>])/i',
-		];
-		$errors = [];
-		$checkout_fields = WC()->checkout()->get_checkout_fields();
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing
-		foreach ($_POST as $key => $value) {
-			if (is_string($value)) {
-				foreach ($sql_injection_patterns as $pattern) {
-					if (preg_match($pattern, $value)) {
-						$field_label = isset($checkout_fields['billing'][$key]['label'])
-							? $checkout_fields['billing'][$key]['label']
-							: (isset($checkout_fields['shipping'][$key]['label'])
-								? $checkout_fields['shipping'][$key]['label']
-								: ucfirst(str_replace('_', ' ', $key)));
-						$ip_address = sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'] ?? ''));
-						wc_get_logger()->info("SecurityCheck | Potential SQL Injection | Field: {$field_label}, IP: {$ip_address}", ['source' => 'bytenft-payment-gateway']);
-						/* translators: %s is the field label. */
-						$errors[] = sprintf(esc_html__('Please enter a valid "%s".', 'bytenft-payment-gateway'), $field_label);
-						break;
-					}
-				}
-			}
-		}
-		if (!empty($errors)) {
-			foreach ($errors as $error) wc_add_notice($error, 'error');
-			return false;
-		}
-		return true;
 	}
 
 	public function is_gateway_available()
