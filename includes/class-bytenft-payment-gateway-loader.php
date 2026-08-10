@@ -823,13 +823,33 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		if (!$payment_status) {
 
+	
+			$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state($order);
+
+			if ($state === 'success' || $order->has_status(['processing', 'completed'])) {
+
+				wp_send_json([
+					'success' => true,
+					'message' => 'Your payment was completed successfully.',
+					'data' => [
+						'payment_status' => 'success',
+						'order_status'   => $order->get_status(),
+						'state'          => 'success',
+						'redirect'       => $order->get_checkout_order_received_url(),
+					]
+				]);
+
+				wp_die();
+			}
+
+			
 			wp_send_json([
 				'success' => false,
-				'message' => 'Payment was not completed.',
+				'message' => "We couldn't confirm the payment status yet. If you completed the payment, your order will be updated automatically.",
 				'data' => [
-					'payment_status' => 'abandoned',
+					'payment_status' => 'processing',
 					'order_status'   => $order->get_status(),
-					'state'          => 'abandoned',
+					'state'          => 'processing',
 					'redirect'       => null,
 				]
 			]);
