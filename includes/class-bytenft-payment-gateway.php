@@ -1710,13 +1710,6 @@ $payload['country_code'] = '+' . $countryCode;
 	public function validate_fields() {
 
 		// ---------------------------------------------------------------------
-		// Security
-		// ---------------------------------------------------------------------
-		if ( ! $this->check_for_sql_injection() ) {
-			return false;
-		}
-
-		// ---------------------------------------------------------------------
 		// Restricted States
 		// ---------------------------------------------------------------------
 		if ( $this->is_restricted_state() ) {
@@ -2545,40 +2538,6 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 	private function release_lock($lock_key) {
 		delete_option($lock_key);
-	}
-
-	function check_for_sql_injection() {
-		$sql_injection_patterns = [
-			'/\b(SELECT|INSERT|UPDATE|DELETE|DROP|ALTER)\b(?![^{}]*})/i',
-			'/(\-\-|\/\*|\*\/)/i',
-			'/(\b(AND|OR)\b\s*\d+\s*[=<>])/i',
-		];
-		$errors = [];
-		$checkout_fields = WC()->checkout()->get_checkout_fields();
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing
-		foreach ($_POST as $key => $value) {
-			if (is_string($value)) {
-				foreach ($sql_injection_patterns as $pattern) {
-					if (preg_match($pattern, $value)) {
-						$field_label = isset($checkout_fields['billing'][$key]['label'])
-							? $checkout_fields['billing'][$key]['label']
-							: (isset($checkout_fields['shipping'][$key]['label'])
-								? $checkout_fields['shipping'][$key]['label']
-								: ucfirst(str_replace('_', ' ', $key)));
-						$ip_address = sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'] ?? ''));
-						wc_get_logger()->info("SecurityCheck | Potential SQL Injection | Field: {$field_label}, IP: {$ip_address}", ['source' => 'bytenft-payment-gateway']);
-						/* translators: %s is the field label. */
-						$errors[] = sprintf(esc_html__('Please enter a valid "%s".', 'bytenft-payment-gateway'), $field_label);
-						break;
-					}
-				}
-			}
-		}
-		if (!empty($errors)) {
-			foreach ($errors as $error) wc_add_notice($error, 'error');
-			return false;
-		}
-		return true;
 	}
 
 	public function is_gateway_available()
