@@ -751,6 +751,41 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		try {
 
 			// -------------------------------------------------
+			// CUSTOMER FAILED ATTEMPTS BLOCKING
+			// -------------------------------------------------
+			$customer_identifier = '';
+			if ( $order->get_customer_id() ) {
+				$customer_identifier = 'user_' . $order->get_customer_id();
+			} else {
+				$customer_identifier = 'email_' . md5( strtolower( trim( $order->get_billing_email() ) ) );
+			}
+			
+			$failed_attempts_key = 'bytenft_failed_attempts_' . $customer_identifier;
+			$failed_attempts = (int) get_transient( $failed_attempts_key );
+			
+			if ( $failed_attempts >= 3 ) {
+				ByteNFT_Payment_Gateway_Logger::warning(
+					$log_prefix . ' User blocked due to too many failed attempts',
+					[
+						'customer_identifier' => $customer_identifier,
+						'failed_attempts'     => $failed_attempts,
+					]
+				);
+				
+				if ( is_checkout() ) {
+					wc_add_notice( __( 'Your account has been temporarily blocked from making transactions due to multiple failed attempts. Please contact support.', 'bytenft-payment-gateway' ), 'error' );
+				}
+				
+				return $this->build_response(
+					'fail',
+					'Account blocked due to excessive failed attempts.',
+					[],
+					403,
+					$order_id
+				);
+			}
+
+			// -------------------------------------------------
 			// 4. RATE LIMITING (UNCHANGED)
 			// -------------------------------------------------
 			$ip_address  = filter_var(wp_unslash($_SERVER['REMOTE_ADDR'] ?? ''), FILTER_VALIDATE_IP) ?: 'invalid';
