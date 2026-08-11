@@ -1983,12 +1983,6 @@ $payload['country_code'] = '+' . $countryCode;
 				$force_refresh
 			);
 
-			// TEMP DEBUG — remove after confirming the response shape.
-			ByteNFT_Payment_Gateway_Logger::info(
-				'DEBUG dailylimit raw response for ' . ($account['title'] ?? ''),
-				['response' => $limit_check]
-			);
-
 			if (($limit_check['status'] ?? '') === 'error') {
 				$is_wp_error_msg = isset($limit_check['message']) && (stripos($limit_check['message'], 'cURL error') !== false || stripos($limit_check['message'], 'timeout') !== false);
 				$log_reason = $is_wp_error_msg ? 'daily limit API unreachable' : 'daily transaction limit reached';
