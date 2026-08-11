@@ -909,7 +909,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$limit_resp = wp_remote_post($limit_url, [
 				'method'  => 'POST',
-				'timeout' => 30,
+				'timeout' => 8,
 				'body'    => $data,
 				'headers' => [
 					'Content-Type'  => 'application/x-www-form-urlencoded',
@@ -919,11 +919,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			if (is_wp_error($limit_resp)) {
 
+				$error_msg = $limit_resp->get_error_message();
+
 				ByteNFT_Payment_Gateway_Logger::warning(
 					$log_prefix . ' Daily limit API WP error',
 					[
 						'account_title' => $account['title'] ?? null,
-						'error'         => $limit_resp->get_error_message(),
+						'error'         => $error_msg,
 					]
 				);
 
@@ -933,10 +935,21 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'reason'  => 'wp_error',
 				];
 
+				if (stripos($error_msg, 'timeout') !== false || stripos($error_msg, 'cURL error') !== false) {
+					$last_error_data = ['message' => 'Payment gateway API is unreachable. Please try again later.'];
+					break;
+				}
+
 				continue;
 			}
 
 			$limit_data = json_decode(wp_remote_retrieve_body($limit_resp), true);
+			if (is_string($limit_data)) {
+				$decoded = json_decode($limit_data, true);
+				if (is_array($decoded)) {
+					$limit_data = $decoded;
+				}
+			}
 
 			if (($limit_data['status'] ?? '') === 'error') {
 				ByteNFT_Payment_Gateway_Logger::warning(
@@ -1940,7 +1953,7 @@ $payload['country_code'] = '+' . $countryCode;
 				$this->get_api_url('/api/check-merchant-status'),
 				$data,
 				$cache . '_status',
-				10,
+				60,
 				$force_refresh
 			);
 
@@ -1948,10 +1961,15 @@ $payload['country_code'] = '+' . $countryCode;
 				if ($this->sandbox) {
 					ByteNFT_Payment_Gateway_Logger::info('Bypassed merchant status check failure for sandbox testing', $data);
 				} else {
+					$is_wp_error_msg = isset($status['message']) && (stripos($status['message'], 'cURL error') !== false || stripos($status['message'], 'timeout') !== false);
+					$log_reason = $is_wp_error_msg ? 'merchant status check failed (network error)' : 'merchant status check failed';
 					ByteNFT_Payment_Gateway_Logger::info(
-						'Account skipped at display-time: merchant status check failed',
+						'Account skipped at display-time: ' . $log_reason,
 						$data + ['response' => $status]
 					);
+					if ($is_wp_error_msg) {
+						break;
+					}
 					continue;
 				}
 			}
@@ -1961,7 +1979,7 @@ $payload['country_code'] = '+' . $countryCode;
 				$this->get_api_url('/api/dailylimit'),
 				$data,
 				$cache . '_limit',
-				10,
+				60,
 				$force_refresh
 			);
 
@@ -1972,24 +1990,19 @@ $payload['country_code'] = '+' . $countryCode;
 			);
 
 			if (($limit_check['status'] ?? '') === 'error') {
+				$is_wp_error_msg = isset($limit_check['message']) && (stripos($limit_check['message'], 'cURL error') !== false || stripos($limit_check['message'], 'timeout') !== false);
+				$log_reason = $is_wp_error_msg ? 'daily limit API unreachable' : 'daily transaction limit reached';
 				ByteNFT_Payment_Gateway_Logger::info(
-					'Account skipped at display-time: daily transaction limit reached',
+					'Account skipped at display-time: ' . $log_reason,
 					$data + ['response' => $limit_check]
 				);
+				if ($is_wp_error_msg) {
+					break;
+				}
 				continue; // moves to NEXT priority account (works in sandbox too)
 			}
 
 			$all_accounts_limited = false;
-
-			$this->send_plugin_logs(
-				$accounts,
-				$public,
-				$secret,
-				$amount,
-				1,
-				$pluginLogApiUrl,
-				$force_refresh
-			);
 
 			$selected = $account;
 			$reason   = 'Valid merchant account found';
@@ -2041,38 +2054,7 @@ $payload['country_code'] = '+' . $countryCode;
 		return $available_gateways;
 	}
 
-	private function send_plugin_logs($accounts, $public_key, $secret_key, $amount, $gateway_loaded, $pluginLogApiUrl, $force_refresh)
-	{
-		$plugin_version = BYTENFT_PLUGIN_VERSION;
-		$accounts       = $this->update_accounts_uniqueID($accounts);
-		$group_id       = get_option('bytenft_group_id');
-		$cache_base     = 'bytenft_daily_limit_' . md5($public_key . $amount);
 
-		global $wp_version;
-
-		$plugin_logs_data = [
-			'valid_accounts' => $accounts,
-			'gateway_loaded' => $gateway_loaded,
-			'plugin_status'  => $gateway_loaded,
-			'plugin_version' => $plugin_version,
-			'wordpress_version'     => $wp_version,
-			'woocommerce_version'   => class_exists('WooCommerce') ? WC()->version : null,
-			'woocommerce_db_version'=> get_option('woocommerce_db_version'),
-			'api_public_key' => $public_key,
-			'api_secret_key' => $secret_key,
-			'is_sandbox'     => $this->sandbox,
-			'group_id'       => $group_id ? $group_id : $this->bytenft_get_group_id(),
-			'domain_name'    => wp_parse_url(home_url(), PHP_URL_HOST),
-		];
-
-		$this->get_cached_api_response(
-			$pluginLogApiUrl,
-			$plugin_logs_data,
-			$cache_base . '_pluginlogs',
-			5,
-			$force_refresh
-		);
-	}
 
 	private function gateway_visibility_label($reason) {
 
@@ -2196,7 +2178,7 @@ $payload['country_code'] = '+' . $countryCode;
 		}
 		$response = wp_remote_post($url, [
 			'method'    => 'POST',
-			'timeout'   => 30,
+			'timeout'   => 8,
 			'body'      => $data,
 			'headers'   => [
 				'Content-Type'  => 'application/x-www-form-urlencoded',
@@ -2204,8 +2186,18 @@ $payload['country_code'] = '+' . $countryCode;
 			],
 			'sslverify' => true,
 		]);
-		if (is_wp_error($response)) return ['status' => 'error', 'message' => $response->get_error_message()];
+		if (is_wp_error($response)) {
+			$error_data = ['status' => 'error', 'message' => $response->get_error_message()];
+			set_transient($cache_key, $error_data, 60);
+			return $error_data;
+		}
 		$response_data = json_decode(wp_remote_retrieve_body($response), true);
+		if (is_string($response_data)) {
+			$decoded = json_decode($response_data, true);
+			if (is_array($decoded)) {
+				$response_data = $decoded;
+			}
+		}
 		set_transient($cache_key, $response_data, $ttl);
 		return $response_data;
 	}
@@ -2346,28 +2338,36 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				'api_secret_key' => $secret_key,
 			];
 			$cache_base  = 'bytenft_daily_limit_' . md5($public_key . $amount);
-			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 45, $force_refresh);
+			$status_data = $this->get_cached_api_response($accStatusApiUrl, $data, $cache_base . '_status', 60, $force_refresh);
 			
 			if (!empty($status_data['status']) && $status_data['status'] === 'success') {
 				$user_account_active = true;
 			}
 
 			if (($status_data['status'] ?? '') !== 'success') {
-				$this->log_info_once_per_session('skip_status_' . $acc_title, "Skipping '{$acc_title}': merchant status check failed", [
+				$is_wp_error_msg = isset($status_data['message']) && (stripos($status_data['message'], 'cURL error') !== false || stripos($status_data['message'], 'timeout') !== false);
+				$this->log_info_once_per_session('skip_status_' . $acc_title, "Skipping '{$acc_title}': merchant status check failed" . ($is_wp_error_msg ? ' (network error)' : ''), [
 					'response_status' => $status_data['status'] ?? 'unknown',
 				]);
+				if ($is_wp_error_msg) {
+					break;
+				}
 				continue;
 			}
 
 			// Check transaction/daily limit for THIS account (Priority 1, 2, 3...).
 			// If it has hit its limit, skip it so the code falls through to the
 			// NEXT priority account automatically.
-			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 45, $force_refresh);
+			$limit_data = $this->get_cached_api_response($transactionLimitApiUrl, $data, $cache_base . '_limit', 60, $force_refresh);
 
 			if (($limit_data['status'] ?? '') === 'error') {
-				$this->log_info_once_per_session('skip_limit_' . $acc_title, "Skipping '{$acc_title}': transaction limit reached", [
+				$is_wp_error_msg = isset($limit_data['message']) && (stripos($limit_data['message'], 'cURL error') !== false || stripos($limit_data['message'], 'timeout') !== false);
+				$this->log_info_once_per_session('skip_limit_' . $acc_title, "Skipping '{$acc_title}': transaction limit reached" . ($is_wp_error_msg ? ' (network error)' : ''), [
 					'response' => $limit_data,
 				]);
+				if ($is_wp_error_msg) {
+					break;
+				}
 				continue;
 			}
 
@@ -2597,7 +2597,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 				$this->get_api_url('/api/check-merchant-status'),
 				$data,
 				$cache . '_status',
-				10
+				60
 			);
 
 			if (($status['status'] ?? '') !== 'success') {
