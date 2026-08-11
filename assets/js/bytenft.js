@@ -490,9 +490,8 @@
         handleResponse: function (response) {
             const self = this;
 
-            if (self.state.responseHandled) return;
-
             try {
+
                 if (typeof response === 'string') {
                     response = JSON.parse(response);
                 }
@@ -501,69 +500,505 @@
                 console.log('Response:', response);
                 console.groupEnd();
 
-                const success =
-                    response?.result === 'success' ||
-                    response?.success === true ||
-                    response?.data?.payment_status === 'success' ||
-                    response?.data?.payment_status === 'paid';
+                const data = response?.data || {};
 
-                const redirect = response?.redirect || response?.data?.redirect;
-                const orderId = response?.order_id || response?.data?.order_id;
+                const state =
+                    data.state ||
+                    data.payment_status ||
+                    response?.state ||
+                    null;
 
-                self.state.orderId = orderId;
+               const success =
+                state === 'success' ||
+                state === 'paid' ||
+                data.payment_status === 'success' ||
+                data.payment_status === 'paid';
 
-                if (!success) {
-                    // FIXED: Keep the raw HTML string format from WooCommerce intact!
-                    let errorMessage =
-                        response?.messages ||
-                        response?.message ||
-                        response?.data?.message ||
-                        'Payment failed. Please try again.';
+                const redirect =
+                    response?.redirect ||
+                    data.redirect ||
+                    null;
 
-                    self.cleanupPopup();          // Close loading popup
-                    self.showCheckoutError(errorMessage);
-                    self.reset();
+                const orderId =
+                    response?.order_id ||
+                    data.order_id ||
+                    null;
 
-                    return;
+                if (orderId) {
+                    self.state.orderId = orderId;
                 }
 
-                if (redirect && typeof redirect === 'string' && redirect.length > 5) {
+                /*
+                * -----------------------------------------------------
+                * SUCCESS
+                * -----------------------------------------------------
+                */
+
+                if (success) {
+
+                    self.state.finalSuccess = true;
                     self.state.responseHandled = true;
 
-                    if (self.state.popup && !self.state.popup.closed) {
+                    if (self.state.popupInterval) {
+                        clearInterval(self.state.popupInterval);
+                        self.state.popupInterval = null;
+                    }
+
+                    if (!redirect) {
+                        self.failSafe(
+                            'Payment was completed, but the confirmation URL is missing.'
+                        );
+
+                        return;
+                    }
+
+                    console.log(
+                        '[Bytenft] SUCCESS → Thank You:',
+                        redirect
+                    );
+
+                    if (
+                        self.state.popup &&
+                        !self.state.popup.closed
+                    ) {
+
                         try {
-                            // FIX: Use navigateWithoutReferrer instead of
-                            // directly setting location.href, which would
-                            // send the WP checkout URL as Referer header
-                            // to the Laravel payment page.
-                            self.navigateWithoutReferrer(self.state.popup, redirect);
+
+                            self.navigateWithoutReferrer(
+                                self.state.popup,
+                                redirect
+                            );
+
+                            return;
 
                         } catch (e) {
 
-                            // Safari fallback — re-open popup and use same method
-                            if (!self.state.popup || self.state.popup.closed) {
-                                self.state.popup = window.open(
-                                    '',
-                                    '_blank'
-                                );
-                            }
-
-                            self.navigateWithoutReferrer(self.state.popup, redirect);
+                            console.log(
+                                '[Bytenft] Popup navigation failed:',
+                                e
+                            );
                         }
-                        self.trackPopupClose();
-                    } else {
-                        window.location.href = redirect;
-                        self.finish();
                     }
+
+                    window.location.replace(redirect);
+
                     return;
                 }
 
-                self.failSafe('Missing redirect URL.');
+                /*
+                * -----------------------------------------------------
+                * PROCESSING
+                * -----------------------------------------------------
+                *
+                * Your business rule:
+                *
+                * processing = SUCCESS
+                *
+                * Therefore go directly to Thank You.
+                */
+
+                if (state === 'processing') {
+
+                    console.log(
+                        '[Bytenft] PROCESSING → Thank You'
+                    );
+
+                    self.state.finalSuccess = true;
+                    self.state.responseHandled = true;
+
+                    if (self.state.popupInterval) {
+                        clearInterval(self.state.popupInterval);
+                        self.state.popupInterval = null;
+                    }
+
+                    if (redirect) {
+
+                        if (
+                            self.state.popup &&
+                            !self.state.popup.closed
+                        ) {
+
+                            try {
+
+                                self.navigateWithoutReferrer(
+                                    self.state.popup,
+                                    redirect
+                                );
+
+                                return;
+
+                            } catch (e) {
+
+                                console.log(
+                                    '[Bytenft] Processing popup navigation failed:',
+                                    e
+                                );
+                            }
+                        }
+
+                        window.location.replace(redirect);
+
+                        return;
+                    }
+
+                    /*
+                    * If backend didn't return redirect,
+                    * use the order's returned redirect on the
+                    * next status check.
+                    */
+                    self.state.responseHandled = false;
+                    self.pollPaymentStatus();
+
+                    return;
+                }
+
+                /*
+                * -----------------------------------------------------
+                * PENDING / WEBHOOK RACE
+                * -----------------------------------------------------
+                *
+                * DO NOT show an error.
+                * DO NOT close the popup.
+                * DO NOT send customer to checkout.
+                *
+                * Poll again.
+                */
+
+                if (
+                    state === 'pending' ||
+                    state === 'verifying' ||
+                    state === 'unknown' ||
+                    !state
+                ) {
+
+                    console.log(
+                        '[Bytenft] Payment pending → starting polling'
+                    );
+
+                    self.state.responseHandled = false;
+                    self.setStatus('processing');
+
+                    self.pollPaymentStatus();
+
+                    return;
+                }
+
+                /*
+                * -----------------------------------------------------
+                * TERMINAL FAILURE
+                * -----------------------------------------------------
+                */
+
+                if (
+                    state === 'failed' ||
+                    state === 'cancelled' ||
+                    state === 'expired'
+                ) {
+
+                    const errorMessage =
+                        response?.messages ||
+                        response?.message ||
+                        data.message ||
+                        'Payment was not completed. Please try again.';
+
+                    self.cleanupPopup();
+                    self.showCheckoutError(errorMessage);
+                    self.refreshCheckout();
+                    self.finish();
+
+                    return;
+                }
+
+                /*
+                * -----------------------------------------------------
+                * UNKNOWN STATE
+                * -----------------------------------------------------
+                *
+                * Never treat an unknown state as payment failure.
+                * Poll first.
+                */
+
+                console.log(
+                    '[Bytenft] Unknown payment state:',
+                    state
+                );
+
+                self.state.responseHandled = false;
+                self.pollPaymentStatus();
 
             } catch (e) {
-                console.log('[Bytenft] response processing exception', e);
-                self.failSafe('Unexpected checkout error.');
+
+                console.log(
+                    '[Bytenft] response processing exception',
+                    e
+                );
+
+                /*
+                * Do not immediately send the customer to checkout
+                * because a parsing/network race may have happened.
+                */
+                self.state.responseHandled = false;
+                self.pollPaymentStatus();
             }
+        },
+
+        pollPaymentStatus: function () {
+            const self = this;
+
+            if (!self.state.orderId) {
+                console.log('[Bytenft] Cannot poll payment status: missing order ID');
+                return;
+            }
+
+            // Prevent multiple polling loops
+            if (self.state.popupInterval) {
+                clearInterval(self.state.popupInterval);
+                self.state.popupInterval = null;
+            }
+
+            let attempts = 0;
+            const maxAttempts = 30; // 30 attempts
+            const interval = 2000;  // every 2 seconds
+
+            const checkStatus = function () {
+
+                if (self.state.finalSuccess) {
+                    return;
+                }
+
+                if (!self.state.orderId) {
+                    return;
+                }
+
+                attempts++;
+
+                console.log(
+                    '[Bytenft] Polling payment status | Order:',
+                    self.state.orderId,
+                    '| Attempt:',
+                    attempts
+                );
+
+                $.post(
+                    bytenft_params.ajax_url,
+                    {
+                        action: 'bytenft_popup_closed_event',
+                        order_id: self.state.orderId,
+                        security: bytenft_params.bytenft_nonce
+                    },
+                    function (response) {
+
+                        if (self.state.finalSuccess) {
+                            return;
+                        }
+
+                        const data = response?.data || {};
+
+                        const state =
+                            data.state ||
+                            data.payment_status ||
+                            'processing';
+
+                        const orderStatus =
+                            data.order_status || '';
+
+                        const redirect =
+                            data.redirect ||
+                            response?.redirect ||
+                            null;
+
+                        console.log(
+                            '[Bytenft] Poll result:',
+                            {
+                                state: state,
+                                orderStatus: orderStatus,
+                                redirect: redirect
+                            }
+                        );
+
+                        /*
+                        * SUCCESS
+                        *
+                        * Explicit success OR WooCommerce processing/completed.
+                        */
+                        if (
+                            response?.success === true ||
+                            state === 'success' ||
+                            state === 'paid' ||
+                            state === 'processing' &&
+                            (
+                                orderStatus === 'processing' ||
+                                orderStatus === 'completed'
+                            )
+                        ) {
+
+                            self.state.finalSuccess = true;
+
+                            if (self.state.popupInterval) {
+                                clearInterval(self.state.popupInterval);
+                                self.state.popupInterval = null;
+                            }
+
+                            const thankYouUrl = redirect;
+
+                            if (!thankYouUrl) {
+                                console.log(
+                                    '[Bytenft] Success received but redirect URL missing'
+                                );
+
+                                self.failSafe(
+                                    'Payment was completed, but the confirmation page could not be loaded.'
+                                );
+
+                                return;
+                            }
+
+                            console.log(
+                                '[Bytenft] Payment confirmed → Thank You:',
+                                thankYouUrl
+                            );
+
+                            /*
+                            * We intentionally do NOT call cleanupPopup()
+                            * before redirecting if the payment popup is the
+                            * browser window that should continue navigation.
+                            */
+                            if (
+                                self.state.popup &&
+                                !self.state.popup.closed
+                            ) {
+
+                                try {
+                                    self.navigateWithoutReferrer(
+                                        self.state.popup,
+                                        thankYouUrl
+                                    );
+
+                                    return;
+
+                                } catch (e) {
+
+                                    console.log(
+                                        '[Bytenft] Popup redirect failed:',
+                                        e
+                                    );
+                                }
+                            }
+
+                            window.location.replace(thankYouUrl);
+
+                            return;
+                        }
+
+                        /*
+                        * TERMINAL FAILURE
+                        */
+                        if (
+                            state === 'failed' ||
+                            state === 'cancelled' ||
+                            state === 'expired'
+                        ) {
+
+                            if (self.state.popupInterval) {
+                                clearInterval(self.state.popupInterval);
+                                self.state.popupInterval = null;
+                            }
+
+                            self.cleanupPopup();
+
+                            self.showCheckoutError(
+                                response?.message ||
+                                data.message ||
+                                'Payment was not completed. Please try again.'
+                            );
+
+                            self.refreshCheckout();
+                            self.finish();
+
+                            return;
+                        }
+
+                        /*
+                        * PENDING / PROCESSING / WEBHOOK RACE
+                        *
+                        * DO NOTHING.
+                        *
+                        * The next poll will check again.
+                        */
+                        if (
+                            state === 'pending' ||
+                            state === 'processing' ||
+                            state === 'verifying' ||
+                            !state
+                        ) {
+
+                            console.log(
+                                '[Bytenft] Payment still being verified. Polling again.'
+                            );
+
+                            if (attempts >= maxAttempts) {
+
+                                if (self.state.popupInterval) {
+                                    clearInterval(self.state.popupInterval);
+                                    self.state.popupInterval = null;
+                                }
+
+                                self.cleanupPopup();
+
+                                self.showCheckoutError(
+                                    'We could not confirm the payment yet. Please check your order status before trying again.'
+                                );
+
+                                self.refreshCheckout();
+                                self.finish();
+
+                                return;
+                            }
+
+                            return;
+                        }
+
+                    },
+                    'json'
+                ).fail(function (xhr) {
+
+                    console.log(
+                        '[Bytenft] Payment status polling error:',
+                        xhr.responseText
+                    );
+
+                    /*
+                    * Network failure is NOT payment failure.
+                    *
+                    * Keep polling while attempts remain.
+                    */
+                    if (attempts >= maxAttempts) {
+
+                        if (self.state.popupInterval) {
+                            clearInterval(self.state.popupInterval);
+                            self.state.popupInterval = null;
+                        }
+
+                        self.cleanupPopup();
+
+                        self.showCheckoutError(
+                            'We could not confirm the payment. Please try again.'
+                        );
+
+                        self.refreshCheckout();
+                        self.finish();
+                    }
+                });
+            };
+
+            // Immediate check
+            checkStatus();
+
+            // Continue polling
+            self.state.popupInterval = setInterval(
+                checkStatus,
+                interval
+            );
         },
 
         /* =========================================================
@@ -732,6 +1167,66 @@
             this.state.popup = null;
         },
 
+        redirectToThankYou: function (url) {
+            if (!url || typeof url !== 'string') {
+                console.error('[Bytenft] Missing Thank You URL');
+                return false;
+            }
+
+            console.log('[Bytenft] Redirecting customer to Thank You:', url);
+
+            try {
+                // Stop all popup polling before navigation.
+                if (this.state.popupInterval) {
+                    clearInterval(this.state.popupInterval);
+                    this.state.popupInterval = null;
+                }
+
+                // Mark success before navigation so no other callback
+                // can treat the payment as failed.
+                this.state.finalSuccess = true;
+                this.state.responseHandled = true;
+
+                // Close the payment popup if it is still open.
+                if (this.state.popup && !this.state.popup.closed) {
+                    try {
+                        this.state.popup.close();
+                    } catch (e) {
+                        console.log('[Bytenft] Unable to close payment popup:', e);
+                    }
+                }
+
+                this.state.popup = null;
+
+                /*
+                * Safari / iOS:
+                * Use location.href rather than relying on window.location.replace()
+                * after popup interaction. This is more reliable across Safari,
+                * WooCommerce checkout, and embedded checkout environments.
+                */
+                window.location.href = url;
+
+                return true;
+
+            } catch (e) {
+
+                console.error('[Bytenft] Thank You redirect failed:', e);
+
+                // Final browser fallback.
+                try {
+                    window.location.assign(url);
+                    return true;
+                } catch (fallbackError) {
+                    console.error(
+                        '[Bytenft] Final redirect fallback failed:',
+                        fallbackError
+                    );
+                }
+            }
+
+            return false;
+        },
+
         trackPopupClose: function () {
 
             const self = this;
@@ -739,85 +1234,64 @@
             self.state.popupStarted = Date.now();
 
             if (!self.state.orderId) {
-                console.log('[Bytenft] No order ID for popup tracking');
+                console.log(
+                    '[Bytenft] No order ID for popup tracking'
+                );
                 return;
             }
 
-            // clear any previous interval (important safety)
             if (self.state.popupInterval) {
                 clearInterval(self.state.popupInterval);
                 self.state.popupInterval = null;
             }
 
+            /*
+            * We don't need to continuously inspect the popup
+            * once the payment page is loaded.
+            *
+            * The popup closing is the trigger to start the
+            * authoritative browser status-check flow.
+            */
+
             self.state.popupInterval = setInterval(function () {
 
-                // Payment already completed
+                /*
+                * Payment already confirmed.
+                */
                 if (self.state.finalSuccess) {
+
                     clearInterval(self.state.popupInterval);
                     self.state.popupInterval = null;
-                    return;
-                }
-
-                // Popup still open
-                if (self.state.popup && !self.state.popup.closed) {
-
-                    // Optional: payment expired after 30 minutes
-                    if (Date.now() - self.state.popupStarted > 30 * 60 * 1000) {
-                        console.log('[Bytenft] Payment timeout');
-                    }
 
                     return;
                 }
 
-                // Popup closed
+                /*
+                * Popup still open.
+                */
+                if (
+                    self.state.popup &&
+                    !self.state.popup.closed
+                ) {
+
+                    return;
+                }
+
+                /*
+                * Popup closed.
+                *
+                * Stop this watcher and perform the first
+                * authoritative status check.
+                */
+
                 clearInterval(self.state.popupInterval);
                 self.state.popupInterval = null;
 
-                console.log('[Bytenft] Popup closed → checking payment');
-
-                $.post(
-                    bytenft_params.ajax_url,
-                    {
-                        action: 'bytenft_popup_closed_event',
-                        order_id: self.state.orderId,
-                        security: bytenft_params.bytenft_nonce
-                    },
-                    function (response) {
-
-                        const success =
-                            response?.success === true ||
-                            response?.data?.payment_status === 'success' ||
-                            response?.data?.payment_status === 'paid';
-
-                        if (success) {
-
-                            self.state.finalSuccess = true;
-
-                            self.cleanupPopup();
-
-                            window.location.replace(
-                                response?.data?.redirect ||
-                                response?.redirect
-                            );
-
-                            return;
-                        }
-
-                        // Payment cancelled/failed
-                        self.cleanupPopup();
-
-                        if (response?.message) {
-                            self.showCheckoutError(response.message);
-                        }
-
-                        self.refreshCheckout();
-
-                        // IMPORTANT
-                        self.finish();
-
-                    },
-                    'json'
+                console.log(
+                    '[Bytenft] Popup closed → status check'
                 );
+
+                self.pollPaymentStatus();
 
             }, 1000);
         },

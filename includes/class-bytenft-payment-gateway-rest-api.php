@@ -399,7 +399,6 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		);
 	}
 
-
 	/**
 	 * Finalizes ByteNFT API response.
 	 *
@@ -423,15 +422,16 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$target_status = '',
 		$redirect_url = ''
 	) {
+		$method = strtoupper($method);
+
 		// ---------------------------------------------------------
-		// WEBHOOK
+		// 1. WEBHOOK
 		// ---------------------------------------------------------
 		//
 		// Server-to-server request.
-		// NEVER redirect here.
-		// ---------------------------------------------------------
-
-		if (strtoupper($method) === 'POST') {
+		// NEVER redirect from webhook.
+		//
+		if ($method === 'POST') {
 
 			return new WP_REST_Response([
 				'success' => $success,
@@ -440,10 +440,10 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		}
 
 		// ---------------------------------------------------------
-		// BROWSER REQUEST
+		// 2. BROWSER REQUEST
 		// ---------------------------------------------------------
 
-		if (empty($order)) {
+		if (!$order instanceof WC_Order) {
 
 			wp_safe_redirect(
 				wc_get_checkout_url()
@@ -453,38 +453,72 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		}
 
 		// ---------------------------------------------------------
-		// SAFARI / WOOCOMMERCE SESSION
+		// 3. SAFARI / WOOCOMMERCE SESSION
 		// ---------------------------------------------------------
+		//
+		// Safari can be stricter about session/cookie handling.
+		// Make sure WooCommerce knows which order is awaiting payment
+		// before performing the redirect.
+		//
+		if (function_exists('WC') && WC()->session) {
 
-		if (
-			function_exists('WC') &&
-			WC()->session
-		) {
 			WC()->session->set(
 				'order_awaiting_payment',
 				$order->get_id()
 			);
+
+			// Persist the session before redirecting.
+			if (method_exists(WC()->session, 'save_data')) {
+				WC()->session->save_data();
+			}
 		}
 
 		// ---------------------------------------------------------
-		// SUCCESS
+		// 4. RELOAD ORDER ONE MORE TIME
 		// ---------------------------------------------------------
 		//
-		// This is the PRIMARY redirect.
+		// Important for webhook/browser race conditions.
 		//
-		// If ByteNFT says success OR WC has already moved to
-		// processing/completed OR success meta exists,
-		// send customer to Thank You.
-		// ---------------------------------------------------------
+		// The webhook may have updated the order immediately before
+		// this browser request reaches the redirect logic.
+		//
+		$order = wc_get_order($order->get_id());
 
-		if (
+		if (!$order) {
+
+			wp_safe_redirect(
+				wc_get_checkout_url()
+			);
+
+			exit;
+		}
+
+		// ---------------------------------------------------------
+		// 5. DETERMINE FINAL SUCCESS
+		// ---------------------------------------------------------
+		//
+		// ByteNFT business rule:
+		//
+		// processing = success
+		// completed  = success
+		//
+		// Also respect persisted ByteNFT success flags.
+		//
+		$is_final_success = (
 			$target_status === 'success' ||
 			$success === true ||
 			$order->has_status(['processing', 'completed']) ||
 			$order->get_meta('_bytenft_payment_success') === 'yes' ||
 			$order->get_meta('_bytenft_state') === 'success'
-		) {
+		);
 
+		// ---------------------------------------------------------
+		// 6. SUCCESS -> THANK YOU PAGE
+		// ---------------------------------------------------------
+
+		if ($is_final_success) {
+
+			// Empty cart before redirect.
 			if (
 				function_exists('WC') &&
 				WC()->cart
@@ -495,16 +529,23 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			$thank_you_url = $order->get_checkout_order_received_url();
 
 			ByteNFT_Payment_Gateway_Logger::info(
-				"[Order #{$order->get_id()}] Browser Redirect | SUCCESS | Redirecting to Thank You: {$thank_you_url}"
+				"[Order #{$order->get_id()}] Browser Redirect | SUCCESS | " .
+				"WC Status: {$order->get_status()} | " .
+				"State: {$target_status} | " .
+				"Thank You URL: {$thank_you_url}"
 			);
 
-			wp_safe_redirect($thank_you_url);
+			// Use WordPress-safe redirect.
+			wp_safe_redirect(
+				$thank_you_url,
+				303
+			);
 
 			exit;
 		}
 
 		// ---------------------------------------------------------
-		// FAILED / CANCELLED / EXPIRED
+		// 7. FAILED / CANCELLED / EXPIRED
 		// ---------------------------------------------------------
 
 		if (
@@ -521,23 +562,21 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			);
 
 			wp_safe_redirect(
-				wc_get_checkout_url()
+				wc_get_checkout_url(),
+				303
 			);
 
 			exit;
 		}
 
 		// ---------------------------------------------------------
-		// PROCESSING / PENDING
+		// 8. PROCESSING / PENDING
 		// ---------------------------------------------------------
 		//
-		// Do NOT send the customer to checkout.
+		// Do NOT redirect to checkout.
 		//
-		// The payment is not yet confirmed by the persisted state.
-		// Frontend polling can continue and redirect once success
-		// is confirmed.
-		// ---------------------------------------------------------
-
+		// The frontend should continue polling.
+		//
 		return new WP_REST_Response([
 			'success' => false,
 			'message' => $message,
