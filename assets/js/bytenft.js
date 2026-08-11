@@ -802,12 +802,7 @@
 
                             return;
                         }
-                            
-                        if (response?.data?.reload) {
-                            window.location.reload();
-                            return;
-                        }
-                        
+
                         // Payment cancelled/failed
                         self.cleanupPopup();
 
