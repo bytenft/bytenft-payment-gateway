@@ -2094,9 +2094,9 @@ $payload['country_code'] = '+' . $countryCode;
 			return;
 		}
 
-		if (!WC()->session) {
-			WC()->initialize_session();
-		}
+		// if (!WC()->session) {
+		// 	WC()->initialize_session();
+		// }
 
 		// -----------------------------
 		// FLOW DETECTION
