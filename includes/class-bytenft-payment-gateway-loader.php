@@ -76,11 +76,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('woocommerce_checkout_create_order', function($order){
 			$order->delete_meta_data('_wc_order_attribution_session_entry');
 		}, 10);
-		add_action('init', function() {
-			if (function_exists('WC') && WC()->session == null) {
-				WC()->initialize_session();
-			}
-		});
+		// add_action('init', function() {
+		// 	if (function_exists('WC') && WC()->session == null) {
+		// 		WC()->initialize_session();
+		// 	}
+		// });
 
 		add_action('woocommerce_before_checkout_form', [$this, 'bytenft_show_checkout_error']);
 	}
@@ -136,12 +136,21 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
             : '';
 
         if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
-            wp_send_json([
-                'result'   => 'fail',
-                'messages' => '<ul class="woocommerce-error"><li>' . esc_html__('Security check failed. Please refresh the page.', 'bytenft-payment-gateway') . '</li></ul>',
-                'error'    => true
-            ]);
-            wp_die();
+            // Fallback: If strict nonce fails (due to WC session regeneration in Store API),
+            // ensure the user has an active session and a non-empty cart.
+            if ( function_exists('WC') && is_null(WC()->session) ) {
+                WC()->session = new WC_Session_Handler();
+                WC()->session->init();
+            }
+            
+            if ( ! function_exists('WC') || ! WC()->session || ! WC()->cart || WC()->cart->is_empty() ) {
+                wp_send_json([
+                    'result'   => 'fail',
+                    'messages' => '<ul class="woocommerce-error"><li>' . esc_html__('Security check failed. Please refresh the page.', 'bytenft-payment-gateway') . '</li></ul>',
+                    'error'    => true
+                ]);
+                wp_die();
+            }
         }
 
 		/**
