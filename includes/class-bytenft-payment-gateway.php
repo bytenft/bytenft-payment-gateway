@@ -2415,45 +2415,42 @@ private function get_routing_sorted_accounts(array $accounts): array {
 			return [];
 		}
 
-		$failed = WC()->session->get('bytenft_failed_accounts', []);
-
-		$filtered_settings = array_filter($settings, function ($account) use ($failed) {
-
-			$public_key = $this->sandbox
-				? ($account['sandbox_public_key'] ?? '')
-				: ($account['live_public_key'] ?? '');
-
-			return !in_array($public_key, $failed, true);
-		});
-
-		if (empty($filtered_settings) && !empty($settings)) {
-			WC()->session->__unset('bytenft_failed_accounts');
-			// Keep $settings as is to retry all accounts
-		} else {
-			$settings = $filtered_settings;
-		}
-
-
 		$mode = $this->sandbox ? 'sandbox' : 'live';
 
 		$status_key = $mode . '_status';
-		$public_key  = $mode . '_public_key';
-		$secret_key  = $mode . '_secret_key';
+		$public_key_key  = $mode . '_public_key';
+		$secret_key_key  = $mode . '_secret_key';
 
-		$available = [];
-
+		// 1. First, get all ACTIVE and VALID accounts
+		$active_accounts = [];
 		foreach ($settings as $account) {
-
-			if (empty($account[$public_key]) || empty($account[$secret_key])) {
+			if (empty($account[$public_key_key]) || empty($account[$secret_key_key])) {
 				continue;
 			}
-
-			// Only include accounts whose status is active
 			if (strtolower($account[$status_key] ?? '') !== 'active') {
 				continue;
 			}
+			$active_accounts[] = $account;
+		}
 
-			$available[] = $account;
+		if (empty($active_accounts)) {
+			return [];
+		}
+
+		// 2. Now check against failed session
+		$failed = WC()->session->get('bytenft_failed_accounts', []);
+
+		$filtered_active = array_filter($active_accounts, function ($account) use ($failed, $public_key_key) {
+			$public_key = $account[$public_key_key] ?? '';
+			return !in_array($public_key, $failed, true);
+		});
+
+		// 3. Reset session if ALL active accounts have failed
+		if (empty($filtered_active)) {
+			WC()->session->__unset('bytenft_failed_accounts');
+			$available = $active_accounts;
+		} else {
+			$available = $filtered_active;
 		}
 
 		return $this->get_routing_sorted_accounts($available);
