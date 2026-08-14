@@ -2417,7 +2417,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 		$failed = WC()->session->get('bytenft_failed_accounts', []);
 
-		$settings = array_filter($settings, function ($account) use ($failed) {
+		$filtered_settings = array_filter($settings, function ($account) use ($failed) {
 
 			$public_key = $this->sandbox
 				? ($account['sandbox_public_key'] ?? '')
@@ -2425,6 +2425,13 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 			return !in_array($public_key, $failed, true);
 		});
+
+		if (empty($filtered_settings) && !empty($settings)) {
+			WC()->session->__unset('bytenft_failed_accounts');
+			// Keep $settings as is to retry all accounts
+		} else {
+			$settings = $filtered_settings;
+		}
 
 
 		$mode = $this->sandbox ? 'sandbox' : 'live';
