@@ -901,7 +901,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			wp_send_json([
 				'success' => false,
-				'message' => 'Payment status is being verified.',
+				'message' => 'Payment was not completed. Please try again',
 				'data' => [
 					'payment_status' => 'pending',
 					'order_status'   => $order->get_status(),
