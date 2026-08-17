@@ -330,6 +330,18 @@ class BYTENFT_PAYMENT_ENGINE
                         $event['event_type'] ?? ''
                     )
                 );
+
+                // Track global customer failed attempts
+                $customer_identifier = '';
+                if ( $order->get_customer_id() ) {
+                    $customer_identifier = 'user_' . $order->get_customer_id();
+                } else {
+                    $customer_identifier = 'email_' . md5( strtolower( trim( $order->get_billing_email() ) ) );
+                }
+                
+                $failed_attempts_key = 'bytenft_failed_attempts_' . $customer_identifier;
+                $current_fails = (int) get_transient( $failed_attempts_key );
+                set_transient( $failed_attempts_key, $current_fails + 1, 24 * HOUR_IN_SECONDS );
             }
 
             $order->update_meta_data(
