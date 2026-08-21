@@ -58,6 +58,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('bytenft_cron_event', [$this, 'handle_cron_event']);
 		add_action('wp_ajax_bytenft_block_gateway_process', [$this,'handle_bytenft_gateway_ajax']);
 		add_action('wp_ajax_nopriv_bytenft_block_gateway_process', [$this,'handle_bytenft_gateway_ajax']); 
+
+		add_action('wp_ajax_bytenft_validate_customer', [$this, 'handle_validate_customer_ajax']);
+		add_action('wp_ajax_nopriv_bytenft_validate_customer', [$this, 'handle_validate_customer_ajax']);
 		add_action('wp', function () {
 			// Allow notices on the checkout page, and preserve them during AJAX or REST requests
 			if ( ! is_checkout() && ! wp_doing_ajax() && ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
@@ -1421,5 +1424,70 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				],
 			]
 		);
+	}
+
+	public function handle_validate_customer_ajax() {
+		$email = isset( $_POST['billing_email'] ) ? sanitize_email( wp_unslash( $_POST['billing_email'] ) ) : '';
+		$phone = isset( $_POST['billing_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['billing_phone'] ) ) : '';
+		$country_code = isset( $_POST['billing_country'] ) ? sanitize_text_field( wp_unslash( $_POST['billing_country'] ) ) : '';
+
+		if ( empty( $email ) && empty( $phone ) ) {
+			wp_send_json_success([
+				'requires_confirmation' => false,
+				'action' => null,
+				'user_id' => null
+			]);
+		}
+
+		$api_url = esc_url_raw( $this->base_url . '/api/check-customer' );
+		$payload = [
+			'email'        => $email ?: null,
+			'phone_number' => $phone ?: null,
+			'country_code' => $country_code ?: null,
+		];
+
+		// get public key from gateway settings
+		$options = get_option( 'woocommerce_bytenft_payment_settings' );
+		$public_key = !empty($options['public_key']) ? $options['public_key'] : '';
+
+		$response = wp_remote_post(
+			$api_url,
+			[
+				'method'    => 'POST',
+				'timeout'   => 30,
+				'body'      => $payload,
+				'headers'   => [
+					'Content-Type'  => 'application/x-www-form-urlencoded',
+					'Authorization' => 'Bearer ' . sanitize_text_field( $public_key ),
+				],
+				'sslverify' => true,
+			]
+		);
+
+		if ( is_wp_error( $response ) ) {
+			wp_send_json_error(['message' => 'Customer validation failed. Please try again.']);
+		}
+
+		$status_code = wp_remote_retrieve_response_code( $response );
+		$body        = wp_remote_retrieve_body( $response );
+		$response_data = json_decode( $body, true );
+
+		if ( ! is_array( $response_data ) ) {
+			wp_send_json_error(['message' => 'Invalid response from validation service.']);
+		}
+
+		if ( $status_code >= 400 || ( $response_data['status'] ?? '' ) === 'error' ) {
+			$message = ! empty( $response_data['message'] ) ? sanitize_text_field( $response_data['message'] ) : 'Unable to validate customer information.';
+			wp_send_json_error(['message' => $message]);
+		}
+
+		$data = $response_data['data'] ?? [];
+
+		wp_send_json_success([
+			'requires_confirmation' => ! empty( $data['requires_confirmation'] ),
+			'action'                => $data['action'] ?? null,
+			'user_id'               => $data['user_id'] ?? null,
+			'message'               => $data['message'] ?? 'An existing customer account was found. Please confirm to continue.',
+		]);
 	}
 }
