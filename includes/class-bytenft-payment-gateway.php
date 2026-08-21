@@ -828,11 +828,49 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	public function process_payment($order_id, $used_accounts = [])
 	{
+		$log_prefix = "[Order #{$order_id}]";
+
+		// -------------------------------------------------
+		// 0. RATE LIMITING (MOVED TO TOP FOR DDOS PROTECTION)
+		// -------------------------------------------------
+		$ip_address  = filter_var(wp_unslash($_SERVER['REMOTE_ADDR'] ?? ''), FILTER_VALIDATE_IP) ?: 'invalid';
+		$window_size = 10;
+		$max_requests = 5;
+
+		$timestamp_key = "rate_limit_{$ip_address}_timestamps";
+		$timestamps    = get_transient($timestamp_key) ?: [];
+		$current_time  = time();
+
+		$timestamps = array_filter($timestamps, fn($ts) => $current_time - $ts <= $window_size);
+
+		if (count($timestamps) >= $max_requests) {
+
+			ByteNFT_Payment_Gateway_Logger::warning(
+				$log_prefix . ' Rate limit exceeded',
+				[
+					'ip_address' => $ip_address,
+				]
+			);
+
+			if (is_checkout()) {
+				wc_add_notice(__('Too many requests. Please try again later.', 'bytenft-payment-gateway'), 'error');
+			}
+
+			return $this->build_response(
+				'fail',
+				'Too many requests. Please try again later.',
+				[],
+				429,
+				$order_id
+			);
+		}
+
+		$timestamps[] = $current_time;
+		set_transient($timestamp_key, $timestamps, $window_size);
+
 		global $wpdb;
 
 		$lock_name = '';
-
-		$log_prefix = "[Order #{$order_id}]";
 
 		$start_time = microtime(true);
 
@@ -909,42 +947,43 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		try {
 
 			// -------------------------------------------------
-			// 4. RATE LIMITING (UNCHANGED)
+			// 4. REUSE EXISTING PAYMENT LINK
 			// -------------------------------------------------
-			$ip_address  = filter_var(wp_unslash($_SERVER['REMOTE_ADDR'] ?? ''), FILTER_VALIDATE_IP) ?: 'invalid';
-			$window_size = 10;
-			$max_requests = 5;
-
-			$timestamp_key = "rate_limit_{$ip_address}_timestamps";
-			$timestamps    = get_transient($timestamp_key) ?: [];
-			$current_time  = time();
-
-			$timestamps = array_filter($timestamps, fn($ts) => $current_time - $ts <= $window_size);
-
-			if (count($timestamps) >= $max_requests) {
-
-				ByteNFT_Payment_Gateway_Logger::warning(
-					$log_prefix . ' Rate limit exceeded',
-					[
-						'ip_address' => $ip_address,
-					]
+			$active_pay_id = $order->get_meta('_bytenft_active_pay_id');
+			
+			if ($active_pay_id) {
+				$table_name = $wpdb->prefix . 'order_payment_link';
+				
+				$existing_link = $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+					$wpdb->prepare(
+						// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter
+						"SELECT payment_link FROM {$table_name} WHERE order_id = %d AND uuid = %s",
+						$order_id,
+						$active_pay_id
+					)
 				);
 
-				if (is_checkout()) {
-					wc_add_notice(__('Too many requests. Please try again later.', 'bytenft-payment-gateway'), 'error');
+				if ($existing_link) {
+					ByteNFT_Payment_Gateway_Logger::info(
+						$log_prefix . ' Existing payment link found, reusing to prevent duplicates',
+						[
+							'order_id' => $order_id,
+							'pay_id'   => $active_pay_id
+						]
+					);
+
+					return $this->build_response(
+						'success',
+						'Payment resumed',
+						[
+							'payment_status' => 'pending',
+							'redirect'       => esc_url($existing_link)
+						],
+						200,
+						$order_id
+					);
 				}
-
-				return $this->build_response(
-					'fail',
-					'Too many requests. Please try again later.',
-					[],
-					429,
-					$order_id
-				);
 			}
-
-			$timestamps[] = $current_time;
-			set_transient($timestamp_key, $timestamps, $window_size);
 
 			// -------------------------------------------------
 			// 5. ORDER STATUS PROTECTION
