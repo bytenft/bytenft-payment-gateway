@@ -114,23 +114,105 @@
                         return false;
                     }
 
-                    self.setStatus('popup');
+                    self.validateCustomerAccount($form, 'Classic', function(extraData) {
+                        self.setStatus('popup');
 
-                   const popup = self.openPopupImmediately();
+                        const popup = self.openPopupImmediately();
 
-                    if (!popup) {
-                        self.releaseLock('Classic');
-                        self.setStatus('idle');
-                        return false;
-                    }
+                        if (!popup) {
+                            self.releaseLock('Classic');
+                            self.setStatus('idle');
+                            return false;
+                        }
 
-                    // 3. NOW move to processing
-                    self.setStatus('processing');
+                        // 3. NOW move to processing
+                        self.setStatus('processing');
 
-                    // 4. Start AJAX AFTER popup exists
-                    self.handleClassicCheckout($form);
+                        // 4. Start AJAX AFTER popup exists
+                        self.handleClassicCheckout($form, extraData);
+                    });
                     return false;
                 });
+        },
+
+        validateCustomerAccount: function ($form, type, callback) {
+            const self = this;
+            const dataPayload = self.buildCheckoutPayload();
+
+            $.ajax({
+                type: 'POST',
+                url: bytenft_params.ajax_url,
+                data: dataPayload + '&action=bytenft_validate_customer',
+                dataType: 'json',
+                success: function (response) {
+                    if (response && response.success) {
+                        if (response.data && response.data.requires_confirmation) {
+                            self.showConfirmationModal(response.data.message, function() {
+                                callback({
+                                    'bytenft_customer_user_id': response.data.user_id,
+                                    'bytenft_consent': '1'
+                                });
+                            }, function() {
+                                self.releaseLock(type);
+                                self.setStatus('idle');
+                                self.clearCheckoutErrors();
+                            });
+                        } else {
+                            callback(null);
+                        }
+                    } else {
+                        const msg = response?.data?.message || 'Error validating customer account.';
+                        self.showCheckoutError(msg);
+                        self.releaseLock(type);
+                        self.setStatus('idle');
+                    }
+                },
+                error: function () {
+                    self.showCheckoutError('Error connecting to validation service.');
+                    self.releaseLock(type);
+                    self.setStatus('idle');
+                }
+            });
+        },
+
+        showConfirmationModal: function(message, onConfirm, onCancel) {
+            $('#bytenft-confirm-modal').remove();
+
+            const modalHtml = `
+            <div id="bytenft-confirm-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 999999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+                <div style="background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); max-width: 400px; text-align: center; font-family: 'Inter', sans-serif;">
+                    <div style="margin-bottom: 20px;">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    </div>
+                    <h3 style="margin-top: 0; color: #111827; font-size: 20px; font-weight: 600;">Confirm Account</h3>
+                    <p style="color: #4b5563; font-size: 15px; margin-bottom: 25px; line-height: 1.5;">${message}</p>
+                    <div style="display: flex; gap: 15px; justify-content: center;">
+                        <button id="bytenft-cancel-btn" style="padding: 10px 20px; background: #f3f4f6; color: #374151; border: none; border-radius: 8px; font-weight: 500; cursor: pointer; transition: all 0.2s;">Cancel</button>
+                        <button id="bytenft-continue-btn" style="padding: 10px 20px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-weight: 500; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 6px rgba(37,99,235,0.2);">Continue</button>
+                    </div>
+                </div>
+            </div>`;
+
+            $('body').append(modalHtml);
+
+            $('#bytenft-cancel-btn').hover(function() { $(this).css('background', '#e5e7eb'); }, function() { $(this).css('background', '#f3f4f6'); });
+            $('#bytenft-continue-btn').hover(function() { $(this).css('background', '#1d4ed8'); }, function() { $(this).css('background', '#2563eb'); });
+
+            $('#bytenft-cancel-btn').on('click', function(e) {
+                e.preventDefault();
+                $('#bytenft-confirm-modal').fadeOut(200, function() { $(this).remove(); });
+                if(onCancel) onCancel();
+            });
+
+            $('#bytenft-continue-btn').on('click', function(e) {
+                e.preventDefault();
+                $(this).text('Processing...').css('opacity', '0.7');
+                $('#bytenft-cancel-btn').prop('disabled', true);
+                setTimeout(function() {
+                    $('#bytenft-confirm-modal').fadeOut(200, function() { $(this).remove(); });
+                    if(onConfirm) onConfirm();
+                }, 300);
+            });
         },
 
         buildCheckoutPayload: function () {
@@ -257,7 +339,7 @@
             return data.toString();
         },
 
-        handleClassicCheckout: function ($form) {
+        handleClassicCheckout: function ($form, extraData) {
             const self = this;
 
             self.state.button = $('body').find('button[name="woocommerce_checkout_place_order"], #wcf-order-place-btn').first();
@@ -266,7 +348,14 @@
             self.state.button.prop('disabled', true).addClass('loading').text('Processing...');
 
             // Form payload compilation handles scattered form fields elegantly
-            const dataPayload = self.buildCheckoutPayload();
+            let dataPayload = self.buildCheckoutPayload();
+            if (extraData) {
+                const params = new URLSearchParams(dataPayload);
+                for (const key in extraData) {
+                    params.append(key, extraData[key]);
+                }
+                dataPayload = params.toString();
+            }
 
             $.ajax({
                 type: 'POST',
@@ -370,18 +459,20 @@
                 self.setStatus('validating');
                 self.clearCheckoutErrors();
 
-                self.setStatus('popup'); 
-                
-                const popup = self.openPopupImmediately();
+                self.validateCustomerAccount($form, 'Block', function(extraData) {
+                    self.setStatus('popup'); 
+                    
+                    const popup = self.openPopupImmediately();
 
-                if (!popup) {
-                    self.releaseLock('Block');
-                    self.setStatus('idle');
-                    return;
-                }
+                    if (!popup) {
+                        self.releaseLock('Block');
+                        self.setStatus('idle');
+                        return;
+                    }
 
-                self.setStatus('processing');
-                self.handleBlockCheckout($form);
+                    self.setStatus('processing');
+                    self.handleBlockCheckout($form, extraData);
+                });
             }, true);
 
             // Prevent native block context from bypassing validation filters
@@ -400,7 +491,7 @@
             }, true);
         },
 
-        handleBlockCheckout: function ($form) {
+        handleBlockCheckout: function ($form, extraData) {
             const self = this;
 
             self.state.button = $('.wc-block-components-checkout-place-order-button');
@@ -409,6 +500,13 @@
             self.state.button.prop('disabled', true).addClass('loading').text('Processing...');
 
             let data = self.buildCheckoutPayload();
+            if (extraData) {
+                const params = new URLSearchParams(data);
+                for (const key in extraData) {
+                    params.append(key, extraData[key]);
+                }
+                data = params.toString();
+            }
             data += '&action=bytenft_block_gateway_process';
             data += '&nonce=' + encodeURIComponent(bytenft_params.bytenft_nonce);
 

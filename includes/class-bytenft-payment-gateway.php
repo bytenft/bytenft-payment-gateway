@@ -677,6 +677,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 */
 	private function bytenft_validate_customer_account() {
 
+		if ( isset( $_POST['bytenft_consent'] ) && $_POST['bytenft_consent'] == '1' ) {
+			return true;
+		}
+
 		$email = isset( $_POST['billing_email'] )
 			? sanitize_email( wp_unslash( $_POST['billing_email'] ) )
 			: '';
@@ -887,6 +891,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		// 1. ORDER VALIDATION
 		// -------------------------------------------------
 		$order = wc_get_order($order_id);
+
+		if ( isset( $_POST['bytenft_customer_user_id'] ) && ! empty( $_POST['bytenft_customer_user_id'] ) ) {
+			$customer_id = intval( $_POST['bytenft_customer_user_id'] );
+			if ( $customer_id > 0 && $order ) {
+				$order->set_customer_id( $customer_id );
+				$order->save();
+			}
+		}
 
 		if (!$order) {
 
@@ -1587,7 +1599,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		];
 
 			$countryCode = preg_replace('/[^0-9]/', '', $country_code ?? '');
-$payload['country_code'] = '+' . $countryCode;
+		$payload['country_code'] = '+' . $countryCode;
+
+		if ( isset( $_POST['bytenft_customer_user_id'] ) && ! empty( $_POST['bytenft_customer_user_id'] ) ) {
+			$payload['customer_user_id'] = intval( $_POST['bytenft_customer_user_id'] );
+		}
 
 		return $payload;
 	}
@@ -1948,12 +1964,7 @@ $payload['country_code'] = '+' . $countryCode;
 			}
 		}
 
-		// ---------------------------------------------------------------------
-		// Customer Account Validation
-		// ---------------------------------------------------------------------
-		if ( ! $this->bytenft_validate_customer_account() ) {
-			return false;
-		}
+		// Backend customer validation removed per Harry's instructions; now handled entirely on frontend
 
 		return true;
 	}
