@@ -668,6 +668,164 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return ob_get_clean();
 	}
 
+	/**
+	 * Validate customer account against ByteNFT API.
+	 *
+	 * Uses the existing WooCommerce checkout values.
+	 *
+	 * @return bool
+	 */
+	private function bytenft_validate_customer_account() {
+
+		$email = isset( $_POST['billing_email'] )
+			? sanitize_email( wp_unslash( $_POST['billing_email'] ) )
+			: '';
+
+		$phone = isset( $_POST['billing_phone'] )
+			? sanitize_text_field( wp_unslash( $_POST['billing_phone'] ) )
+			: '';
+
+		/*
+		* Keep the country code exactly as provided by WooCommerce.
+		* Do not convert it on the plugin side.
+		*/
+		$country_code = isset( $_POST['billing_country'] )
+			? sanitize_text_field( wp_unslash( $_POST['billing_country'] ) )
+			: '';
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account validation started',
+			[
+				'email'        => $email,
+				'phone'        => $phone,
+				'country_code' => $country_code,
+			]
+		);
+
+		// Nothing to validate.
+		if ( empty( $email ) && empty( $phone ) ) {
+			return true;
+		}
+
+		$api_url = esc_url_raw(
+			$this->base_url . '/api/check-customer'
+		);
+
+		$payload = [
+			'email'        => $email ?: null,
+			'phone_number' => $phone ?: null,
+			'country_code' => $country_code ?: null,
+		];
+
+		$response = wp_remote_post(
+			$api_url,
+			[
+				'method'    => 'POST',
+				'timeout'   => 30,
+				'body'      => $payload,
+				'headers'   => [
+					'Content-Type'  => 'application/x-www-form-urlencoded',
+					'Authorization' => 'Bearer ' . sanitize_text_field( $this->public_key ),
+				],
+				'sslverify' => true,
+			]
+		);
+
+		if ( is_wp_error( $response ) ) {
+
+			ByteNFT_Payment_Gateway_Logger::error(
+				'Customer account validation API error',
+				[
+					'error' => $response->get_error_message(),
+				]
+			);
+
+			wc_add_notice(
+				__(
+					'Unable to validate customer information. Please try again.',
+					'bytenft-payment-gateway'
+				),
+				'error'
+			);
+
+			return false;
+		}
+
+		$status_code = wp_remote_retrieve_response_code( $response );
+		$body        = wp_remote_retrieve_body( $response );
+		$response_data = json_decode( $body, true );
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account validation API response',
+			[
+				'status_code' => $status_code,
+				'response'    => $response_data,
+			]
+		);
+
+		if ( ! is_array( $response_data ) ) {
+
+			wc_add_notice(
+				__(
+					'Invalid response from customer validation service.',
+					'bytenft-payment-gateway'
+				),
+				'error'
+			);
+
+			return false;
+		}
+
+		if ( $status_code >= 400 || ( $response_data['status'] ?? '' ) === 'error' ) {
+
+			$message = ! empty( $response_data['message'] )
+				? sanitize_text_field( $response_data['message'] )
+				: __(
+					'Unable to validate customer information.',
+					'bytenft-payment-gateway'
+				);
+
+			wc_add_notice( $message, 'error' );
+
+			return false;
+		}
+
+		$data = $response_data['data'] ?? [];
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account validation result',
+			[
+				'action'                => $data['action'] ?? null,
+				'requires_confirmation' => $data['requires_confirmation'] ?? null,
+				'existing_user'        => $data['existing_user'] ?? null,
+				'user_id'              => $data['user_id'] ?? null,
+			]
+		);
+
+		/*
+		* If the API says confirmation is required,
+		* stop checkout and show the API message.
+		*
+		* You can later replace this with a JS confirmation modal
+		* if you want the customer to explicitly choose Continue.
+		*/
+		if ( ! empty( $data['requires_confirmation'] ) ) {
+
+			$message = ! empty( $data['message'] )
+				? sanitize_text_field( $data['message'] )
+				: __(
+					'An existing customer account was found. Please confirm to continue.',
+					'bytenft-payment-gateway'
+				);
+
+			wc_add_notice( $message, 'error' );
+
+			return false;
+		}
+
+		return true;
+	}
+
 	public function process_payment($order_id, $used_accounts = [])
 	{
 		global $wpdb;
@@ -1749,6 +1907,13 @@ $payload['country_code'] = '+' . $countryCode;
 					? sanitize_text_field( wp_unslash( $_POST['bytenft_consent'] ) )
 					: '';
 			}
+		}
+
+		// ---------------------------------------------------------------------
+		// Customer Account Validation
+		// ---------------------------------------------------------------------
+		if ( ! $this->bytenft_validate_customer_account() ) {
+			return false;
 		}
 
 		return true;
