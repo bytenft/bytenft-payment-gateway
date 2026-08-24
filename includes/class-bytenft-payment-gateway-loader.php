@@ -20,6 +20,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	private $base_url;
 
 	/**
+	 * Account decision values.
+	 */
+	private const ACCOUNT_ACTION_USE_EXISTING = 'use_existing';
+	private const ACCOUNT_ACTION_CREATE_NEW   = 'create_new';
+
+	/**
 	 * Get the singleton instance of this class.
 	 * @return BYTENFT_PAYMENT_GATEWAY_Loader
 	 */
@@ -85,6 +91,16 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action(
 			'wp_ajax_nopriv_bytenft_check_customer_account',
 			[ $this, 'bytenft_check_customer_account' ]
+		);
+
+		add_action(
+			'wp_ajax_bytenft_save_customer_account_action',
+			[ $this, 'bytenft_save_customer_account_action' ]
+		);
+
+		add_action(
+			'wp_ajax_nopriv_bytenft_save_customer_account_action',
+			[ $this, 'bytenft_save_customer_account_action' ]
 		);
 
 		add_action('woocommerce_before_checkout_form', [$this, 'bytenft_show_checkout_error']);
@@ -1454,24 +1470,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			);
 		}
 
-		// $nonce = sanitize_text_field(
-		// 	wp_unslash( $_POST['security'] )
-		// );
-
-		// if ( ! wp_verify_nonce( $nonce, 'bytenft-check-customer' ) ) {
-
-		// 	ByteNFT_Payment_Gateway_Logger::error(
-		// 		'Customer account AJAX nonce verification failed'
-		// 	);
-
-		// 	wp_send_json_error(
-		// 		[
-		// 			'message' => 'Security check failed. Please refresh the page and try again.',
-		// 		],
-		// 		403
-		// 	);
-		// }
-
 		$checkout_data = [];
 
 		if ( isset( $_POST['checkout_data'] ) ) {
@@ -1507,25 +1505,188 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		}
 
 		/*
-		* Store the validated ByteNFT customer ID in the WooCommerce session.
+		* ---------------------------------------------------------
+		* CUSTOMER ACCOUNT SESSION HANDLING
+		* ---------------------------------------------------------
+		*
+		* IMPORTANT:
+		*
+		* confirmation_required means the customer has NOT yet
+		* selected the existing account.
+		*
+		* Therefore:
+		*
+		* confirmation_required -> DO NOT store user_id
+		* new customer           -> clear user_id
+		*
+		* The existing customer ID should only be stored by the
+		* separate "Use Existing Account" confirmation action.
 		*/
-		if ( ! empty( $result['user_id'] ) ) {
 
-			$customer_user_id = absint( $result['user_id'] );
+		$action = isset( $result['action'] )
+			? sanitize_key( $result['action'] )
+			: '';
 
-			if ( WC()->session ) {
+		$existing_user = ! empty( $result['existing_user'] );
+
+		$requires_confirmation = ! empty(
+			$result['requires_confirmation']
+		);
+
+		if ( WC()->session ) {
+
+			/*
+			* -----------------------------------------------------
+			* CASE 1: EXISTING USER FOUND BUT CONFIRMATION REQUIRED
+			* -----------------------------------------------------
+			*
+			* Do NOT store the returned user_id yet.
+			*
+			* The popup will ask:
+			*
+			* "Would you like to continue using that account?"
+			*
+			* Until the customer clicks "Use Existing Account",
+			* process_payment() must NOT use this user.
+			*/
+			if (
+				$existing_user &&
+				$requires_confirmation &&
+				! empty( $result['user_id'] )
+			) {
+
+				$detected_user_id = absint(
+					$result['user_id']
+				);
+
+				/*
+				* Clear any previously selected customer account.
+				*/
+				$previous_customer_id = WC()->session->get(
+					'bytenft_customer_user_id'
+				);
+
+				WC()->session->__unset(
+					'bytenft_customer_user_id'
+				);
+
+				/*
+				* Mark the session as awaiting customer's choice.
+				*/
+				WC()->session->set(
+					'bytenft_customer_account_action',
+					'confirmation_required'
+				);
+
+				/*
+				* Store the detected ID separately only for the
+				* confirmation popup. DO NOT use this value in
+				* process_payment().
+				*/
+				WC()->session->set(
+					'bytenft_pending_customer_user_id',
+					$detected_user_id
+				);
+
+				ByteNFT_Payment_Gateway_Logger::info(
+					'Existing customer detected - waiting for customer confirmation',
+					[
+						'detected_user_id'         => $detected_user_id,
+						'previous_customer_id'     => $previous_customer_id,
+						'action'                   => $action,
+						'requires_confirmation'    => $requires_confirmation,
+						'customer_user_id_stored'  => false,
+					]
+				);
+
+			/*
+			* -----------------------------------------------------
+			* CASE 2: EXISTING USER WITHOUT CONFIRMATION
+			* -----------------------------------------------------
+			*
+			* This case is only for situations where the API has
+			* already confirmed that the existing account should
+			* be used.
+			*/
+			} elseif (
+				$existing_user &&
+				! $requires_confirmation &&
+				! empty( $result['user_id'] )
+			) {
+
+				$customer_user_id = absint(
+					$result['user_id']
+				);
+
 				WC()->session->set(
 					'bytenft_customer_user_id',
 					$customer_user_id
 				);
+
+				WC()->session->set(
+					'bytenft_customer_account_action',
+					self::ACCOUNT_ACTION_USE_EXISTING
+				);
+
+				WC()->session->__unset(
+					'bytenft_pending_customer_user_id'
+				);
+
+				ByteNFT_Payment_Gateway_Logger::info(
+					'Existing customer account stored in WooCommerce session',
+					[
+						'customer_user_id'      => $customer_user_id,
+						'action'                => $action,
+						'requires_confirmation' => $requires_confirmation,
+					]
+				);
+
+			/*
+			* -----------------------------------------------------
+			* CASE 3: NEW CUSTOMER
+			* -----------------------------------------------------
+			*
+			* No existing account was found.
+			*
+			* Make absolutely sure an old customer ID cannot be
+			* reused.
+			*/
+			} else {
+
+				$previous_customer_id = WC()->session->get(
+					'bytenft_customer_user_id'
+				);
+
+				WC()->session->__unset(
+					'bytenft_customer_user_id'
+				);
+
+				WC()->session->__unset(
+					'bytenft_pending_customer_user_id'
+				);
+
+				WC()->session->set(
+					'bytenft_customer_account_action',
+					self::ACCOUNT_ACTION_CREATE_NEW
+				);
+
+				ByteNFT_Payment_Gateway_Logger::info(
+					'New customer account selected - previous customer session cleared',
+					[
+						'previous_customer_user_id' => $previous_customer_id,
+						'action'                    => $action,
+						'existing_user'             => $existing_user,
+						'requires_confirmation'     => $requires_confirmation,
+					]
+				);
 			}
 
-			ByteNFT_Payment_Gateway_Logger::info(
-				'Customer user ID stored in WooCommerce session',
-				[
-					'customer_user_id' => $customer_user_id,
-				]
-			);
+			/*
+			* Persist WooCommerce session immediately.
+			*/
+			if ( method_exists( WC()->session, 'save_data' ) ) {
+				WC()->session->save_data();
+			}
 		}
 
 		wp_send_json_success( $result );
@@ -1769,5 +1930,242 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				? absint( $data['user_id'] )
 				: 0,
 		];
+	}
+
+	/**
+	 * Get the account action selected during checkout.
+	 *
+	 * @param WC_Order $order WooCommerce order.
+	 * @return string
+	 */
+	private function get_account_action( $order ) {
+
+		$action = $order->get_meta( '_bytenft_account_action', true );
+
+		if ( ! in_array(
+			$action,
+			[
+				self::ACCOUNT_ACTION_USE_EXISTING,
+				self::ACCOUNT_ACTION_CREATE_NEW,
+			],
+			true
+		) ) {
+			return '';
+		}
+
+		return $action;
+	}
+
+	public function bytenft_save_customer_account_action() {
+
+		$log_prefix = '[Customer Account Selection]';
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			$log_prefix . ' AJAX request received',
+			[
+				'has_security' => isset( $_POST['security'] ),
+				'action'       => isset( $_POST['account_action'] )
+					? sanitize_key( wp_unslash( $_POST['account_action'] ) )
+					: '',
+				'user_id'      => isset( $_POST['customer_user_id'] )
+					? absint( wp_unslash( $_POST['customer_user_id'] ) )
+					: 0,
+			]
+		);
+
+		// -------------------------------------------------
+		// SECURITY
+		// -------------------------------------------------
+
+		if ( ! isset( $_POST['security'] ) ) {
+
+			ByteNFT_Payment_Gateway_Logger::warning(
+				$log_prefix . ' Security token missing'
+			);
+
+			wp_send_json_error(
+				[
+					'message' => 'Missing security token.',
+				],
+				400
+			);
+		}
+
+		$security = sanitize_text_field(
+			wp_unslash( $_POST['security'] )
+		);
+
+		if ( ! wp_verify_nonce( $security, 'bytenft_payment' ) ) {
+
+			ByteNFT_Payment_Gateway_Logger::warning(
+				$log_prefix . ' Security check failed'
+			);
+
+			wp_send_json_error(
+				[
+					'message' => 'Security check failed.',
+				],
+				403
+			);
+		}
+
+		// -------------------------------------------------
+		// WOOCOMMERCE SESSION
+		// -------------------------------------------------
+
+		if ( ! WC()->session ) {
+
+			ByteNFT_Payment_Gateway_Logger::error(
+				$log_prefix . ' WooCommerce session unavailable'
+			);
+
+			wp_send_json_error(
+				[
+					'message' => 'Checkout session is unavailable.',
+				],
+				500
+			);
+		}
+
+		// -------------------------------------------------
+		// INPUT
+		// -------------------------------------------------
+
+		$account_action = isset( $_POST['account_action'] )
+			? sanitize_key(
+				wp_unslash( $_POST['account_action'] )
+			)
+			: '';
+
+		$customer_user_id = isset( $_POST['customer_user_id'] )
+			? absint(
+				wp_unslash( $_POST['customer_user_id'] )
+			)
+			: 0;
+
+		// -------------------------------------------------
+		// VALIDATE ACTION
+		// -------------------------------------------------
+
+		$allowed_actions = [
+			self::ACCOUNT_ACTION_USE_EXISTING,
+			self::ACCOUNT_ACTION_CREATE_NEW,
+		];
+
+		if ( ! in_array( $account_action, $allowed_actions, true ) ) {
+
+			ByteNFT_Payment_Gateway_Logger::warning(
+				$log_prefix . ' Invalid account action',
+				[
+					'action'  => $account_action,
+					'user_id' => $customer_user_id,
+				]
+			);
+
+			wp_send_json_error(
+				[
+					'message' => 'Invalid customer account action.',
+				],
+				400
+			);
+		}
+
+		// -------------------------------------------------
+		// USE EXISTING CUSTOMER
+		// -------------------------------------------------
+
+		if ( self::ACCOUNT_ACTION_USE_EXISTING === $account_action ) {
+
+			if ( $customer_user_id <= 0 ) {
+
+				ByteNFT_Payment_Gateway_Logger::warning(
+					$log_prefix . ' Customer ID missing for existing account'
+				);
+
+				wp_send_json_error(
+					[
+						'message' => 'Customer account ID is required.',
+					],
+					400
+				);
+			}
+
+			/*
+			* We only save the selected customer here.
+			*
+			* Do NOT create/update the customer in this AJAX
+			* handler. requestPayment() will handle the actual
+			* customer/payment logic later.
+			*/
+
+			WC()->session->set(
+				'bytenft_customer_account_action',
+				self::ACCOUNT_ACTION_USE_EXISTING
+			);
+
+			WC()->session->set(
+				'bytenft_customer_user_id',
+				$customer_user_id
+			);
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' Existing customer selected',
+				[
+					'action'  => self::ACCOUNT_ACTION_USE_EXISTING,
+					'user_id' => $customer_user_id,
+				]
+			);
+		}
+
+		// -------------------------------------------------
+		// CREATE NEW CUSTOMER
+		// -------------------------------------------------
+
+		if ( self::ACCOUNT_ACTION_CREATE_NEW === $account_action ) {
+
+			/*
+			* Save only the decision.
+			*
+			* requestPayment() will create/find the appropriate
+			* customer when payment processing starts.
+			*/
+
+			WC()->session->set(
+				'bytenft_customer_account_action',
+				self::ACCOUNT_ACTION_CREATE_NEW
+			);
+
+			// Make sure an old selected customer is not reused.
+			WC()->session->__unset(
+				'bytenft_customer_user_id'
+			);
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' CREATE NEW customer selected',
+				[
+					'action'  => self::ACCOUNT_ACTION_CREATE_NEW,
+					'user_id' => 0,
+				]
+			);
+		}
+
+		// -------------------------------------------------
+		// PERSIST SESSION
+		// -------------------------------------------------
+
+		WC()->session->save_data();
+
+		// -------------------------------------------------
+		// RESPONSE
+		// -------------------------------------------------
+
+		wp_send_json_success(
+			[
+				'action'  => $account_action,
+				'user_id' => self::ACCOUNT_ACTION_USE_EXISTING === $account_action
+					? $customer_user_id
+					: 0,
+			]
+		);
 	}
 }
