@@ -144,6 +144,7 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 
 ### Version 1.0.19
 - Removed generic SQL injection check to prevent conflicts with third-party plugins.
+- Improved customer account confirmation and new account creation flow during checkout.
 
 ### Version 1.0.18
 - Fixed an issue where invalid or stale orders could interfere with the checkout flow.

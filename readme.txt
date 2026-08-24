@@ -29,6 +29,7 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 = 1.0.19 =
 * Removed generic SQL injection check to prevent conflicts with third-party plugins.
+* Improved customer account confirmation and new account creation flow during checkout.
 
 = 1.0.18 =
 * Fixed an issue where invalid or stale orders could interfere with the checkout flow.
@@ -107,6 +108,7 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 
 = 1.0.19 =
 * Removed generic SQL injection check to prevent conflicts with third-party plugins.
+* Recommended update for improved customer account handling and checkout reliability.
 
 = 1.0.18 =
 This update improves checkout stability by fixing invalid order handling and ensuring the payment gateway is automatically hidden when no eligible merchant account is available.
