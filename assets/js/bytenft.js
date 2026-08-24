@@ -663,6 +663,24 @@
 
                     self.clearCheckoutErrors();
 
+                    const requiredError = self.validateRequiredFields($form);
+
+                    if (requiredError) {
+                        self.releaseLock('Block');
+                        self.setStatus('idle');
+                        self.showCheckoutError(requiredError.message);
+                        return;
+                    }
+
+                    const validationError = self.validateAll($form);
+
+                    if (validationError) {
+                        self.releaseLock('Block');
+                        self.setStatus('idle');
+                        self.showCheckoutError(validationError);
+                        return;
+                    }
+
 
                     /*
                     * =================================================
@@ -2221,6 +2239,8 @@
 
         saveCustomerAccountAction: function (action, userId = 0) {
 
+            const self = this;
+
             return $.ajax({
                 url: bytenft_params.ajax_url,
                 type: 'POST',
@@ -2231,21 +2251,43 @@
                     account_action: action,
                     customer_user_id: userId
                 }
-            }).done(function (response) {
+            })
+            .then(function (response) {
 
-                if (!response.success) {
-                    console.error(
-                        '[ByteNFT] Failed to save customer account selection',
-                        response
-                    );
+                console.log(
+                    '[ByteNFT] saveCustomerAccountAction response:',
+                    response
+                );
+
+                if (!response || response.success !== true) {
+
+                    const message =
+                        response?.data?.message ||
+                        response?.message ||
+                        'Unable to save customer account selection.';
+
+                    return $.Deferred()
+                        .reject(message)
+                        .promise();
                 }
 
-            }).fail(function (xhr) {
+                return response;
+
+            })
+            .catch(function (error) {
 
                 console.error(
-                    '[ByteNFT] Customer account selection AJAX failed',
-                    xhr.responseText
+                    '[ByteNFT] saveCustomerAccountAction failed:',
+                    error
                 );
+
+                return $.Deferred()
+                    .reject(
+                        typeof error === 'string'
+                            ? error
+                            : 'Unable to save customer account selection.'
+                    )
+                    .promise();
             });
         },
     };
