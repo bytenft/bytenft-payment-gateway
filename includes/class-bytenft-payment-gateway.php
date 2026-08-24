@@ -24,6 +24,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private static $log_once_flags = [];
 
+	/**
+	 * Account decision values.
+	 */
+	private const ACCOUNT_ACTION_USE_EXISTING = 'use_existing';
+	private const ACCOUNT_ACTION_CREATE_NEW   = 'create_new';
 
 	/**
 	 * Account selected during the availability filter for dynamic title/subtitle.
@@ -748,16 +753,137 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			);
 		}
 
+		// -------------------------------------------------
+		// CUSTOMER ACCOUNT SELECTION
+		// -------------------------------------------------
+
+		$customer_account_action = WC()->session
+			? sanitize_key(
+				WC()->session->get(
+					'bytenft_customer_account_action',
+					''
+				)
+			)
+			: '';
+
 		$customer_user_id = WC()->session
-			? absint(WC()->session->get('bytenft_customer_user_id'))
+			? absint(
+				WC()->session->get(
+					'bytenft_customer_user_id',
+					0
+				)
+			)
 			: 0;
 
-		// Fallback to WooCommerce customer ID
-		if ($customer_user_id <= 0) {
-			$customer_user_id = absint($order->get_customer_id());
+		// Also check order-level decision.
+		$order_account_action = sanitize_key(
+			$order->get_meta(
+				'_bytenft_account_action',
+				true
+			)
+		);
+
+		// If session action is unavailable, use order action.
+		if ( empty( $customer_account_action ) && ! empty( $order_account_action ) ) {
+
+			$customer_account_action = $order_account_action;
+
 		}
 
-		if ($customer_user_id > 0) {
+		// -------------------------------------------------
+		// EXPLICIT CREATE NEW
+		// -------------------------------------------------
+
+		if ( self::ACCOUNT_ACTION_CREATE_NEW === $customer_account_action ) {
+
+			$customer_user_id = 0;
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' Customer selected CREATE NEW',
+				[
+					'customer_user_id' => 0,
+					'account_action'   => $customer_account_action,
+					'order_action'     => $order_account_action,
+				]
+			);
+		}
+
+		// -------------------------------------------------
+		// EXPLICIT USE EXISTING
+		// -------------------------------------------------
+
+		elseif ( self::ACCOUNT_ACTION_USE_EXISTING === $customer_account_action ) {
+
+			$customer_user_id = absint(
+				WC()->session
+					? WC()->session->get(
+						'bytenft_customer_user_id',
+						0
+					)
+					: 0
+			);
+
+			if ( $customer_user_id <= 0 ) {
+
+				ByteNFT_Payment_Gateway_Logger::warning(
+					$log_prefix . ' USE EXISTING selected but no customer ID found',
+					[
+						'account_action' => $customer_account_action,
+					]
+				);
+
+				if ( is_checkout() ) {
+					wc_add_notice(
+						__(
+							'The selected customer account could not be found. Please select the account again.',
+							'bytenft-payment-gateway'
+						),
+						'error'
+					);
+				}
+
+				return $this->build_response(
+					'fail',
+					'Selected customer account is missing.',
+					[],
+					400,
+					$order_id
+				);
+			}
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' Customer selected USE EXISTING',
+				[
+					'customer_user_id' => $customer_user_id,
+					'account_action'   => $customer_account_action,
+					'order_action'     => $order_account_action,
+				]
+			);
+		}
+
+		// -------------------------------------------------
+		// NO EXPLICIT DECISION
+		// -------------------------------------------------
+
+		else {
+
+			$customer_user_id = 0;
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' No explicit ByteNFT customer account selected',
+				[
+					'session_action' => $customer_account_action,
+					'order_action'   => $order_account_action,
+				]
+			);
+		}
+
+		// -------------------------------------------------
+		// PERSIST SELECTED CUSTOMER
+		// -------------------------------------------------
+
+		if ( $customer_user_id > 0 ) {
+
 			$order->update_meta_data(
 				'_bytenft_customer_user_id',
 				$customer_user_id
@@ -765,12 +891,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			$order->save();
 
-			ByteNFT_Payment_Gateway_Logger::info(
-				$log_prefix . ' Customer user ID assigned to order',
-				[
-					'customer_user_id' => $customer_user_id,
-				]
+		} else {
+
+			$order->delete_meta_data(
+				'_bytenft_customer_user_id'
 			);
+
+			$order->save();
 		}
 
 		if ( (float) $order->get_total() < 0.01 ) {
@@ -941,7 +1068,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			// Prepare payment data
-			$data = $this->bytenft_prepare_payment_data($order, $public_key, $secret_key);
+			$data = $this->bytenft_prepare_payment_data(
+				$order,
+				$public_key,
+				$secret_key,
+				$customer_user_id,
+				$customer_account_action
+			);
 
 			if (is_array($data) && ($data['result'] ?? '') === 'fail') {
 
@@ -1385,7 +1518,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return preg_match('/pob|postoffice/', $clean) === 1;
 	}
 
-	private function bytenft_prepare_payment_data($order, $api_public_key, $api_secret) {
+	private function bytenft_prepare_payment_data(
+		$order,
+		$api_public_key,
+		$api_secret,
+		$customer_user_id = 0,
+		$customer_account_action = ''
+	) {
 		$order_id    = $order->get_id();
 		$is_sandbox  = $this->get_option('sandbox') === 'yes';
 		$request_for = sanitize_email($order->get_billing_email() ?: $order->get_billing_phone());
@@ -1394,6 +1533,28 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$amount      = number_format($order->get_total(), 2, '.', '');
 		$email       = sanitize_text_field($order->get_billing_email());
 		$phone = '';
+
+		$customer_user_id = absint( $customer_user_id );
+
+		$customer_account_action = sanitize_key(
+			$customer_account_action
+		);
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			"[Order #{$order->get_id()}] Preparing payment customer",
+			[
+				'customer_user_id'     => $customer_user_id,
+				'account_action'       => $customer_account_action,
+				'order_customer_id'    => $order->get_meta(
+					'_bytenft_customer_user_id',
+					true
+				),
+				'force_new_account'    => $order->get_meta(
+					'_bytenft_force_new_account',
+					true
+				),
+			]
+		);
 
 		if (isset($_POST['billing_phone'])) {
 			$phone = sanitize_text_field(
@@ -1436,8 +1597,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'source'   => 'woocommerce',
 		]);
 
-		$customer_user_id = WC()->session->get('bytenft_customer_user_id');
-
 		$payload = [
 			'api_secret'       => $api_secret,
 			'api_public_key'   => $api_public_key,
@@ -1467,7 +1626,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		];
 
 			$countryCode = preg_replace('/[^0-9]/', '', $country_code ?? '');
-$payload['country_code'] = '+' . $countryCode;
+		$payload['country_code'] = '+' . $countryCode;
 
 		return $payload;
 	}
