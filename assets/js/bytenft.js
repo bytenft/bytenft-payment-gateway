@@ -34,6 +34,7 @@
             buttonObserver: null,
             blockEventsBound: false,
             popupStarted: null,
+            customerUserId: null,
         },
 
         /* =========================================================
@@ -90,6 +91,7 @@
          * ========================================================= */
 
         bindClassicCheckout: function () {
+
             const self = this;
 
             $('form.checkout, form#wcf-embed-checkout-form, form.wcf-embed-checkout-form-steps')
@@ -98,37 +100,89 @@
 
                     const $form = $(this);
 
-                    if (!self.canProceed('Classic')) return false;
-                    if (self.state.requestInFlightClassic) return false;
+                    if (!self.canProceed('Classic')) {
+                        return false;
+                    }
+
+                    if (self.state.requestInFlightClassic) {
+                        return false;
+                    }
 
                     self.state.requestInFlightClassic = true;
 
                     self.setStatus('validating');
+
                     self.clearCheckoutErrors();
 
                     const phone = self.getPhoneNumber($form);
+
                     if (phone && /[^0-9]/.test(phone)) {
-                        self.showCheckoutError('Please enter a valid phone number (numeric values only).');
+
+                        self.showCheckoutError(
+                            'Please enter a valid phone number (numeric values only).'
+                        );
+
                         self.releaseLock('Classic');
                         self.setStatus('idle');
+
                         return false;
                     }
 
-                    self.setStatus('popup');
+                    /*
+                    * First validate customer account.
+                    */
+                    self.checkCustomerAccount()
+                        .then(function (customerResult) {
 
-                   const popup = self.openPopupImmediately();
+                            /*
+                            * Customer cancelled confirmation.
+                            */
+                            if (customerResult.cancelled) {
 
-                    if (!popup) {
-                        self.releaseLock('Classic');
-                        self.setStatus('idle');
-                        return false;
-                    }
+                                self.releaseLock('Classic');
+                                self.setStatus('idle');
 
-                    // 3. NOW move to processing
-                    self.setStatus('processing');
+                                return;
+                            }
 
-                    // 4. Start AJAX AFTER popup exists
-                    self.handleClassicCheckout($form);
+                            /*
+                            * Save resolved customer ID in state.
+                            */
+                            self.state.customerUserId =
+                                customerResult.user_id || null;
+
+                            /*
+                            * Now open payment popup.
+                            */
+                            self.setStatus('popup');
+
+                            const popup = self.openPopupImmediately();
+
+                            if (!popup) {
+
+                                self.releaseLock('Classic');
+                                self.setStatus('idle');
+
+                                return;
+                            }
+
+                            self.setStatus('processing');
+
+                            self.handleClassicCheckout($form);
+                        })
+                        .catch(function (message) {
+
+                            self.releaseLock('Classic');
+                            self.setStatus('idle');
+
+                            self.showCheckoutError(message);
+                        });
+
+                    /*
+                    * Important:
+                    * We prevent the native WooCommerce checkout.
+                    * We will submit it ourselves after confirmation.
+                    */
                     return false;
                 });
         },
@@ -268,10 +322,20 @@
             // Form payload compilation handles scattered form fields elegantly
             const dataPayload = self.buildCheckoutPayload();
 
+            const payload = new URLSearchParams(dataPayload);
+
+            if (self.state.customerUserId) {
+
+                payload.set(
+                    'bytenft_customer_user_id',
+                    self.state.customerUserId
+                );
+            }
+
             $.ajax({
                 type: 'POST',
                 url: wc_checkout_params.checkout_url,
-                data: dataPayload,
+                data: payload.toString(),
                 dataType: 'json',
                 success: function (response) {
                     self.state.requestInFlightClassic = false;
@@ -296,141 +360,395 @@
             }
 
             this.state.blockEventsBound = true;
-            
+
             const self = this;
 
             // UX: provide feedback if button is disabled due to background Store API sync
-            const observeButton = function() {
-                const btn = document.querySelector('.wc-block-components-checkout-place-order-button');
+            const observeButton = function () {
+
+                const btn = document.querySelector(
+                    '.wc-block-components-checkout-place-order-button'
+                );
+
                 if (!btn) {
                     setTimeout(observeButton, 500);
                     return;
                 }
-                
-                let feedbackNote = document.getElementById('bytenft-sync-note');
+
+                let feedbackNote = document.getElementById(
+                    'bytenft-sync-note'
+                );
+
                 if (!feedbackNote) {
+
                     feedbackNote = document.createElement('div');
+
                     feedbackNote.id = 'bytenft-sync-note';
+
                     feedbackNote.style.color = '#777';
                     feedbackNote.style.fontSize = '13px';
                     feedbackNote.style.marginTop = '8px';
                     feedbackNote.style.display = 'none';
-                    feedbackNote.innerText = 'Verifying payment option…';
-                    btn.parentNode.insertBefore(feedbackNote, btn.nextSibling);
+
+                    feedbackNote.innerText =
+                        'Verifying payment option…';
+
+                    btn.parentNode.insertBefore(
+                        feedbackNote,
+                        btn.nextSibling
+                    );
                 }
 
                 // Remove previous observer
                 if (self.state.buttonObserver) {
+
                     self.state.buttonObserver.disconnect();
+
                     self.state.buttonObserver = null;
                 }
 
-                const observer = new MutationObserver(function(mutations) {
-                    mutations.forEach(function(mutation) {
-                        if (mutation.attributeName === 'disabled') {
-                            const $form = $('form.wc-block-checkout__form');
-                            const selected = $form.find('input[name="radio-control-wc-payment-method-options"]:checked').val();
-                            if (btn.hasAttribute('disabled') && selected === self.PAYMENT_METHOD && !self.state.requestInFlightBlock) {
+                const observer = new MutationObserver(
+                    function (mutations) {
+
+                        mutations.forEach(function (mutation) {
+
+                            if (mutation.attributeName !== 'disabled') {
+                                return;
+                            }
+
+                            const $form = $(
+                                'form.wc-block-checkout__form'
+                            );
+
+                            const selected = $form.find(
+                                'input[name="radio-control-wc-payment-method-options"]:checked'
+                            ).val();
+
+                            if (
+                                btn.hasAttribute('disabled') &&
+                                selected === self.PAYMENT_METHOD &&
+                                !self.state.requestInFlightBlock
+                            ) {
+
                                 feedbackNote.style.display = 'block';
+
                             } else {
+
                                 feedbackNote.style.display = 'none';
                             }
-                        }
-                    });
-                });
+                        });
+                    }
+                );
+
                 observer.observe(btn, {
                     attributes: true
                 });
 
                 self.state.buttonObserver = observer;
             };
+
             observeButton();
 
-            document.addEventListener('click', function (e) {
-                const btn = e.target.closest('.wc-block-components-checkout-place-order-button');
-                if (!btn) return;
 
-                const $form = $('form.wc-block-checkout__form');
-                if (!$form.length) return;
+            /*
+            * =========================================================
+            * BLOCK CHECKOUT PLACE ORDER
+            * =========================================================
+            */
 
-                const selected = $form.find(
-                    'input[name="radio-control-wc-payment-method-options"]:checked'
-                ).val();
+            document.addEventListener(
+                'click',
+                function (e) {
 
-                if (selected !== self.PAYMENT_METHOD) return;
+                    const btn = e.target.closest(
+                        '.wc-block-components-checkout-place-order-button'
+                    );
 
-                e.preventDefault();
-                e.stopImmediatePropagation();
+                    if (!btn) {
+                        return;
+                    }
 
-                if (!self.canProceed('Block')) return;
-                if (self.state.requestInFlightBlock) return;
+                    const $form = $(
+                        'form.wc-block-checkout__form'
+                    );
 
-                self.state.requestInFlightBlock = true;
+                    if (!$form.length) {
+                        return;
+                    }
 
-                self.setStatus('validating');
-                self.clearCheckoutErrors();
+                    const selected = $form.find(
+                        'input[name="radio-control-wc-payment-method-options"]:checked'
+                    ).val();
 
-                self.setStatus('popup'); 
-                
-                const popup = self.openPopupImmediately();
+                    /*
+                    * Not ByteNFT payment method.
+                    * Let WooCommerce handle it normally.
+                    */
+                    if (selected !== self.PAYMENT_METHOD) {
+                        return;
+                    }
 
-                if (!popup) {
-                    self.releaseLock('Block');
-                    self.setStatus('idle');
-                    return;
-                }
+                    /*
+                    * Stop WooCommerce Blocks from submitting
+                    * before our validation is complete.
+                    */
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
 
-                self.setStatus('processing');
-                self.handleBlockCheckout($form);
-            }, true);
+                    if (!self.canProceed('Block')) {
+                        return;
+                    }
 
-            // Prevent native block context from bypassing validation filters
-            document.addEventListener('submit', function (e) {
-                const form = e.target;
-                if (!form.classList.contains('wc-block-checkout__form')) return;
+                    if (self.state.requestInFlightBlock) {
+                        return;
+                    }
 
-                const selected = form.querySelector(
-                    'input[name="radio-control-wc-payment-method-options"]:checked'
-                )?.value;
+                    self.state.requestInFlightBlock = true;
 
-                if (selected !== self.PAYMENT_METHOD) return;
+                    self.setStatus('validating');
 
-                e.preventDefault();
-                e.stopImmediatePropagation();
-            }, true);
+                    self.clearCheckoutErrors();
+
+
+                    /*
+                    * =================================================
+                    * STEP 1: CHECK CUSTOMER ACCOUNT
+                    * =================================================
+                    *
+                    * This calls /api/check-customer through the
+                    * WordPress AJAX endpoint.
+                    *
+                    * If no confirmation is required:
+                    *      continue automatically.
+                    *
+                    * If confirmation is required:
+                    *      show the customer confirmation popup.
+                    */
+
+                    self.checkCustomerAccount()
+
+                        .then(function (customerResult) {
+
+                            console.log(
+                                '[Bytenft] Customer validation result:',
+                                customerResult
+                            );
+
+
+                            /*
+                            * =================================================
+                            * CUSTOMER CANCELLED
+                            * =================================================
+                            */
+
+                            if (customerResult.cancelled) {
+
+                                console.log(
+                                    '[Bytenft] Customer cancelled account selection'
+                                );
+
+                                self.releaseLock('Block');
+
+                                self.setStatus('idle');
+
+                                return;
+                            }
+
+
+                            /*
+                            * =================================================
+                            * SAVE CUSTOMER USER ID
+                            * =================================================
+                            *
+                            * Example:
+                            *
+                            * API:
+                            * user_id: 6527
+                            *
+                            * State:
+                            * customerUserId = 6527
+                            */
+
+                            self.state.customerUserId =
+                                customerResult.user_id || null;
+
+
+                            console.log(
+                                '[Bytenft] Selected customer user ID:',
+                                self.state.customerUserId
+                            );
+
+
+                            /*
+                            * =================================================
+                            * STEP 2: OPEN PAYMENT POPUP
+                            * =================================================
+                            *
+                            * We only open the payment popup after the
+                            * customer confirmation has been completed.
+                            */
+
+                            self.setStatus('popup');
+
+                            const popup =
+                                self.openPopupImmediately();
+
+                            if (!popup) {
+
+                                self.releaseLock('Block');
+
+                                self.setStatus('idle');
+
+                                return;
+                            }
+
+
+                            /*
+                            * =================================================
+                            * STEP 3: START PAYMENT PROCESSING
+                            * =================================================
+                            */
+
+                            self.setStatus('processing');
+
+                            self.handleBlockCheckout($form);
+
+                        })
+
+                        .catch(function (message) {
+
+                            console.log(
+                                '[Bytenft] Customer validation failed:',
+                                message
+                            );
+
+                            self.releaseLock('Block');
+
+                            self.setStatus('idle');
+
+                            self.showCheckoutError(
+                                message ||
+                                'Unable to validate customer information. Please try again.'
+                            );
+                        });
+                },
+                true
+            );
+
+
+            /*
+            * =========================================================
+            * PREVENT NATIVE BLOCK SUBMIT
+            * =========================================================
+            *
+            * This prevents WooCommerce Blocks from bypassing our
+            * customer validation and directly submitting the checkout.
+            */
+
+            document.addEventListener(
+                'submit',
+                function (e) {
+
+                    const form = e.target;
+
+                    if (
+                        !form.classList.contains(
+                            'wc-block-checkout__form'
+                        )
+                    ) {
+                        return;
+                    }
+
+                    const selected = form.querySelector(
+                        'input[name="radio-control-wc-payment-method-options"]:checked'
+                    )?.value;
+
+                    if (selected !== self.PAYMENT_METHOD) {
+                        return;
+                    }
+
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                },
+                true
+            );
         },
 
         handleBlockCheckout: function ($form) {
+
             const self = this;
 
-            self.state.button = $('.wc-block-components-checkout-place-order-button');
-            self.state.buttonText = self.state.button.text();
+            self.state.button =
+                $('.wc-block-components-checkout-place-order-button');
 
-            self.state.button.prop('disabled', true).addClass('loading').text('Processing...');
+            self.state.buttonText =
+                self.state.button.text();
+
+            self.state.button
+                .prop('disabled', true)
+                .addClass('loading')
+                .text('Processing...');
+
 
             let data = self.buildCheckoutPayload();
-            data += '&action=bytenft_block_gateway_process';
-            data += '&nonce=' + encodeURIComponent(bytenft_params.bytenft_nonce);
+
+            const payload = new URLSearchParams(data);
+
+
+            /*
+            * Send the confirmed existing customer ID.
+            */
+            if (self.state.customerUserId) {
+
+                payload.set(
+                    'bytenft_customer_user_id',
+                    self.state.customerUserId
+                );
+            }
+
+
+            payload.set(
+                'action',
+                'bytenft_block_gateway_process'
+            );
+
+            payload.set(
+                'nonce',
+                bytenft_params.bytenft_nonce
+            );
+
 
             $.ajax({
+
                 type: 'POST',
+
                 url: bytenft_params.ajax_url,
-                data: data,
+
+                data: payload.toString(),
+
                 success: function (response) {
+
                     self.state.requestInFlightBlock = false;
+
                     self.handleResponse(response);
                 },
+
                 error: function (xhr) {
 
                     self.state.requestInFlightBlock = false;
 
-                    console.log('[Bytenft] block checkout error:', xhr.responseText);
+                    console.log(
+                        '[Bytenft] block checkout error:',
+                        xhr.responseText
+                    );
 
-                    let message = 'There was an error processing your order.';
+                    let message =
+                        'There was an error processing your order.';
 
                     try {
 
-                        let response = JSON.parse(xhr.responseText);
+                        let response =
+                            JSON.parse(xhr.responseText);
 
                         message =
                             response?.message ||
@@ -438,51 +756,52 @@
                             response?.data?.error ||
                             message;
 
-
-                        // WooCommerce checkout error format
                         if (
                             response?.payment_result?.payment_details &&
-                            Array.isArray(response.payment_result.payment_details)
+                            Array.isArray(
+                                response.payment_result.payment_details
+                            )
                         ) {
 
-                            const errorItem = response.payment_result.payment_details.find(
-                                item => item.key === 'message'
-                            );
+                            const errorItem =
+                                response.payment_result.payment_details.find(
+                                    item => item.key === 'message'
+                                );
 
                             if (errorItem?.value) {
                                 message = errorItem.value;
                             }
                         }
 
-
-                        // WooCommerce blocks API error format
                         if (
                             response?.data?.payment_result?.payment_details &&
-                            Array.isArray(response.data.payment_result.payment_details)
+                            Array.isArray(
+                                response.data.payment_result.payment_details
+                            )
                         ) {
 
-                            const errorItem = response.data.payment_result.payment_details.find(
-                                item => item.key === 'message'
-                            );
+                            const errorItem =
+                                response.data.payment_result.payment_details.find(
+                                    item => item.key === 'message'
+                                );
 
                             if (errorItem?.value) {
                                 message = errorItem.value;
                             }
                         }
-
 
                     } catch (e) {
 
-                        console.log('[Bytenft] Unable to parse error response');
-
+                        console.log(
+                            '[Bytenft] Unable to parse error response'
+                        );
                     }
-
 
                     self.failSafe(message);
                 }
             });
         },
-
+        
         /* =========================================================
          * RESPONSE HANDLER
          * ========================================================= */
@@ -873,92 +1192,92 @@
 
         validateRequiredFields: function ($form) {
 
-    let firstInvalid = null;
-    const isShippingActive = this.getShippingState($form);
+            let firstInvalid = null;
+            const isShippingActive = this.getShippingState($form);
 
-    const messages = {
-        billing_first_name: 'Please enter a valid first name.',
-        billing_last_name: 'Please enter a valid last name.',
-        billing_address_1: 'Please enter a valid street address.',
-        billing_city: 'Please enter a valid town / city.',
-        billing_state: 'Please select a state.',
-        billing_postcode: 'Please enter a valid postcode / ZIP.',
-        billing_email: 'Please enter a valid email address.',
+            const messages = {
+                billing_first_name: 'Please enter a valid first name.',
+                billing_last_name: 'Please enter a valid last name.',
+                billing_address_1: 'Please enter a valid street address.',
+                billing_city: 'Please enter a valid town / city.',
+                billing_state: 'Please select a state.',
+                billing_postcode: 'Please enter a valid postcode / ZIP.',
+                billing_email: 'Please enter a valid email address.',
 
-        shipping_first_name: 'Please enter a valid first name.',
-        shipping_last_name: 'Please enter a valid last name.',
-        shipping_address_1: 'Please enter a valid street address.',
-        shipping_city: 'Please enter a valid town / city.',
-        shipping_state: 'Please select a state.',
-        shipping_postcode: 'Please enter a valid postcode / ZIP.'
-    };
+                shipping_first_name: 'Please enter a valid first name.',
+                shipping_last_name: 'Please enter a valid last name.',
+                shipping_address_1: 'Please enter a valid street address.',
+                shipping_city: 'Please enter a valid town / city.',
+                shipping_state: 'Please select a state.',
+                shipping_postcode: 'Please enter a valid postcode / ZIP.'
+            };
 
-    const $fields = $('form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form')
-        .find('[required], .validate-required input, .validate-required select, .validate-required textarea');
+            const $fields = $('form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form')
+                .find('[required], .validate-required input, .validate-required select, .validate-required textarea');
 
-    $fields.each(function () {
+            $fields.each(function () {
 
-        const $field = $(this);
-        const name = $field.attr('name') || '';
+                const $field = $(this);
+                const name = $field.attr('name') || '';
 
-        if ($field.attr('type') === 'hidden') return;
+                if ($field.attr('type') === 'hidden') return;
 
-        // Phone is optional
-        if (name === 'billing_phone') return;
+                // Phone is optional
+                if (name === 'billing_phone') return;
 
-        if (name.indexOf('shipping_') === 0 && !isShippingActive) return;
+                if (name.indexOf('shipping_') === 0 && !isShippingActive) return;
 
-        const value = ($field.val() || '').trim();
+                const value = ($field.val() || '').trim();
 
-        const $wrapper = $field.closest('.form-row, .wc-block-components-text-input, .form-row-first, .form-row-last');
+                const $wrapper = $field.closest('.form-row, .wc-block-components-text-input, .form-row-first, .form-row-last');
 
-        $wrapper.find('.bytenft-field-error').remove();
+                $wrapper.find('.bytenft-field-error').remove();
 
-        if (!value) {
+                if (!value) {
 
-            $wrapper.addClass('woocommerce-invalid woocommerce-invalid-required-field');
+                    $wrapper.addClass('woocommerce-invalid woocommerce-invalid-required-field');
 
-            $field.css({
-                borderColor: '#d63638',
-                boxShadow: '0 0 0 1px #d63638'
+                    $field.css({
+                        borderColor: '#d63638',
+                        boxShadow: '0 0 0 1px #d63638'
+                    });
+
+                    $field.after(
+                        '<div class="bytenft-field-error" style="color:#d63638;font-size:13px;margin-top:10px;">' +
+                        (messages[name] || 'This field is required.') +
+                        '</div>'
+                    );
+
+                    if (!firstInvalid) {
+                        firstInvalid = $field;
+                    }
+
+                } else {
+
+                    $wrapper.removeClass('woocommerce-invalid woocommerce-invalid-required-field');
+
+                    $field.css({
+                        borderColor: '',
+                        boxShadow: ''
+                    });
+
+                    $wrapper.find('.bytenft-field-error').remove();
+                }
+
             });
 
-            $field.after(
-                '<div class="bytenft-field-error" style="color:#d63638;font-size:13px;margin-top:10px;">' +
-                (messages[name] || 'This field is required.') +
-                '</div>'
-            );
+            if (firstInvalid) {
+                setTimeout(function () {
+                    firstInvalid.focus();
+                }, 100);
 
-            if (!firstInvalid) {
-                firstInvalid = $field;
+                return {
+                    message: 'Please correct the highlighted fields.'
+                };
             }
 
-        } else {
-
-            $wrapper.removeClass('woocommerce-invalid woocommerce-invalid-required-field');
-
-            $field.css({
-                borderColor: '',
-                boxShadow: ''
-            });
-
-            $wrapper.find('.bytenft-field-error').remove();
-        }
-
-    });
-
-    if (firstInvalid) {
-        setTimeout(function () {
-            firstInvalid.focus();
-        }, 100);
-
-        return {
-            message: 'Please correct the highlighted fields.'
-        };
-    }
-
-    return null;
-},
+            return null;
+        },
 
         getShippingState: function ($form) {
             const $root = $('body');
@@ -1030,6 +1349,7 @@
             this.state.requestInFlightBlock = false;
             this.state.finalSuccess = false;
             this.state.popupStarted = null;
+            this.state.customerUserId = null;
 
             const $form = $('form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form, .wcf-embed-checkout-form-steps');
             if ($form.length) {
@@ -1301,7 +1621,223 @@
                     this.value = this.value.replace(/[^A-Za-z0-9\s,.\-#]/g, '');
                 }
             );
-        }
+        },
+
+        /**
+         * =========================================================
+         * CUSTOMER ACCOUNT CONFIRMATION
+         * =========================================================
+         */
+
+        checkCustomerAccount: function () {
+            const self = this;
+
+            return new Promise(function (resolve, reject) {
+
+                const data = self.buildCheckoutPayload();
+
+                $.ajax({
+                    type: 'POST',
+                    url: bytenft_params.ajax_url,
+                    dataType: 'json',
+                    data: {
+                        action: 'bytenft_check_customer_account',
+                        security: bytenft_params.bytenft_nonce,
+                        checkout_data: data
+                    },
+
+                    success: function (response) {
+
+                        console.log('[Bytenft] Customer account response:', response);
+
+                        if (!response || response.success !== true) {
+                            reject(
+                                response?.data?.message ||
+                                response?.message ||
+                                'Unable to validate customer information.'
+                            );
+                            return;
+                        }
+
+                        const data = response.data || {};
+
+                        /*
+                        * No existing account / no confirmation required.
+                        */
+                        if (
+                            data.action !== 'confirmation_required' ||
+                            !data.requires_confirmation
+                        ) {
+                            resolve({
+                                confirmed: false,
+                                user_id: null
+                            });
+
+                            return;
+                        }
+
+                        /*
+                        * Existing account found.
+                        * Ask the customer before continuing.
+                        */
+                        self.showCustomerConfirmation(
+                            data.message ||
+                            'You already have an account with this phone number. Would you like to continue using that account?'
+                        ).then(function (confirmed) {
+
+                            if (!confirmed) {
+
+                                resolve({
+                                    confirmed: false,
+                                    cancelled: true,
+                                    user_id: null
+                                });
+
+                                return;
+                            }
+
+                            resolve({
+                                confirmed: true,
+                                user_id: data.user_id || null
+                            });
+
+                        }).catch(function () {
+
+                            resolve({
+                                confirmed: false,
+                                cancelled: true,
+                                user_id: null
+                            });
+
+                        });
+                    },
+
+                    error: function (xhr) {
+
+                        console.log(
+                            '[Bytenft] Customer account validation error:',
+                            xhr.responseText
+                        );
+
+                        reject(
+                            'Unable to validate customer information. Please try again.'
+                        );
+                    }
+                });
+            });
+        },
+
+        /**
+         * Show customer confirmation popup.
+         */
+        showCustomerConfirmation: function (message) {
+
+            return new Promise(function (resolve) {
+
+                /*
+                * Remove existing modal.
+                */
+                $('#bytenft-customer-confirmation').remove();
+
+                const html = `
+                    <div id="bytenft-customer-confirmation"
+                        style="
+                            position:fixed;
+                            top:0;
+                            left:0;
+                            right:0;
+                            bottom:0;
+                            background:rgba(0,0,0,.55);
+                            z-index:999999;
+                            display:flex;
+                            align-items:center;
+                            justify-content:center;
+                            padding:20px;
+                        ">
+
+                        <div style="
+                            background:#fff;
+                            width:100%;
+                            max-width:500px;
+                            border-radius:8px;
+                            padding:30px;
+                            box-shadow:0 10px 40px rgba(0,0,0,.25);
+                            text-align:center;
+                        ">
+
+                            <h3 style="
+                                margin:0 0 15px;
+                                font-size:20px;
+                            ">
+                                Existing Account Found
+                            </h3>
+
+                            <p style="
+                                margin:0 0 25px;
+                                font-size:15px;
+                                line-height:1.6;
+                            ">
+                                ${message}
+                            </p>
+
+                            <div style="
+                                display:flex;
+                                gap:12px;
+                                justify-content:center;
+                            ">
+
+                                <button
+                                    type="button"
+                                    id="bytenft-customer-confirm-cancel"
+                                    style="
+                                        padding:12px 24px;
+                                        border:1px solid #ccc;
+                                        background:#fff;
+                                        border-radius:5px;
+                                        cursor:pointer;
+                                    "
+                                >
+                                    Cancel
+                                </button>
+
+                                <button
+                                    type="button"
+                                    id="bytenft-customer-confirm-continue"
+                                    style="
+                                        padding:12px 24px;
+                                        border:0;
+                                        background:#000;
+                                        color:#fff;
+                                        border-radius:5px;
+                                        cursor:pointer;
+                                    "
+                                >
+                                    Continue
+                                </button>
+
+                            </div>
+
+                        </div>
+                    </div>
+                `;
+
+                $('body').append(html);
+
+                $('#bytenft-customer-confirm-cancel').on('click', function () {
+
+                    $('#bytenft-customer-confirmation').remove();
+
+                    resolve(false);
+                });
+
+                $('#bytenft-customer-confirm-continue').on('click', function () {
+
+                    $('#bytenft-customer-confirmation').remove();
+
+                    resolve(true);
+                });
+            });
+        },
     };
 
     $(document).ready(function () {

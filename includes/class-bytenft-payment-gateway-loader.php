@@ -77,6 +77,16 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$order->delete_meta_data('_wc_order_attribution_session_entry');
 		}, 10);
 
+		add_action(
+			'wp_ajax_bytenft_check_customer_account',
+			[ $this, 'bytenft_check_customer_account' ]
+		);
+
+		add_action(
+			'wp_ajax_nopriv_bytenft_check_customer_account',
+			[ $this, 'bytenft_check_customer_account' ]
+		);
+
 		add_action('woocommerce_before_checkout_form', [$this, 'bytenft_show_checkout_error']);
 	}
 
@@ -1421,5 +1431,343 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				],
 			]
 		);
+	}
+
+
+	public function bytenft_check_customer_account() {
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account AJAX handler reached',
+			[
+				'has_security'      => isset( $_POST['security'] ),
+				'has_checkout_data' => isset( $_POST['checkout_data'] ),
+			]
+		);
+
+		if ( ! isset( $_POST['security'] ) ) {
+
+			wp_send_json_error(
+				[
+					'message' => 'Security token is missing.',
+				],
+				400
+			);
+		}
+
+		// $nonce = sanitize_text_field(
+		// 	wp_unslash( $_POST['security'] )
+		// );
+
+		// if ( ! wp_verify_nonce( $nonce, 'bytenft-check-customer' ) ) {
+
+		// 	ByteNFT_Payment_Gateway_Logger::error(
+		// 		'Customer account AJAX nonce verification failed'
+		// 	);
+
+		// 	wp_send_json_error(
+		// 		[
+		// 			'message' => 'Security check failed. Please refresh the page and try again.',
+		// 		],
+		// 		403
+		// 	);
+		// }
+
+		$checkout_data = [];
+
+		if ( isset( $_POST['checkout_data'] ) ) {
+
+			parse_str(
+				wp_unslash( $_POST['checkout_data'] ),
+				$checkout_data
+			);
+		}
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account AJAX checkout data parsed',
+			[
+				'checkout_data' => $checkout_data,
+			]
+		);
+
+		$result = $this->bytenft_validate_customer_account(
+			$checkout_data
+		);
+
+		if ( empty( $result['valid'] ) ) {
+
+			wp_send_json_error(
+				[
+					'message'      => $result['message']
+						?? 'Unable to validate customer information.',
+					'status_code'  => $result['status_code'] ?? null,
+					'api_response' => $result['api_response'] ?? null,
+				],
+				400
+			);
+		}
+
+		/*
+		* Store the validated ByteNFT customer ID in the WooCommerce session.
+		*/
+		if ( ! empty( $result['user_id'] ) ) {
+
+			$customer_user_id = absint( $result['user_id'] );
+
+			if ( WC()->session ) {
+				WC()->session->set(
+					'bytenft_customer_user_id',
+					$customer_user_id
+				);
+			}
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				'Customer user ID stored in WooCommerce session',
+				[
+					'customer_user_id' => $customer_user_id,
+				]
+			);
+		}
+
+		wp_send_json_success( $result );
+	}
+
+	/**
+	 * Validate customer account against ByteNFT API.
+	 *
+	 * Uses the existing WooCommerce checkout values.
+	 *
+	 * @return bool
+	 */
+	private function bytenft_validate_customer_account( $checkout_data = null ) {
+
+		/*
+		* Get checkout values.
+		*/
+		if ( is_array( $checkout_data ) ) {
+
+			$email = isset( $checkout_data['billing_email'] )
+				? sanitize_email( $checkout_data['billing_email'] )
+				: '';
+
+			// WooCommerce Blocks uses contact_email.
+			if ( empty( $email ) && isset( $checkout_data['contact_email'] ) ) {
+				$email = sanitize_email( $checkout_data['contact_email'] );
+			}
+
+			$phone = isset( $checkout_data['billing_phone'] )
+				? sanitize_text_field( $checkout_data['billing_phone'] )
+				: '';
+
+			$country_code = isset( $checkout_data['billing_country'] )
+				? sanitize_text_field( $checkout_data['billing_country'] )
+				: '';
+
+		} else {
+
+			$email = isset( $_POST['billing_email'] )
+				? sanitize_email( wp_unslash( $_POST['billing_email'] ) )
+				: '';
+
+			$phone = isset( $_POST['billing_phone'] )
+				? sanitize_text_field( wp_unslash( $_POST['billing_phone'] ) )
+				: '';
+
+			$country_code = isset( $_POST['billing_country'] )
+				? sanitize_text_field( wp_unslash( $_POST['billing_country'] ) )
+				: '';
+		}
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account validation started',
+			[
+				'email'        => $email,
+				'phone'        => $phone,
+				'country_code' => $country_code,
+			]
+		);
+
+		/*
+		* Nothing to validate.
+		*/
+		if ( empty( $email ) && empty( $phone ) ) {
+			return [
+				'valid'                 => true,
+				'requires_confirmation' => false,
+			];
+		}
+
+		/*
+		* Customer validation API.
+		*/
+		$api_url = esc_url_raw(
+			$this->base_url . '/api/check-customer'
+		);
+
+		$payload = [
+			'email'        => $email ?: null,
+			'phone_number' => $phone ?: null,
+			'country_code' => $country_code ?: null,
+		];
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account validation API request',
+			[
+				'url'     => $api_url,
+				'payload' => $payload,
+			]
+		);
+
+		$response = wp_remote_post(
+			$api_url,
+			[
+				'method'    => 'POST',
+				'timeout'   => 30,
+				'body'      => $payload,
+				'headers'   => [
+					'Content-Type'  => 'application/x-www-form-urlencoded',
+					'Authorization' => 'Bearer ' . sanitize_text_field( $this->public_key ),
+				],
+				'sslverify' => true,
+			]
+		);
+
+		/*
+		* WordPress HTTP error.
+		*/
+		if ( is_wp_error( $response ) ) {
+
+			$error_message = $response->get_error_message();
+
+			ByteNFT_Payment_Gateway_Logger::error(
+				'Customer account validation WP HTTP error',
+				[
+					'error' => $error_message,
+				]
+			);
+
+			return [
+				'valid'   => false,
+				'message' => $error_message,
+			];
+		}
+
+		/*
+		* Get API response.
+		*/
+		$status_code = wp_remote_retrieve_response_code( $response );
+		$body        = wp_remote_retrieve_body( $response );
+
+		$response_data = json_decode( $body, true );
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account validation API response',
+			[
+				'status_code' => $status_code,
+				'raw_body'    => $body,
+				'response'    => $response_data,
+			]
+		);
+
+		/*
+		* Invalid JSON response.
+		*/
+		if ( ! is_array( $response_data ) ) {
+
+			return [
+				'valid'   => false,
+				'message' => sprintf(
+					'Invalid response from customer validation service. HTTP %d.',
+					$status_code
+				),
+			];
+		}
+
+		/*
+		* API returned an error.
+		*/
+		if (
+			$status_code >= 400 ||
+			( $response_data['status'] ?? '' ) === 'error'
+		) {
+
+			/*
+			* Try all possible message locations.
+			*/
+			$message =
+				$response_data['message']
+				?? $response_data['data']['message']
+				?? $response_data['error']
+				?? 'Unable to validate customer information.';
+
+			ByteNFT_Payment_Gateway_Logger::error(
+				'Customer account validation API returned error',
+				[
+					'status_code' => $status_code,
+					'message'     => $message,
+					'response'    => $response_data,
+				]
+			);
+
+			return [
+				'valid'      => false,
+				'message'    => sanitize_text_field( $message ),
+				'status_code' => $status_code,
+				'api_response' => $response_data,
+			];
+		}
+
+		/*
+		* Successful API response.
+		*/
+		$data = $response_data['data'] ?? [];
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account validation result',
+			[
+				'action'                => $data['action'] ?? null,
+				'requires_confirmation' => $data['requires_confirmation'] ?? null,
+				'existing_user'         => $data['existing_user'] ?? null,
+				'user_id'               => $data['user_id'] ?? null,
+			]
+		);
+
+		/*
+		* Existing customer confirmation required.
+		*/
+		if (
+			( $data['action'] ?? '' ) === 'confirmation_required'
+			|| ! empty( $data['requires_confirmation'] )
+		) {
+
+			return [
+				'valid'                 => true,
+				'requires_confirmation' => true,
+				'action'                => 'confirmation_required',
+				'existing_user'         => ! empty( $data['existing_user'] ),
+				'user_id'               => isset( $data['user_id'] )
+					? absint( $data['user_id'] )
+					: 0,
+				'existing_phone'       => $data['existing_phone'] ?? null,
+				'message'              => ! empty( $data['message'] )
+					? sanitize_text_field( $data['message'] )
+					: __(
+						'An existing customer account was found. Would you like to continue using that account?',
+						'bytenft-payment-gateway'
+					),
+			];
+		}
+
+		/*
+		* Normal customer.
+		*/
+		return [
+			'valid'                 => true,
+			'requires_confirmation' => false,
+			'action'                => $data['action'] ?? null,
+			'existing_user'         => ! empty( $data['existing_user'] ),
+			'user_id'               => isset( $data['user_id'] )
+				? absint( $data['user_id'] )
+				: 0,
+		];
 	}
 }
