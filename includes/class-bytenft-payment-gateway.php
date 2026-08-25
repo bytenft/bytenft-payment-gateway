@@ -1290,37 +1290,25 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$resp_data
 				);
 
-				if (($resp_data['status'] ?? '') === 'error') {
+				if ( ( $resp_data['status'] ?? '' ) === 'error' ) {
 
-					// Always extract the API validation message
-					$error_msg = sanitize_text_field(
-						$resp_data['message']
-						?? $resp_data['context']['message']
-						?? 'Payment failed.'
-					);
+					$error_msg = $this->bytenft_format_api_error( $resp_data );
 
 					ByteNFT_Payment_Gateway_Logger::warning(
 						'Request-payment API returned an error',
 						[
-							'sandbox' => $this->sandbox,
+							'sandbox'  => $this->sandbox,
 							'response' => $resp_data,
-							'message' => $error_msg,
+							'errors'   => $resp_data['errors'] ?? null,
+							'message'  => $error_msg,
 						]
 					);
 
-					// Show WooCommerce notice for Classic Checkout
-					if (!$this->is_block_checkout_request() && is_checkout()) {
-						wc_add_notice($error_msg, 'error');
+					if ( ! $this->is_block_checkout_request() && is_checkout() ) {
+						wc_add_notice( $error_msg, 'error' );
 					}
 
-					// Return the API validation message for BOTH sandbox and live
-					return $this->build_response(
-						'fail',
-						$error_msg,
-						[],
-						400,
-						$order_id
-					);
+					return $this->build_response( 'fail', $error_msg, [], 400, $order_id );
 				}
 
 				// -------------------------------------------------
@@ -1492,6 +1480,67 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		return $response;
+	}
+
+	private function bytenft_format_api_error( $resp_data, $fallback = 'Payment failed.' ) {
+
+		// Some gateways return the body as a JSON string inside "response".
+		if ( is_string( $resp_data ) ) {
+			$decoded   = json_decode( $resp_data, true );
+			$resp_data = is_array( $decoded ) ? $decoded : [];
+		}
+
+		$labels = [
+			'phone_number'   => __( 'Phone number', 'bytenft-payment-gateway' ),
+			'customer_email' => __( 'Email address', 'bytenft-payment-gateway' ),
+			'first_name'     => __( 'First name', 'bytenft-payment-gateway' ),
+			'last_name'      => __( 'Last name', 'bytenft-payment-gateway' ),
+			'address_1'      => __( 'Street address', 'bytenft-payment-gateway' ),
+			'city'           => __( 'Town / City', 'bytenft-payment-gateway' ),
+			'state'          => __( 'State', 'bytenft-payment-gateway' ),
+			'zip'            => __( 'ZIP code', 'bytenft-payment-gateway' ),
+			'postcode'       => __( 'ZIP code', 'bytenft-payment-gateway' ),
+			'amount'         => __( 'Order total', 'bytenft-payment-gateway' ),
+		];
+
+		$lines = [];
+
+		if ( ! empty( $resp_data['errors'] ) && is_array( $resp_data['errors'] ) ) {
+
+			foreach ( $resp_data['errors'] as $field => $field_errors ) {
+
+				foreach ( (array) $field_errors as $err ) {
+
+					$err = sanitize_text_field( (string) $err );
+
+					if ( '' === $err ) {
+						continue;
+					}
+
+					$key = sanitize_key( $field );
+
+					// Replace the API's raw field slug with a friendly label.
+					if ( isset( $labels[ $key ] ) ) {
+						$err = preg_replace(
+							'/\b' . preg_quote( str_replace( '_', ' ', $key ), '/' ) . '\b/i',
+							$labels[ $key ],
+							$err
+						);
+					}
+
+					$lines[ $key . '|' . $err ] = $err; // de-dupe
+				}
+			}
+		}
+
+		if ( empty( $lines ) ) {
+			return sanitize_text_field(
+				(string) ( $resp_data['message'] ?? $resp_data['context']['message'] ?? $fallback )
+			);
+		}
+
+		// Each piece is already sanitized, so the <br> is safe to add afterwards.
+		return implode( '<br>', array_values( $lines ) );
 	}
 
 	private function is_block_checkout_request() {
@@ -1985,13 +2034,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					? sanitize_text_field( wp_unslash( $_POST['bytenft_consent'] ) )
 					: '';
 			}
-		}
-
-		// ---------------------------------------------------------------------
-		// Customer Account Validation
-		// ---------------------------------------------------------------------
-		if ( ! $this->bytenft_validate_customer_account() ) {
-			return false;
 		}
 
 		return true;
