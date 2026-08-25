@@ -942,6 +942,16 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		try {
 
+			// A reused order still carries the previous attempt's pay_id.
+			// If that attempt is dead, drop it so a fresh link is minted.
+			if ($order->get_meta('_bytenft_active_pay_id')
+				&& (in_array($order->get_meta('_bytenft_state'), ['failed', 'cancelled', 'expired'], true)
+					|| $order->has_status(['failed', 'cancelled']))) {
+
+				$order->delete_meta_data('_bytenft_active_pay_id');
+				$order->save();
+			}
+
 			// -------------------------------------------------
 			// 4. REUSE EXISTING PAYMENT LINK
 			// -------------------------------------------------
