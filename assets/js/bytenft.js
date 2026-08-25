@@ -1636,12 +1636,21 @@
 
                 // Create container outside the React tree if it doesn't exist
                 if (!container) {
+
                     container = document.createElement('div');
+
                     container.id = 'bytenft-checkout-errors';
-                    container.className = 'wc-block-components-notices';
-                    
-                    // FIX: Safely insert BEFORE the entire block checkout tree, NOT inside it.
-                    blockCheckoutWrapper.parentNode.insertBefore(container, blockCheckoutWrapper);
+
+                    container.className = 'bytenft-checkout-errors';
+
+                    /*
+                    * Keep this OUTSIDE the WooCommerce React tree.
+                    */
+                    const parent = blockCheckoutWrapper.parentNode;
+
+                    if (parent) {
+                        parent.insertBefore(container, blockCheckoutWrapper);
+                    }
                 }
 
                 // Parse incoming string while preserving HTML
@@ -1753,21 +1762,52 @@
 
         clearCheckoutErrors: function () {
 
-            $('.woocommerce-notices-wrapper, .wcf-woocommerce-notices-wrapper, .woocommerce-error, .wc-block-components-notice-banner, .woocommerce-message, .woocommerce-info, .bytenft-error-wrap').remove();
+            /*
+            * Remove ONLY ByteNFT's own error container.
+            *
+            * This container is intentionally created OUTSIDE the
+            * WooCommerce Blocks React tree.
+            */
+            const byteNFTError = document.getElementById(
+                'bytenft-checkout-errors'
+            );
 
-            $('#bytenft-checkout-errors').remove();
+            if (byteNFTError && byteNFTError.parentNode) {
+                byteNFTError.parentNode.removeChild(byteNFTError);
+            }
 
+            /*
+            * Classic checkout:
+            * ByteNFT owns this wrapper, so it is safe to remove.
+            */
             $('.bytenft-error-wrap').remove();
 
+            /*
+            * ByteNFT's own field errors are also safe to remove.
+            */
             $('.bytenft-field-error').remove();
 
+            /*
+            * Remove only classes/styles that ByteNFT itself added.
+            */
             $('.woocommerce-invalid').removeClass(
                 'woocommerce-invalid woocommerce-invalid-required-field'
             );
 
-            $('input, select, textarea').css({
-                borderColor: '',
-                boxShadow: ''
+            $('input, select, textarea').each(function () {
+
+                /*
+                * Only clear styles that ByteNFT adds.
+                */
+                if (
+                    $(this).css('box-shadow') === 'rgb(214, 54, 56) 0px 0px 0px 1px' ||
+                    $(this).css('border-color') === 'rgb(214, 54, 56)'
+                ) {
+                    $(this).css({
+                        borderColor: '',
+                        boxShadow: ''
+                    });
+                }
             });
         },
 
