@@ -187,17 +187,33 @@
 
                         self.handleClassicCheckout($form);
                     })
-                    .catch(function (message) {
+                    .catch(function (error) {
 
                         self.cleanupPopup();
 
                         self.releaseLock('Classic');
                         self.setStatus('idle');
 
-                        self.showCheckoutError(
-                            message ||
-                            'Unable to validate customer information. Please try again.'
-                        );
+                        /*
+                        * User closed/cancelled the customer confirmation modal.
+                        * This is NOT an error, so do not show an error message.
+                        */
+                        if (error && error.cancelled === true) {
+
+                            console.log(
+                                '[Bytenft] Customer confirmation cancelled by user'
+                            );
+
+                            return;
+                        }
+
+                        const message =
+                            typeof error === 'string'
+                                ? error
+                                : error?.message ||
+                                'Unable to validate customer information. Please try again.';
+
+                        self.showCheckoutError(message);
                     });
 
                     /*
@@ -754,21 +770,36 @@
 
                         })
 
-                        .catch(function (message) {
+                        .catch(function (error) {
 
                             console.log(
                                 '[Bytenft] Customer validation failed:',
-                                message
+                                error
                             );
 
                             self.releaseLock('Block');
-
                             self.setStatus('idle');
 
-                            self.showCheckoutError(
-                                message ||
-                                'Unable to validate customer information. Please try again.'
-                            );
+                            /*
+                            * User intentionally closed the confirmation modal.
+                            * Do not show an error.
+                            */
+                            if (error && error.cancelled === true) {
+
+                                console.log(
+                                    '[Bytenft] Customer confirmation cancelled by user'
+                                );
+
+                                return;
+                            }
+
+                            const message =
+                                typeof error === 'string'
+                                    ? error
+                                    : error?.message ||
+                                    'Unable to validate customer information. Please try again.';
+
+                            self.showCheckoutError(message);
                         });
                 },
                 true
@@ -1950,7 +1981,9 @@
 
                             data.message ||
 
-                            'This email is already associated with another phone number. Would you like to continue with the existing account or create a new account with the entered phone number?'
+                            'This email is already associated with another phone number. Would you like to continue with the existing account or create a new account with the entered phone number?',
+
+                            data.user_id || null
 
                         ).then(function (confirmed) {
 
@@ -2071,16 +2104,23 @@
 
                             });
 
-                        }).catch(function () {
+                        }).catch(function (error) {
 
                             /*
-                            * If modal is closed unexpectedly,
-                            * do NOT silently create a new account.
-                            *
-                            * Safer behavior is to stop checkout.
+                            * User closed the confirmation modal.
+                            * This is cancellation, not validation failure.
                             */
+                            if (error && error.cancelled === true) {
+                                reject({
+                                    cancelled: true
+                                });
+                                return;
+                            }
+
                             reject(
-                                'Please select whether you want to continue with the existing account or create a new account.'
+                                error || {
+                                    cancelled: true
+                                }
                             );
                         });
                     },
@@ -2127,14 +2167,16 @@
         /**
          * Show customer confirmation popup.
          */
-        showCustomerConfirmation: function (message) {
+        showCustomerConfirmation: function (message, userId) {
+
+            const self = this;
 
             return new Promise(function (resolve, reject) {
 
+                // Remove any existing confirmation modal
                 $('#bytenft-customer-confirmation').remove();
 
                 const html = `
-
                     <div id="bytenft-customer-confirmation"
                         style="
                             position:fixed;
@@ -2142,24 +2184,52 @@
                             left:0;
                             right:0;
                             bottom:0;
+                            width:100%;
+                            height:100%;
                             background:rgba(0,0,0,.55);
-                            z-index:999999;
+                            z-index:2147483647;
                             display:flex;
                             align-items:center;
                             justify-content:center;
                             padding:20px;
+                            pointer-events:auto;
                         ">
 
-                        <div style="
-                            background:#fff;
-                            width:100%;
-                            max-width:500px;
-                            border-radius:8px;
-                            padding:30px;
-                            box-shadow:0 10px 40px rgba(0,0,0,.25);
-                            text-align:center;
-                        ">
-
+                        <div
+                            style="
+                                position:relative;
+                                z-index:2147483647;
+                                background:#fff;
+                                width:100%;
+                                max-width:500px;
+                                border-radius:8px;
+                                padding:30px;
+                                box-shadow:0 10px 40px rgba(0,0,0,.25);
+                                text-align:center;
+                                pointer-events:auto;
+                            "
+                        >
+                            <button
+                                type="button"
+                                id="bytenft-customer-confirm-close"
+                                aria-label="Close"
+                                style="
+                                    position:absolute;
+                                    top:10px;
+                                    right:12px;
+                                    width:32px;
+                                    height:32px;
+                                    border:0;
+                                    background:transparent;
+                                    color:#666;
+                                    font-size:26px;
+                                    line-height:32px;
+                                    cursor:pointer;
+                                    padding:0;
+                                "
+                            >
+                                &times;
+                            </button>
                             <h3 style="
                                 margin:0 0 15px;
                                 font-size:20px;
@@ -2185,6 +2255,9 @@
                                     type="button"
                                     id="bytenft-customer-confirm-cancel"
                                     style="
+                                        position:relative;
+                                        z-index:2147483647;
+                                        pointer-events:auto;
                                         padding:12px 24px;
                                         border:1px solid #ccc;
                                         background:#fff;
@@ -2199,6 +2272,9 @@
                                     type="button"
                                     id="bytenft-customer-confirm-continue"
                                     style="
+                                        position:relative;
+                                        z-index:2147483647;
+                                        pointer-events:auto;
                                         padding:12px 24px;
                                         border:0;
                                         background:#000;
@@ -2220,38 +2296,128 @@
                 $('body').append(html);
 
                 /*
-                * CREATE NEW ACCOUNT
+                * =========================================================
+                * REMOVE OLD DELEGATED HANDLERS
+                * =========================================================
                 */
-                $('#bytenft-customer-confirm-cancel').on(
-                    'click',
-                    function () {
+
+                $(document)
+                    .off(
+                        'click.bytenftCustomer',
+                        '#bytenft-customer-confirm-close'
+                    )
+                    .off(
+                        'click.bytenftCustomer',
+                        '#bytenft-customer-confirm-cancel'
+                    )
+                    .off(
+                        'click.bytenftCustomer',
+                        '#bytenft-customer-confirm-continue'
+                    );
+
+
+                $(document).on(
+                    'click.bytenftCustomer',
+                    '#bytenft-customer-confirm-close',
+                    function (e) {
+
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+
+                        console.log(
+                            '[Bytenft] Confirmation modal closed by user'
+                        );
 
                         $('#bytenft-customer-confirmation').remove();
 
-                        console.log(
-                            '[Bytenft] Confirmation → CREATE NEW ACCOUNT'
-                        );
+                        self.state.customerUserId = null;
+                        self.state.createNewCustomer = false;
+                        self.state.accountAction = null;
 
-                        resolve(false);
+                        reject({
+                            cancelled: true
+                        });
+
+                        return false;
                     }
-                );
+                );  
 
                 /*
-                * USE EXISTING ACCOUNT
+                * =========================================================
+                * CREATE NEW ACCOUNT
+                * =========================================================
                 */
-                $('#bytenft-customer-confirm-continue').on(
-                    'click',
-                    function () {
+
+                $(document).on(
+                    'click.bytenftCustomer',
+                    '#bytenft-customer-confirm-cancel',
+                    function (e) {
+
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+
+                        console.log(
+                            '[Bytenft] Confirmation button clicked → CREATE NEW ACCOUNT'
+                        );
 
                         $('#bytenft-customer-confirmation').remove();
 
-                        console.log(
-                            '[Bytenft] Confirmation → USE EXISTING ACCOUNT'
-                        );
+                        /*
+                        * Important:
+                        * Explicitly tell the checkout state that we want
+                        * a completely new customer.
+                        */
+                        self.state.customerUserId = null;
+                        self.state.createNewCustomer = true;
+                        self.state.accountAction = 'create_new';
 
-                        resolve(true);
+                        resolve(false);
+
+                        return false;
                     }
                 );
+
+
+                /*
+                * =========================================================
+                * USE EXISTING ACCOUNT
+                * =========================================================
+                */
+
+                $(document).on(
+                    'click.bytenftCustomer',
+                    '#bytenft-customer-confirm-continue',
+                    function (e) {
+
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+
+                        console.log(
+                            '[Bytenft] Confirmation button clicked → USE EXISTING ACCOUNT'
+                        );
+
+                        /*
+                        * Get the existing user ID from the response.
+                        *
+                        * We need to keep this ID available until
+                        * checkCustomerAccount() resolves.
+                        */
+
+                        $('#bytenft-customer-confirmation').remove();
+
+                        self.state.customerUserId = userId || null;
+                        self.state.createNewCustomer = false;
+                        self.state.accountAction = 'use_existing';
+
+                        resolve(true);
+
+                        return false;
+                    }
+                );
+
             });
         },
 
