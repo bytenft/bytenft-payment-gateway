@@ -225,38 +225,35 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
         // 3. Obtain or prepare order
         $orderID = 0;
         if (WC()->session) {
-            $orderID = WC()->session->get('order_awaiting_payment') ?: WC()->session->get('store_api_draft_order');
+            $orderID = WC()->session->get('store_api_draft_order') ?: WC()->session->get('order_awaiting_payment');
         }
 
         if (function_exists('wc_get_order')) {
             $order = $orderID ? wc_get_order($orderID) : false;
             
-            // Reopen a retryable order instead of abandoning it.
-			if ($order && $order->has_status(['failed', 'cancelled', 'on-hold'])
-				&& !$order->get_meta('_bytenft_payment_finalized')) {
-				$order->update_status('pending', __('Reopened for ByteNFT retry.', 'bytenft-payment-gateway'));
-			}
+            // Check if customer details changed to prevent order reuse
+            if ($order && ($order->has_status('checkout-draft') || $order->has_status('pending'))) {
+                $posted_email = sanitize_email($_POST['contact_email'] ?? $_POST['billing_email'] ?? '');
+                $posted_phone = sanitize_text_field($_POST['billing_phone'] ?? '');
 
-			// Never recycle a finished order.
-			if ($order && $order->has_status(['failed', 'cancelled', 'on-hold'])
-    			&& empty($order->get_meta('_bytenft_payment_finalized'))) {
-				$order = false;
-			}
+                if ( ($posted_email && $order->get_billing_email() !== $posted_email) || 
+                     ($posted_phone && $order->get_billing_phone() !== $posted_phone) ) {
+                    $order = false;
+                    if (WC()->session) {
+                        WC()->session->set('order_awaiting_payment', '');
+                        WC()->session->set('store_api_draft_order', '');
+                    }
+                }
+            }
+            
+            if (!$order && !empty(WC()->cart) && !WC()->cart->is_empty()) {
+                $order = wc_create_order();
+                if ($order) {
+                    $orderID = $order->get_id();
+                }
+            }
 
-			if (!$order && !empty(WC()->cart) && !WC()->cart->is_empty()) {
-				$order = wc_create_order();
-				if ($order) {
-					$orderID = $order->get_id();
-				}
-			}
-
-			if ($order && WC()->session) {
-				$orderID = $order->get_id();
-				WC()->session->set('order_awaiting_payment', $orderID);
-				WC()->session->save_data();
-			}
-
-			if ($order && $order->has_status(['checkout-draft', 'pending'])) {
+            if ($order && ($order->has_status('checkout-draft') || $order->has_status('pending'))) {
                 try {
                     if (count($order->get_items()) === 0 && !empty(WC()->cart) && !WC()->cart->is_empty()) {
                         foreach (WC()->cart->get_cart() as $cart_item_key => $values) {
@@ -1060,9 +1057,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$thank_you_url =
 				$order->get_checkout_order_received_url();
 
-			$order->update_meta_data('_bytenft_payment_finalized', true);
-			$order->save();
-
 			ByteNFT_Payment_Gateway_Logger::info(
 				$log_prefix .
 				' | SUCCESS | Returning Thank You redirect: ' .
@@ -1133,12 +1127,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// The frontend should poll again.
 		// Webhook may still be updating the order.
 		// ---------------------------------------------------------
-
-		if (WC()->session) {
-			WC()->session->set('order_awaiting_payment', '');
-			WC()->session->set('store_api_draft_order', '');
-			WC()->session->save_data();
-		}
 
 		wp_send_json([
 			'success' => false,
