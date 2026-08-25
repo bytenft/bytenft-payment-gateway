@@ -1460,7 +1460,17 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			]
 		);
 
+		/*
+		* ---------------------------------------------------------
+		* SECURITY CHECK
+		* ---------------------------------------------------------
+		*/
+
 		if ( ! isset( $_POST['security'] ) ) {
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				'Customer account AJAX rejected - security token missing'
+			);
 
 			wp_send_json_error(
 				[
@@ -1469,6 +1479,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				400
 			);
 		}
+
+		/*
+		* ---------------------------------------------------------
+		* PARSE CHECKOUT DATA
+		* ---------------------------------------------------------
+		*/
 
 		$checkout_data = [];
 
@@ -1487,18 +1503,226 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			]
 		);
 
+		/*
+		* ---------------------------------------------------------
+		* LOG IMPORTANT CUSTOMER DATA
+		* ---------------------------------------------------------
+		*
+		* Do not log API keys/secrets here.
+		*/
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account validation input',
+			[
+				'email'        => $checkout_data['billing_email']
+					?? $checkout_data['contact_email']
+					?? null,
+
+				'phone'        => $checkout_data['billing_phone']
+					?? null,
+
+				'country_code' => $checkout_data['country_code']
+					?? $checkout_data['billing_country']
+					?? null,
+
+				'first_name'   => $checkout_data['billing_first_name']
+					?? null,
+
+				'last_name'    => $checkout_data['billing_last_name']
+					?? null,
+			]
+		);
+
+		/*
+		* ---------------------------------------------------------
+		* CUSTOMER ACCOUNT VALIDATION / API CALL
+		* ---------------------------------------------------------
+		*/
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Calling bytenft_validate_customer_account',
+			[
+				'email'        => $checkout_data['billing_email']
+					?? $checkout_data['contact_email']
+					?? null,
+
+				'phone'        => $checkout_data['billing_phone']
+					?? null,
+
+				'country_code' => $checkout_data['country_code']
+					?? $checkout_data['billing_country']
+					?? null,
+			]
+		);
+
 		$result = $this->bytenft_validate_customer_account(
 			$checkout_data
 		);
 
-		if ( empty( $result['valid'] ) ) {
+		/*
+		* ---------------------------------------------------------
+		* LOG API / VALIDATION RESPONSE
+		* ---------------------------------------------------------
+		*
+		* This is the response returned by
+		* bytenft_validate_customer_account().
+		*/
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account validation API response received',
+			[
+				'result' => $result,
+			]
+		);
+
+		/*
+		* ---------------------------------------------------------
+		* LOG IMPORTANT API RESULT VALUES
+		* ---------------------------------------------------------
+		*/
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account validation result',
+			[
+				'valid'                  => $result['valid'] ?? null,
+				'action'                 => $result['action'] ?? null,
+				'requires_confirmation'  => $result['requires_confirmation'] ?? null,
+				'existing_user'          => $result['existing_user'] ?? null,
+				'user_id'                => $result['user_id'] ?? null,
+				'existing_phone'         => $result['existing_phone'] ?? null,
+				'message'                => $result['message'] ?? null,
+				'phone_validation'       => $result['phone_validation'] ?? null,
+			]
+		);
+
+		/*
+		* ---------------------------------------------------------
+		* PHONE VALIDATION
+		* ---------------------------------------------------------
+		*
+		* IMPORTANT:
+		*
+		* The API can return:
+		*
+		* "valid": true
+		*
+		* while:
+		*
+		* "phone_validation": {
+		*     "valid": false,
+		*     "error": "VOIP number..."
+		* }
+		*
+		* Phone validation must take priority.
+		*
+		* If phone_validation.valid === false:
+		*
+		* - Do NOT continue customer account logic.
+		* - Do NOT show existing account confirmation.
+		* - Do NOT store customer ID.
+		* - Do NOT allow payment popup.
+		* - Return the phone validation error to frontend.
+		*/
+
+		$phone_validation = $result['phone_validation'] ?? null;
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer phone validation result received',
+			[
+				'phone_validation' => $phone_validation,
+				'phone'            => $checkout_data['billing_phone'] ?? null,
+			]
+		);
+
+		if (
+			is_array( $phone_validation ) &&
+			isset( $phone_validation['valid'] ) &&
+			$phone_validation['valid'] === false
+		) {
+
+			$phone_error = $phone_validation['error']
+				?? 'The phone number is invalid or not supported for payments.';
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				'Customer phone validation FAILED - stopping customer account flow',
+				[
+					'phone'            => $checkout_data['billing_phone'] ?? null,
+					'phone_validation' => $phone_validation,
+					'phone_error'      => $phone_error,
+					'api_valid'        => $result['valid'] ?? null,
+					'existing_user'    => $result['existing_user'] ?? null,
+					'user_id'          => $result['user_id'] ?? null,
+					'action'            => $result['action'] ?? null,
+				]
+			);
+
+			/*
+			* IMPORTANT:
+			*
+			* Return error immediately.
+			*
+			* This prevents the existing-account confirmation popup.
+			*/
 
 			wp_send_json_error(
 				[
-					'message'      => $result['message']
+					'message'          => $phone_error,
+					'phone_validation' => $phone_validation,
+					'status_code'      => $result['status_code'] ?? null,
+					'api_response'     => $result['api_response'] ?? null,
+				],
+				400
+			);
+		}
+
+		/*
+		* ---------------------------------------------------------
+		* PHONE VALIDATION PASSED
+		* ---------------------------------------------------------
+		*/
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer phone validation PASSED - continuing customer account flow',
+			[
+				'phone'            => $checkout_data['billing_phone'] ?? null,
+				'phone_validation' => $phone_validation,
+			]
+		);
+
+		/*
+		* ---------------------------------------------------------
+		* GENERAL CUSTOMER VALIDATION ERROR
+		* ---------------------------------------------------------
+		*/
+
+		if ( empty( $result['valid'] ) ) {
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				'Customer account validation FAILED',
+				[
+					'message'          => $result['message']
 						?? 'Unable to validate customer information.',
-					'status_code'  => $result['status_code'] ?? null,
+
+					'status_code'      => $result['status_code'] ?? null,
+
+					'api_response'     => $result['api_response'] ?? null,
+
+					'phone_validation' =>
+						$result['phone_validation'] ?? null,
+				]
+			);
+
+			wp_send_json_error(
+				[
+					'message' => $result['message']
+						?? 'Unable to validate customer information.',
+
+					'status_code' => $result['status_code'] ?? null,
+
 					'api_response' => $result['api_response'] ?? null,
+
+					'phone_validation' =>
+						$result['phone_validation'] ?? null,
 				],
 				400
 			);
@@ -1508,47 +1732,40 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		* ---------------------------------------------------------
 		* CUSTOMER ACCOUNT SESSION HANDLING
 		* ---------------------------------------------------------
-		*
-		* IMPORTANT:
-		*
-		* confirmation_required means the customer has NOT yet
-		* selected the existing account.
-		*
-		* Therefore:
-		*
-		* confirmation_required -> DO NOT store user_id
-		* new customer           -> clear user_id
-		*
-		* The existing customer ID should only be stored by the
-		* separate "Use Existing Account" confirmation action.
 		*/
 
 		$action = isset( $result['action'] )
 			? sanitize_key( $result['action'] )
 			: '';
 
-		$existing_user = ! empty( $result['existing_user'] );
+		$existing_user = ! empty(
+			$result['existing_user']
+		);
 
 		$requires_confirmation = ! empty(
 			$result['requires_confirmation']
+		);
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account decision received',
+			[
+				'action'                => $action,
+				'existing_user'         => $existing_user,
+				'requires_confirmation' => $requires_confirmation,
+				'user_id'               => $result['user_id'] ?? null,
+				'phone_validation'      => $result['phone_validation'] ?? null,
+			]
 		);
 
 		if ( WC()->session ) {
 
 			/*
 			* -----------------------------------------------------
-			* CASE 1: EXISTING USER FOUND BUT CONFIRMATION REQUIRED
+			* CASE 1:
+			* EXISTING USER + CONFIRMATION REQUIRED
 			* -----------------------------------------------------
-			*
-			* Do NOT store the returned user_id yet.
-			*
-			* The popup will ask:
-			*
-			* "Would you like to continue using that account?"
-			*
-			* Until the customer clicks "Use Existing Account",
-			* process_payment() must NOT use this user.
 			*/
+
 			if (
 				$existing_user &&
 				$requires_confirmation &&
@@ -1562,6 +1779,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				/*
 				* Clear any previously selected customer account.
 				*/
+
 				$previous_customer_id = WC()->session->get(
 					'bytenft_customer_user_id'
 				);
@@ -1571,18 +1789,20 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				);
 
 				/*
-				* Mark the session as awaiting customer's choice.
+				* Mark session as awaiting customer choice.
 				*/
+
 				WC()->session->set(
 					'bytenft_customer_account_action',
 					'confirmation_required'
 				);
 
 				/*
-				* Store the detected ID separately only for the
-				* confirmation popup. DO NOT use this value in
-				* process_payment().
+				* Store detected ID separately.
+				*
+				* This is NOT the active customer ID.
 				*/
+
 				WC()->session->set(
 					'bytenft_pending_customer_user_id',
 					$detected_user_id
@@ -1591,23 +1811,22 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				ByteNFT_Payment_Gateway_Logger::info(
 					'Existing customer detected - waiting for customer confirmation',
 					[
-						'detected_user_id'         => $detected_user_id,
-						'previous_customer_id'     => $previous_customer_id,
-						'action'                   => $action,
-						'requires_confirmation'    => $requires_confirmation,
-						'customer_user_id_stored'  => false,
+						'detected_user_id'        => $detected_user_id,
+						'previous_customer_id'    => $previous_customer_id,
+						'action'                  => $action,
+						'requires_confirmation'   => $requires_confirmation,
+						'customer_user_id_stored' => false,
+						'phone_validation'        => $result['phone_validation'] ?? null,
 					]
 				);
 
 			/*
 			* -----------------------------------------------------
-			* CASE 2: EXISTING USER WITHOUT CONFIRMATION
+			* CASE 2:
+			* EXISTING USER WITHOUT CONFIRMATION
 			* -----------------------------------------------------
-			*
-			* This case is only for situations where the API has
-			* already confirmed that the existing account should
-			* be used.
 			*/
+
 			} elseif (
 				$existing_user &&
 				! $requires_confirmation &&
@@ -1638,19 +1857,17 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 						'customer_user_id'      => $customer_user_id,
 						'action'                => $action,
 						'requires_confirmation' => $requires_confirmation,
+						'phone_validation'      => $result['phone_validation'] ?? null,
 					]
 				);
 
 			/*
 			* -----------------------------------------------------
-			* CASE 3: NEW CUSTOMER
+			* CASE 3:
+			* NEW CUSTOMER
 			* -----------------------------------------------------
-			*
-			* No existing account was found.
-			*
-			* Make absolutely sure an old customer ID cannot be
-			* reused.
 			*/
+
 			} else {
 
 				$previous_customer_id = WC()->session->get(
@@ -1677,19 +1894,65 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 						'action'                    => $action,
 						'existing_user'             => $existing_user,
 						'requires_confirmation'     => $requires_confirmation,
+						'phone_validation'          => $result['phone_validation'] ?? null,
 					]
 				);
 			}
 
 			/*
-			* Persist WooCommerce session immediately.
+			* -----------------------------------------------------
+			* PERSIST WOOCOMMERCE SESSION
+			* -----------------------------------------------------
 			*/
+
 			if ( method_exists( WC()->session, 'save_data' ) ) {
+
 				WC()->session->save_data();
+
+				ByteNFT_Payment_Gateway_Logger::info(
+					'WooCommerce customer account session persisted',
+					[
+						'customer_user_id' =>
+							WC()->session->get(
+								'bytenft_customer_user_id'
+							),
+
+						'pending_customer_user_id' =>
+							WC()->session->get(
+								'bytenft_pending_customer_user_id'
+							),
+
+						'account_action' =>
+							WC()->session->get(
+								'bytenft_customer_account_action'
+							),
+					]
+				);
 			}
 		}
 
-		wp_send_json_success( $result );
+		/*
+		* ---------------------------------------------------------
+		* FINAL RESPONSE TO FRONTEND
+		* ---------------------------------------------------------
+		*/
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Customer account validation sending SUCCESS response to frontend',
+			[
+				'valid'                 => $result['valid'] ?? null,
+				'action'                => $result['action'] ?? null,
+				'existing_user'         => $result['existing_user'] ?? null,
+				'requires_confirmation' => $result['requires_confirmation'] ?? null,
+				'user_id'               => $result['user_id'] ?? null,
+				'phone_validation'      => $result['phone_validation'] ?? null,
+				'message'               => $result['message'] ?? null,
+			]
+		);
+
+		wp_send_json_success(
+			$result
+		);
 	}
 
 	/**
@@ -1738,6 +2001,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				: '';
 		}
 
+		$api_country_code = ( strtoupper( $country_code ) === 'US' )
+		? '+1'
+		: $country_code;
+
 		ByteNFT_Payment_Gateway_Logger::info(
 			'Customer account validation started',
 			[
@@ -1767,7 +2034,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$payload = [
 			'email'        => $email ?: null,
 			'phone_number' => $phone ?: null,
-			'country_code' => $country_code ?: null,
+			'country_code' => $api_country_code ?: null,
 		];
 
 		ByteNFT_Payment_Gateway_Logger::info(
@@ -1870,10 +2137,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			);
 
 			return [
-				'valid'      => false,
-				'message'    => sanitize_text_field( $message ),
-				'status_code' => $status_code,
-				'api_response' => $response_data,
+				'valid'           => false,
+				'message'         => sanitize_text_field( $message ),
+				'status_code'     => $status_code,
+				'api_response'    => $response_data,
+				'phone_validation' => $response_data['data']['phone_validation'] ?? null,
 			];
 		}
 
@@ -1882,6 +2150,18 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		*/
 		$data = $response_data['data'] ?? [];
 
+		/*
+		* Preserve phone validation exactly as returned by API.
+		*/
+		$phone_validation = null;
+
+		if (
+			isset( $data['phone_validation'] ) &&
+			is_array( $data['phone_validation'] )
+		) {
+			$phone_validation = $data['phone_validation'];
+		}
+
 		ByteNFT_Payment_Gateway_Logger::info(
 			'Customer account validation result',
 			[
@@ -1889,6 +2169,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'requires_confirmation' => $data['requires_confirmation'] ?? null,
 				'existing_user'         => $data['existing_user'] ?? null,
 				'user_id'               => $data['user_id'] ?? null,
+				'phone_validation'     => $phone_validation,
 			]
 		);
 
@@ -1905,11 +2186,20 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'requires_confirmation' => true,
 				'action'                => 'confirmation_required',
 				'existing_user'         => ! empty( $data['existing_user'] ),
-				'user_id'               => isset( $data['user_id'] )
+
+				'user_id' => isset( $data['user_id'] )
 					? absint( $data['user_id'] )
 					: 0,
-				'existing_phone'       => $data['existing_phone'] ?? null,
-				'message'              => ! empty( $data['message'] )
+
+				'existing_phone' => $data['existing_phone'] ?? null,
+
+				/*
+				* IMPORTANT:
+				* Keep phone validation in the response.
+				*/
+				'phone_validation' => $phone_validation,
+
+				'message' => ! empty( $data['message'] )
 					? sanitize_text_field( $data['message'] )
 					: __(
 						'An existing customer account was found. Would you like to continue using that account?',
@@ -1926,9 +2216,15 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			'requires_confirmation' => false,
 			'action'                => $data['action'] ?? null,
 			'existing_user'         => ! empty( $data['existing_user'] ),
-			'user_id'               => isset( $data['user_id'] )
+
+			'user_id' => isset( $data['user_id'] )
 				? absint( $data['user_id'] )
 				: 0,
+
+			/*
+			* Preserve phone validation for normal customer response too.
+			*/
+			'phone_validation' => $phone_validation,
 		];
 	}
 

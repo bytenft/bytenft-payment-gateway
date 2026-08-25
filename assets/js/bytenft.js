@@ -143,76 +143,62 @@
 
                     /*
                     * =========================================================
-                    * STEP 2: OPEN POPUP IMMEDIATELY
-                    * =========================================================
-                    */
-
-                    self.setStatus('popup');
-
-                    const popup = self.openPopupImmediately();
-
-                    if (!popup) {
-
-                        self.releaseLock('Classic');
-                        self.setStatus('idle');
-
-                        return false;
-                    }
-
-                    /*
-                    * =========================================================
-                    * STEP 3: CHECK CUSTOMER ACCOUNT
+                    * STEP 2: CHECK CUSTOMER ACCOUNT
                     * =========================================================
                     */
 
                     self.checkCustomerAccount()
+                    .then(function (customerResult) {
 
-                        .then(function (customerResult) {
+                        console.log(
+                            '[Bytenft] Customer account decision:',
+                            customerResult
+                        );
 
-                            console.log(
-                                '[Bytenft] Customer account decision:',
-                                customerResult
-                            );
+                        self.state.customerUserId =
+                            customerResult.user_id || null;
 
-                            self.state.customerUserId =
-                                customerResult.user_id || null;
+                        self.state.createNewCustomer =
+                            customerResult.create_new_user === true;
 
-                            self.state.createNewCustomer =
-                                customerResult.create_new_user === true;
+                        self.state.accountAction =
+                            self.state.create_new_customer
+                                ? 'create_new'
+                                : 'use_existing';
 
-                            self.state.accountAction =
-                                self.state.create_new_customer
-                                    ? 'create_new'
-                                    : 'use_existing';
+                        /*
+                        * Phone + customer validation passed.
+                        * Now open payment popup.
+                        */
+                        self.setStatus('popup');
 
-                            console.log(
-                                '[Bytenft] Final account action:',
-                                self.state.accountAction
-                            );
+                        const popup = self.openPopupImmediately();
 
-                            /*
-                            * =================================================
-                            * STEP 4: START PAYMENT PROCESSING
-                            * =================================================
-                            */
-
-                            self.setStatus('processing');
-
-                            self.handleClassicCheckout($form);
-                        })
-
-                        .catch(function (message) {
-
-                            self.cleanupPopup();
-
+                        if (!popup) {
                             self.releaseLock('Classic');
                             self.setStatus('idle');
+                            return;
+                        }
 
-                            self.showCheckoutError(
-                                message ||
-                                'Unable to validate customer information. Please try again.'
-                            );
-                        });
+                        /*
+                        * Start payment.
+                        */
+                        self.setStatus('processing');
+
+                        self.handleClassicCheckout($form);
+                    })
+                    .catch(function (message) {
+
+                        self.cleanupPopup();
+
+                        self.releaseLock('Classic');
+                        self.setStatus('idle');
+
+                        self.showCheckoutError(
+                            message ||
+                            'Unable to validate customer information. Please try again.'
+                        );
+                    });
 
                     /*
                     * Prevent native WooCommerce checkout.
@@ -1380,8 +1366,20 @@
             if (!email) return 'Please enter your email address.';
             if (!this.isValidEmail(email)) return 'Please enter a valid email address.';
 
+             /*
+            * US phone validation
+            */
             const phone = this.getPhoneNumber($form);
-            if (phone && !this.isValidPhoneNumber(phone)) return 'Please enter a valid phone number.';
+
+            if (phone) {
+
+                const digits = phone.replace(/\D/g, '');
+
+                if (digits.length !== 10) {
+                    return 'Please enter a valid 10-digit US phone number.';
+                }
+            }
+
 
             const poBox = this.validatePOBox($form);
             if (poBox) return poBox;
@@ -1790,50 +1788,6 @@
             }
         },
 
-        isValidPhoneNumber: function (p) {
-
-            if (!p) return true;
-
-            const cleaned = p.trim().replace(/[^\d+]/g, '');
-            // digits only
-            if (!/^\+?\d+$/.test(cleaned)) {
-                return false;
-            }
-
-            const numberOnly = cleaned.replace('+','');
-
-            // reject repeated digits
-            if (/^(\d)\1+$/.test(numberOnly)) {
-                return false;
-            }
-
-            // reject common test numbers
-            const invalidNumbers = [
-                '0000000000',
-                '1111111111',
-                '2222222222',
-                '3333333333',
-                '4444444444',
-                '5555555555',
-                '6666666666',
-                '7777777777',
-                '8888888888',
-                '9999999999',
-                '1234567890',
-                '9876543210'
-            ];
-
-            if (invalidNumbers.includes(numberOnly)) {
-                return false;
-            }
-
-
-            return (
-                /^1?\d{10}$/.test(numberOnly) ||
-                /^[1-9]\d{6,14}$/.test(numberOnly)
-            );
-        },
-
         bindInputSanitization: function () {
             const selectors = `
                 #bytenft_card_holder, #billing_first_name, #billing_last_name, #billing_city,
@@ -2098,9 +2052,33 @@
                             xhr.responseText
                         );
 
-                        reject(
-                            'Unable to validate customer information. Please try again.'
-                        );
+                        let message =
+                            'Unable to validate customer information. Please try again.';
+
+                        try {
+
+                            const response = JSON.parse(xhr.responseText);
+
+                            message =
+                                response?.data?.phone_validation?.error ||
+                                response?.data?.message ||
+                                response?.message ||
+                                message;
+
+                            console.log(
+                                '[Bytenft] Extracted customer validation error:',
+                                message
+                            );
+
+                        } catch (e) {
+
+                            console.log(
+                                '[Bytenft] Unable to parse customer validation error response:',
+                                e
+                            );
+                        }
+
+                        reject(message);
                     }
                 });
             });
