@@ -147,6 +147,36 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	}
 
 	/**
+	 * Whether an order has already been paid for and must never be reused for a
+	 * new payment attempt.
+	 *
+	 * A failed/cancelled attempt is retryable; a successful one is not.
+	 *
+	 * @param WC_Order $order Order to inspect.
+	 * @return bool
+	 */
+	private function bytenft_order_is_finalized($order) {
+
+		if (!$order instanceof WC_Order) {
+			return false;
+		}
+
+		if ($order->has_status(['processing', 'completed', 'refunded'])) {
+			return true;
+		}
+
+		if ($order->get_meta('_bytenft_payment_success') === 'yes') {
+			return true;
+		}
+
+		if ($order->get_meta('_bytenft_state') === 'success') {
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
      * Handle the block checkout AJAX payment request using standard WooCommerce validation.
      */
     function handle_bytenft_gateway_ajax() {
@@ -223,29 +253,36 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
         }
 
         // 3. Obtain or prepare order
+        //
+        // A failed payment is an ATTEMPT, not a reason to create a new order.
+        // Since WooCommerce 10.8 the Store API only creates its draft order at
+        // place-order time, and this handler bypasses that route, so
+        // 'store_api_draft_order' is never populated for the ByteNFT block flow.
+        // 'order_awaiting_payment' is therefore the authoritative pointer and is
+        // written back below so every retry lands on the SAME order.
         $orderID = 0;
         if (WC()->session) {
-            $orderID = WC()->session->get('store_api_draft_order') ?: WC()->session->get('order_awaiting_payment');
+            $orderID = WC()->session->get('order_awaiting_payment') ?: WC()->session->get('store_api_draft_order');
         }
 
         if (function_exists('wc_get_order')) {
             $order = $orderID ? wc_get_order($orderID) : false;
-            
-            // Check if customer details changed to prevent order reuse
-            if ($order && ($order->has_status('checkout-draft') || $order->has_status('pending'))) {
-                $posted_email = sanitize_email($_POST['contact_email'] ?? $_POST['billing_email'] ?? '');
-                $posted_phone = sanitize_text_field($_POST['billing_phone'] ?? '');
 
-                if ( ($posted_email && $order->get_billing_email() !== $posted_email) || 
-                     ($posted_phone && $order->get_billing_phone() !== $posted_phone) ) {
-                    $order = false;
-                    if (WC()->session) {
-                        WC()->session->set('order_awaiting_payment', '');
-                        WC()->session->set('store_api_draft_order', '');
-                    }
-                }
+            // Never recycle an order that has already been paid for.
+            if ($order && $this->bytenft_order_is_finalized($order)) {
+                $order = false;
             }
-            
+
+            // Re-open a retryable order from a previous failed/cancelled attempt
+            // instead of abandoning it. This keeps order #1001 across attempts
+            // 1..N and lets a later success finalize that same order.
+            if ($order && $order->has_status(['failed', 'cancelled', 'on-hold'])) {
+                $order->update_status(
+                    'pending',
+                    __('Reopened for a new ByteNFT payment attempt.', 'bytenft-payment-gateway')
+                );
+            }
+
             if (!$order && !empty(WC()->cart) && !WC()->cart->is_empty()) {
                 $order = wc_create_order();
                 if ($order) {
@@ -253,9 +290,27 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
                 }
             }
 
+            // Persist the pointer so the NEXT attempt reuses this order rather
+            // than minting a fresh one.
+            if ($order && WC()->session) {
+                $orderID = $order->get_id();
+                WC()->session->set('order_awaiting_payment', $orderID);
+                WC()->session->save_data();
+            }
+
             if ($order && ($order->has_status('checkout-draft') || $order->has_status('pending'))) {
                 try {
-                    if (count($order->get_items()) === 0 && !empty(WC()->cart) && !WC()->cart->is_empty()) {
+                    $cart_hash = (!empty(WC()->cart)) ? WC()->cart->get_cart_hash() : '';
+
+                    // Rebuild the line items when the order has none yet, or when
+                    // the cart changed since the previous attempt. Reusing the
+                    // order must never mean shipping stale contents.
+                    $needs_items = count($order->get_items()) === 0
+                        || ($cart_hash && $order->get_cart_hash() !== $cart_hash);
+
+                    if ($needs_items && !empty(WC()->cart) && !WC()->cart->is_empty()) {
+                        $order->remove_order_items('line_item');
+
                         foreach (WC()->cart->get_cart() as $cart_item_key => $values) {
                             $item = new WC_Order_Item_Product();
                             $item->set_product($values['data']);
@@ -264,6 +319,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
                             $item->set_subtotal($values['line_subtotal']);
                             $order->add_item($item);
                         }
+
+                        $order->set_cart_hash($cart_hash);
+                        $order->calculate_totals();
                     }
 
                     $customer = WC()->customer;

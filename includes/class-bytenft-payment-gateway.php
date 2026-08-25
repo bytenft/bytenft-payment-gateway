@@ -96,29 +96,76 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_action('wp_ajax_bytenft_log_event', [$this, 'handle_log_event']);
 		add_action('wp_ajax_nopriv_bytenft_log_event', [$this, 'handle_log_event']);
 
-		add_action('woocommerce_checkout_process', [$this, 'bytenft_prevent_order_reuse_on_details_change']);
-		
+		/*
+		 * NOTE: no handler is registered to drop 'order_awaiting_payment'.
+		 *
+		 * WooCommerce deliberately keeps that session key across a failed
+		 * payment ("Store Order ID in session, so it can be re-used after
+		 * payment failure" - WC_Checkout::process_order_payment) and resumes the
+		 * same pending/failed order on the next submit. Clearing it made every
+		 * retry mint a brand new WooCommerce order, and any changed billing
+		 * details are already written onto the resumed order by
+		 * WC_Checkout::create_order(), so nothing is lost by leaving it alone.
+		 */
+		add_action('woocommerce_checkout_process', [$this, 'bytenft_reopen_order_for_retry']);
 	}
 
-	public function bytenft_prevent_order_reuse_on_details_change() {
-		if ( isset( $_POST['payment_method'] ) && $_POST['payment_method'] === $this->id ) {
-			if ( ! function_exists( 'WC' ) || ! WC()->session ) {
-				return;
-			}
-			$order_id = WC()->session->get( 'order_awaiting_payment' );
-			if ( $order_id ) {
-				$order = wc_get_order( $order_id );
-				if ( $order && ( $order->has_status( 'pending' ) || $order->has_status( 'failed' ) ) ) {
-					$posted_email = isset( $_POST['billing_email'] ) ? sanitize_email( wp_unslash( $_POST['billing_email'] ) ) : '';
-					$posted_phone = isset( $_POST['billing_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['billing_phone'] ) ) : '';
-					
-					if ( ( $posted_email && $order->get_billing_email() !== $posted_email ) || 
-					     ( $posted_phone && $order->get_billing_phone() !== $posted_phone ) ) {
-						WC()->session->set( 'order_awaiting_payment', '' );
-					}
-				}
-			}
+	/**
+	 * Re-open a cancelled ByteNFT order so Classic Checkout resumes it.
+	 *
+	 * WC_Checkout::create_order() only resumes an order awaiting payment when it
+	 * is 'pending' or 'failed'. A ByteNFT attempt that the customer abandoned is
+	 * recorded as 'cancelled', which would otherwise push WooCommerce into
+	 * creating a second order for what is only the next attempt at the first one.
+	 *
+	 * This only ever re-opens an unpaid order; it never touches a paid one, and
+	 * it never clears the session pointer.
+	 *
+	 * @return void
+	 */
+	public function bytenft_reopen_order_for_retry() {
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- WC_Checkout::process_checkout() verifies the checkout nonce before this hook fires.
+		$payment_method = isset( $_POST['payment_method'] )
+			? sanitize_text_field( wp_unslash( $_POST['payment_method'] ) )
+			: '';
+
+		if ( $payment_method !== $this->id ) {
+			return;
 		}
+
+		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+			return;
+		}
+
+		$order_id = absint( WC()->session->get( 'order_awaiting_payment' ) );
+
+		if ( ! $order_id ) {
+			return;
+		}
+
+		$order = wc_get_order( $order_id );
+
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+
+		// Only ByteNFT's own unpaid, non-finalized attempts are retryable.
+		if ( ! $order->has_status( [ 'cancelled', 'on-hold' ] ) ) {
+			return;
+		}
+
+		if (
+			$order->get_meta( '_bytenft_payment_success' ) === 'yes' ||
+			$order->get_meta( '_bytenft_state' ) === 'success'
+		) {
+			return;
+		}
+
+		$order->update_status(
+			'pending',
+			__( 'Reopened for a new ByteNFT payment attempt.', 'bytenft-payment-gateway' )
+		);
 	}
 
 	private function get_api_url($endpoint) {
@@ -943,10 +990,51 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		try {
 
 			// -------------------------------------------------
+			// 3.5 DROP A DEAD PAYMENT LINK
+			// -------------------------------------------------
+			//
+			// A reused order still carries the pay_id of the previous attempt.
+			// If that attempt already failed/cancelled/expired, its link is dead
+			// and must not be handed back to the customer. Clearing it here makes
+			// the retry mint a brand new payment request against the SAME
+			// WooCommerce order, which is how 1.0.16 behaved.
+			//
+			// A still-live attempt (state pending/processing) keeps its link, so
+			// double submits are still de-duplicated.
+			$active_pay_id = $order->get_meta('_bytenft_active_pay_id');
+
+			if (
+				$active_pay_id &&
+				(
+					in_array(
+						(string) $order->get_meta('_bytenft_state'),
+						['failed', 'cancelled', 'expired'],
+						true
+					)
+					|| $order->has_status(['failed', 'cancelled'])
+				)
+			) {
+
+				ByteNFT_Payment_Gateway_Logger::info(
+					$log_prefix . ' Previous payment attempt is dead, minting a fresh payment link',
+					[
+						'order_id'      => $order_id,
+						'stale_pay_id'  => $active_pay_id,
+						'bytenft_state' => $order->get_meta('_bytenft_state'),
+						'wc_status'     => $order->get_status(),
+					]
+				);
+
+				$order->delete_meta_data('_bytenft_active_pay_id');
+				$order->save();
+
+				$active_pay_id = '';
+			}
+
+			// -------------------------------------------------
 			// 4. REUSE EXISTING PAYMENT LINK
 			// -------------------------------------------------
-			$active_pay_id = $order->get_meta('_bytenft_active_pay_id');
-			
+
 			if ($active_pay_id) {
 				$table_name = $wpdb->prefix . 'order_payment_link';
 				
