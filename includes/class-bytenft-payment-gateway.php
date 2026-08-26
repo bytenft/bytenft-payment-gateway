@@ -816,13 +816,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$start_time = microtime(true);
 
-		ByteNFT_Payment_Gateway_Logger::info(
-			$log_prefix . ' Payment process started',
-			[
-				'order_id' => $order_id
-			]
-		);
-
 		wc_clear_notices();
 
 		// -------------------------------------------------
@@ -943,15 +936,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$order_id
 				);
 			}
-
-			ByteNFT_Payment_Gateway_Logger::info(
-				$log_prefix . ' Customer selected USE EXISTING',
-				[
-					'customer_user_id' => $customer_user_id,
-					'account_action'   => $customer_account_action,
-					'order_action'     => $order_account_action,
-				]
-			);
 		}
 
 		// -------------------------------------------------
@@ -1227,15 +1211,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				continue; // skip to next priority account (e.g. wert fail), sandbox or not
 			}
 
-			// ✅ SUCCESS
-			ByteNFT_Payment_Gateway_Logger::info(
-				$log_prefix . ' Account selected',
-				[
-					'account_title' => $account['title'] ?? null,
-					'public_key'    => $public_key,
-				]
-			);
-
 			$selected_account = $account;
 			$payment_data     = $data;
 
@@ -1338,11 +1313,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				} else {
 					$resp_data = json_decode(wp_remote_retrieve_body($response), true);
 				}
-
-				ByteNFT_Payment_Gateway_Logger::info(
-					'Full API response',
-					$resp_data
-				);
 
 				if ( ( $resp_data['status'] ?? '' ) === 'error' ) {
 
@@ -1646,22 +1616,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$customer_account_action = sanitize_key(
 			$customer_account_action
-		);
-
-		ByteNFT_Payment_Gateway_Logger::info(
-			"[Order #{$order->get_id()}] Preparing payment customer",
-			[
-				'customer_user_id'     => $customer_user_id,
-				'account_action'       => $customer_account_action,
-				'order_customer_id'    => $order->get_meta(
-					'_bytenft_customer_user_id',
-					true
-				),
-				'force_new_account'    => $order->get_meta(
-					'_bytenft_force_new_account',
-					true
-				),
-			]
 		);
 
 		if (isset($_POST['billing_phone'])) {

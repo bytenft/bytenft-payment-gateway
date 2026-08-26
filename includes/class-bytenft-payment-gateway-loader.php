@@ -1539,14 +1539,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 	public function bytenft_check_customer_account() {
 
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Customer account AJAX handler reached',
-			[
-				'has_security'      => isset( $_POST['security'] ),
-				'has_checkout_data' => isset( $_POST['checkout_data'] ),
-			]
-		);
-
 		/*
 		* ---------------------------------------------------------
 		* SECURITY CHECK
@@ -1582,13 +1574,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				$checkout_data
 			);
 		}
-
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Customer account AJAX checkout data parsed',
-			[
-				'checkout_data' => $checkout_data,
-			]
-		);
 
 		/*
 		* ---------------------------------------------------------
@@ -1626,40 +1611,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		* ---------------------------------------------------------
 		*/
 
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Calling bytenft_validate_customer_account',
-			[
-				'email'        => $checkout_data['billing_email']
-					?? $checkout_data['contact_email']
-					?? null,
-
-				'phone'        => $checkout_data['billing_phone']
-					?? null,
-
-				'country_code' => $checkout_data['country_code']
-					?? $checkout_data['billing_country']
-					?? null,
-			]
-		);
-
 		$result = $this->bytenft_validate_customer_account(
 			$checkout_data
-		);
-
-		/*
-		* ---------------------------------------------------------
-		* LOG API / VALIDATION RESPONSE
-		* ---------------------------------------------------------
-		*
-		* This is the response returned by
-		* bytenft_validate_customer_account().
-		*/
-
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Customer account validation API response received',
-			[
-				'result' => $result,
-			]
 		);
 
 		/*
@@ -1713,14 +1666,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		$phone_validation = $result['phone_validation'] ?? null;
 
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Customer phone validation result received',
-			[
-				'phone_validation' => $phone_validation,
-				'phone'            => $checkout_data['billing_phone'] ?? null,
-			]
-		);
-
 		if (
 			is_array( $phone_validation ) &&
 			isset( $phone_validation['valid'] ) &&
@@ -1761,20 +1706,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				400
 			);
 		}
-
-		/*
-		* ---------------------------------------------------------
-		* PHONE VALIDATION PASSED
-		* ---------------------------------------------------------
-		*/
-
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Customer phone validation PASSED - continuing customer account flow',
-			[
-				'phone'            => $checkout_data['billing_phone'] ?? null,
-				'phone_validation' => $phone_validation,
-			]
-		);
 
 		/*
 		* ---------------------------------------------------------
@@ -2024,19 +1955,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		* ---------------------------------------------------------
 		*/
 
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Customer account validation sending SUCCESS response to frontend',
-			[
-				'valid'                 => $result['valid'] ?? null,
-				'action'                => $result['action'] ?? null,
-				'existing_user'         => $result['existing_user'] ?? null,
-				'requires_confirmation' => $result['requires_confirmation'] ?? null,
-				'user_id'               => $result['user_id'] ?? null,
-				'phone_validation'      => $result['phone_validation'] ?? null,
-				'message'               => $result['message'] ?? null,
-			]
-		);
-
 		wp_send_json_success(
 			$result
 		);
@@ -2091,15 +2009,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$api_country_code = ( strtoupper( $country_code ) === 'US' )
 		? '+1'
 		: $country_code;
-
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Customer account validation started',
-			[
-				'email'        => $email,
-				'phone'        => $phone,
-				'country_code' => $country_code,
-			]
-		);
 
 		/*
 		* Nothing to validate.
@@ -2174,15 +2083,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		$response_data = json_decode( $body, true );
 
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Customer account validation API response',
-			[
-				'status_code' => $status_code,
-				'raw_body'    => $body,
-				'response'    => $response_data,
-			]
-		);
-
 		/*
 		* Invalid JSON response.
 		*/
@@ -2248,17 +2148,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		) {
 			$phone_validation = $data['phone_validation'];
 		}
-
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Customer account validation result',
-			[
-				'action'                => $data['action'] ?? null,
-				'requires_confirmation' => $data['requires_confirmation'] ?? null,
-				'existing_user'         => $data['existing_user'] ?? null,
-				'user_id'               => $data['user_id'] ?? null,
-				'phone_validation'     => $phone_validation,
-			]
-		);
 
 		/*
 		* Existing customer confirmation required.
