@@ -459,7 +459,7 @@ class BYTENFT_PAYMENT_ENGINE
         if ($from === 'success') return false;
 
         $map = [
-            'pending' => ['processing','cancelled','success','failed'],
+            'pending' => ['processing','cancelled','success','failed','expired'],
             'failed' => ['failed','success','processing','cancelled'],
             'cancelled' => ['failed','success'],
             'expired' => ['failed','cancelled','success'],
@@ -549,6 +549,7 @@ class BYTENFT_PAYMENT_ENGINE
                 'success', 'paid', 'completed' => 'success',
                 'failed' => 'failed',
                 'cancelled', 'canceled' => 'cancelled',
+                'expired' => 'expired',
                 'processing', 'pending' => 'processing',
                 default => null
             };

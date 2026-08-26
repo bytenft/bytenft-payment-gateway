@@ -1206,21 +1206,15 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		}
 
 		// ---------------------------------------------------------
-		// 15. PROCESSING / PENDING
-		// ---------------------------------------------------------
-		//
-		// DO NOT redirect to checkout.
-		//
-		// The frontend should poll again.
-		// Webhook may still be updating the order.
+		// 15. PROCESSING / NOTHING RECORDED
 		// ---------------------------------------------------------
 
 		wp_send_json([
 			'success' => false,
 			'message' => (
 				$state === 'processing'
-					? 'Your payment is currently being processed.'
-					: 'We are still confirming your payment.'
+					? 'Your payment is still being processed. Please wait a moment.'
+					: 'Your payment was not completed. Please try again when you are ready.'
 			),
 
 			'data' => [
