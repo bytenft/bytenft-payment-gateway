@@ -273,6 +273,35 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
                 $order = false;
             }
 
+            // A different customer needs a different order.
+            //
+            // Retrying keeps the same order only while it is the same customer.
+            // Once the email or phone has been edited - typically after closing
+            // the payment popup and correcting the details - this order and its
+            // ByteNFT link belong to the old details, so it is released and a
+            // brand new order is created below from the newly posted data.
+            if ($order && bytenft_order_customer_identity_changed($order)) {
+
+                ByteNFT_Payment_Gateway_Logger::info(
+                    '[Order #' . $order->get_id() . '] Customer details changed, starting a new order',
+                    [
+                        'order_id'     => $order->get_id(),
+                        'stored_email' => $order->get_meta('_bytenft_request_email'),
+                        'stored_phone' => $order->get_meta('_bytenft_request_phone'),
+                        'wc_status'    => $order->get_status(),
+                    ]
+                );
+
+                $order->add_order_note(
+                    __('Customer changed their contact details before retrying; a new order was started for the new details.', 'bytenft-payment-gateway')
+                );
+
+                $order->save();
+
+                $order   = false;
+                $orderID = 0;
+            }
+
             // Re-open a retryable order from a previous failed/cancelled attempt
             // instead of abandoning it. This keeps order #1001 across attempts
             // 1..N and lets a later success finalize that same order.

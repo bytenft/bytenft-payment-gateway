@@ -97,7 +97,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_action('wp_ajax_nopriv_bytenft_log_event', [$this, 'handle_log_event']);
 
 		/*
-		 * NOTE: no handler is registered to drop 'order_awaiting_payment'.
+		 * NOTE: 'order_awaiting_payment' is dropped in exactly one case.
 		 *
 		 * WooCommerce deliberately keeps that session key across a failed
 		 * payment ("Store Order ID in session, so it can be re-used after
@@ -106,6 +106,10 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		 * retry mint a brand new WooCommerce order, and any changed billing
 		 * details are already written onto the resumed order by
 		 * WC_Checkout::create_order(), so nothing is lost by leaving it alone.
+		 *
+		 * The one exception is handled in bytenft_reopen_order_for_retry():
+		 * when the customer edits their email or phone, the pointer IS dropped
+		 * so the new details get their own order and payment link.
 		 */
 		add_action('woocommerce_checkout_process', [$this, 'bytenft_reopen_order_for_retry']);
 	}
@@ -118,8 +122,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	 * recorded as 'cancelled', which would otherwise push WooCommerce into
 	 * creating a second order for what is only the next attempt at the first one.
 	 *
-	 * This only ever re-opens an unpaid order; it never touches a paid one, and
-	 * it never clears the session pointer.
+	 * It also decides whether the pending order may be resumed at all: if the
+	 * customer edited their email or phone since the last payment link was
+	 * minted, the session pointer is dropped so WooCommerce starts a fresh
+	 * order for the new details instead of resuming the old one.
+	 *
+	 * This only ever re-opens an unpaid order; it never touches a paid one.
 	 *
 	 * @return void
 	 */
@@ -150,15 +158,53 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			return;
 		}
 
-		// Only ByteNFT's own unpaid, non-finalized attempts are retryable.
-		if ( ! $order->has_status( [ 'cancelled', 'on-hold' ] ) ) {
-			return;
-		}
-
 		if (
 			$order->get_meta( '_bytenft_payment_success' ) === 'yes' ||
 			$order->get_meta( '_bytenft_state' ) === 'success'
 		) {
+			return;
+		}
+
+		// -------------------------------------------------------------
+		// A DIFFERENT CUSTOMER NEEDS A DIFFERENT ORDER
+		// -------------------------------------------------------------
+		//
+		// Retrying after a failed/abandoned attempt keeps the same order, but
+		// only while it is the same customer. Once the email or phone has been
+		// edited, this order and its ByteNFT link belong to the old details and
+		// must not be resumed. Dropping the session pointer makes
+		// WC_Checkout::create_order() build a brand new order from the newly
+		// posted data, which then mints its own payment link.
+		//
+		// This runs before the status guard below on purpose: the abandoned
+		// order may still be 'pending', which WooCommerce would resume on its
+		// own without ever reaching the re-open branch.
+		if ( bytenft_order_customer_identity_changed( $order ) ) {
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				'[Order #' . $order_id . '] Customer details changed, starting a new order',
+				[
+					'order_id'      => $order_id,
+					'stored_email'  => $order->get_meta( '_bytenft_request_email' ),
+					'stored_phone'  => $order->get_meta( '_bytenft_request_phone' ),
+					'wc_status'     => $order->get_status(),
+				]
+			);
+
+			$order->add_order_note(
+				__( 'Customer changed their contact details before retrying; a new order was started for the new details.', 'bytenft-payment-gateway' )
+			);
+
+			$order->save();
+
+			WC()->session->set( 'order_awaiting_payment', 0 );
+			WC()->session->save_data();
+
+			return;
+		}
+
+		// Only ByteNFT's own unpaid, non-finalized attempts are retryable.
+		if ( ! $order->has_status( [ 'cancelled', 'on-hold' ] ) ) {
 			return;
 		}
 
@@ -1377,6 +1423,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 					$order->update_meta_data('_bytenft_active_pay_id', $pay_id);
 					$order->update_meta_data('_bytenft_payment_finalized', false);
+
+					// Remember WHO this link was minted for. The next submit
+					// compares the posted email/phone against this to tell
+					// "another attempt" apart from "a different customer".
+					bytenft_store_order_customer_identity($order);
 				}
 
 				// -------------------------------------------------
