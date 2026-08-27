@@ -2069,7 +2069,7 @@
 
                             data.message ||
 
-                            'You already have an account. Would you like to continue?',
+                            'This email is already associated with another phone number. Would you like to continue with the existing account or create a new account with the entered phone number?',
 
                             data.user_id || null
 
