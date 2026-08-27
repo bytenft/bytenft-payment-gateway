@@ -34,6 +34,7 @@
             buttonObserver: null,
             blockEventsBound: false,
             popupStarted: null,
+            popupBlocked: false,
             customerUserId: null,
             createNewCustomer: false,
             accountAction: null,
@@ -172,13 +173,13 @@
                         */
                         self.setStatus('popup');
 
-                        const popup = self.openPopupImmediately();
-
-                        if (!popup) {
-                            self.releaseLock('Classic');
-                            self.setStatus('idle');
-                            return;
-                        }
+                        /*
+                        * A blocked window is not a failure. On mobile Safari
+                        * and Chrome this call is outside the original click
+                        * gesture, so the window may simply not open - the
+                        * payment then continues in this tab. Do not abort.
+                        */
+                        self.openPopupImmediately();
 
                         /*
                         * Start payment.
@@ -745,17 +746,14 @@
 
                             self.setStatus('popup');
 
-                            const popup =
-                                self.openPopupImmediately();
-
-                            if (!popup) {
-
-                                self.releaseLock('Block');
-
-                                self.setStatus('idle');
-
-                                return;
-                            }
+                            /*
+                            * A blocked window is not a failure. On mobile
+                            * Safari and Chrome this call is outside the
+                            * original click gesture, so the window may simply
+                            * not open - the payment then continues in this
+                            * tab. Do not abort.
+                            */
+                            self.openPopupImmediately();
 
 
                             /*
@@ -1118,7 +1116,16 @@
                         }
                         self.trackPopupClose();
                     } else {
-                        window.location.href = redirect;
+
+                        /*
+                        * No window - either it was blocked (mobile Safari /
+                        * Chrome) or the customer closed it. Send this tab to
+                        * the payment page instead. Same no-referrer rule as
+                        * the popup path: the Laravel payment page must not
+                        * receive the WP checkout URL as its Referer.
+                        */
+                        self.navigateSameTabWithoutReferrer(redirect);
+
                         self.finish();
                     }
                     return;
@@ -1183,10 +1190,33 @@
                 'width=700,height=700'
             );
 
+            /*
+            * Blocked - almost always Safari or Chrome on mobile.
+            *
+            * Those browsers only honour window.open() while the browser is
+            * still inside the user gesture that triggered it, and by the time
+            * we get here the check-customer request (and possibly the account
+            * confirmation modal) has already broken that gesture.
+            *
+            * This is NOT an error and must not stop the payment. The caller
+            * carries on without a window and handleResponse() sends the
+            * customer to the payment link in this same tab instead, which is
+            * how mobile checkouts normally behave anyway. They come back
+            * through the ByteNFT return URL exactly as the popup flow does.
+            */
             if (!this.state.popup) {
-                alert('Popup blocked. Please allow popups for your payment.');
+
+                console.log(
+                    '[Bytenft] Payment window blocked by the browser - ' +
+                    'falling back to same-tab redirect'
+                );
+
+                this.state.popupBlocked = true;
+
                 return null;
             }
+
+            this.state.popupBlocked = false;
 
             const logoUrl = bytenft_params.bytenft_loader
                 ? encodeURI(bytenft_params.bytenft_loader)
@@ -1283,6 +1313,33 @@
                 // Last resort fallback — referrer may leak but payment still works
                 console.log('[Bytenft] navigateWithoutReferrer fallback', e);
                 popup.location.href = url;
+            }
+        },
+
+        navigateSameTabWithoutReferrer: function (url) {
+
+            /*
+            * rel="noreferrer" suppresses the Referer header on a same-tab
+            * navigation, which a plain location.href assignment cannot do.
+            */
+            try {
+
+                const link = document.createElement('a');
+
+                link.href = url;
+                link.rel = 'noreferrer noopener';
+                link.target = '_self';
+                link.style.display = 'none';
+
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+            } catch (e) {
+
+                console.log('[Bytenft] same-tab navigation fallback', e);
+
+                window.location.href = url;
             }
         },
 
@@ -1637,6 +1694,37 @@
                 .text(this.state.buttonText || 'Place order');
         },
 
+        hideCheckoutLoader: function () {
+
+            /*
+            * The "Existing Account Found" modal is a QUESTION, not a wait.
+            *
+            * Place Order puts the checkout into its loading state, and that
+            * overlay/spinner is still up when the modal appears - so the
+            * customer sees a spinner sitting on top of a dialog that is
+            * waiting on them. Take the loader down first.
+            *
+            * Only jQuery blockUI is touched here. It is what WooCommerce and
+            * FunnelKit use, and its nodes are safe to remove; React-owned
+            * spinners in the block checkout are left alone deliberately.
+            */
+            const $forms = $(
+                'form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form, .wcf-embed-checkout-form-steps'
+            );
+
+            $forms.removeClass('processing');
+
+            if (typeof $forms.unblock === 'function') {
+                $forms.unblock();
+            }
+
+            /*
+            * blockUI orphans its overlay whenever the element it blocked has
+            * been re-rendered underneath it, so sweep up any strays too.
+            */
+            $('.blockUI').remove();
+        },
+
         showCheckoutError: function (message, fields = []) {
             // 1. Cleanly clear out any old error instances to avoid duplicates
             $('.bytenft-error-wrap, #bytenft-checkout-errors').remove();
@@ -1981,7 +2069,7 @@
 
                             data.message ||
 
-                            'You already have an account. Would you like to continue?',
+                            'This email is already associated with another phone number. Would you like to continue with the existing account or create a new account with the entered phone number?',
 
                             data.user_id || null
 
@@ -2292,6 +2380,13 @@
 
                     </div>
                 `;
+
+                /*
+                * Drop the checkout loading overlay before the modal appears -
+                * this dialog waits on the customer, so a spinner over it is
+                * wrong.
+                */
+                self.hideCheckoutLoader();
 
                 $('body').append(html);
 
