@@ -24,6 +24,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 	private static $log_once_flags = [];
 
+	/**
+	 * Account decision values.
+	 */
+	private const ACCOUNT_ACTION_USE_EXISTING = 'use_existing';
+	private const ACCOUNT_ACTION_CREATE_NEW   = 'create_new';
 
 	/**
 	 * Account selected during the availability filter for dynamic title/subtitle.
@@ -91,28 +96,122 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_action('wp_ajax_bytenft_log_event', [$this, 'handle_log_event']);
 		add_action('wp_ajax_nopriv_bytenft_log_event', [$this, 'handle_log_event']);
 
-		add_action('woocommerce_checkout_process', [$this, 'bytenft_prevent_order_reuse_on_details_change']);
+		/*
+		 * NOTE: 'order_awaiting_payment' is dropped in exactly one case.
+		 *
+		 * WooCommerce deliberately keeps that session key across a failed
+		 * payment ("Store Order ID in session, so it can be re-used after
+		 * payment failure" - WC_Checkout::process_order_payment) and resumes the
+		 * same pending/failed order on the next submit. Clearing it made every
+		 * retry mint a brand new WooCommerce order, and any changed billing
+		 * details are already written onto the resumed order by
+		 * WC_Checkout::create_order(), so nothing is lost by leaving it alone.
+		 *
+		 * The one exception is handled in bytenft_reopen_order_for_retry():
+		 * when the customer edits their email or phone, the pointer IS dropped
+		 * so the new details get their own order and payment link.
+		 */
+		add_action('woocommerce_checkout_process', [$this, 'bytenft_reopen_order_for_retry']);
 	}
 
-	public function bytenft_prevent_order_reuse_on_details_change() {
-		if ( isset( $_POST['payment_method'] ) && $_POST['payment_method'] === $this->id ) {
-			if ( ! function_exists( 'WC' ) || ! WC()->session ) {
-				return;
-			}
-			$order_id = WC()->session->get( 'order_awaiting_payment' );
-			if ( $order_id ) {
-				$order = wc_get_order( $order_id );
-				if ( $order && ( $order->has_status( 'pending' ) || $order->has_status( 'failed' ) ) ) {
-					$posted_email = isset( $_POST['billing_email'] ) ? sanitize_email( wp_unslash( $_POST['billing_email'] ) ) : '';
-					$posted_phone = isset( $_POST['billing_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['billing_phone'] ) ) : '';
-					
-					if ( ( $posted_email && $order->get_billing_email() !== $posted_email ) || 
-					     ( $posted_phone && $order->get_billing_phone() !== $posted_phone ) ) {
-						WC()->session->set( 'order_awaiting_payment', '' );
-					}
-				}
-			}
+	/**
+	 * Re-open a cancelled ByteNFT order so Classic Checkout resumes it.
+	 *
+	 * WC_Checkout::create_order() only resumes an order awaiting payment when it
+	 * is 'pending' or 'failed'. A ByteNFT attempt that the customer abandoned is
+	 * recorded as 'cancelled', which would otherwise push WooCommerce into
+	 * creating a second order for what is only the next attempt at the first one.
+	 *
+	 * It also decides whether the pending order may be resumed at all: if the
+	 * customer edited their email or phone since the last payment link was
+	 * minted, the session pointer is dropped so WooCommerce starts a fresh
+	 * order for the new details instead of resuming the old one.
+	 *
+	 * This only ever re-opens an unpaid order; it never touches a paid one.
+	 *
+	 * @return void
+	 */
+	public function bytenft_reopen_order_for_retry() {
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- WC_Checkout::process_checkout() verifies the checkout nonce before this hook fires.
+		$payment_method = isset( $_POST['payment_method'] )
+			? sanitize_text_field( wp_unslash( $_POST['payment_method'] ) )
+			: '';
+
+		if ( $payment_method !== $this->id ) {
+			return;
 		}
+
+		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
+			return;
+		}
+
+		$order_id = absint( WC()->session->get( 'order_awaiting_payment' ) );
+
+		if ( ! $order_id ) {
+			return;
+		}
+
+		$order = wc_get_order( $order_id );
+
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+
+		if (
+			$order->get_meta( '_bytenft_payment_success' ) === 'yes' ||
+			$order->get_meta( '_bytenft_state' ) === 'success'
+		) {
+			return;
+		}
+
+		// -------------------------------------------------------------
+		// A DIFFERENT CUSTOMER NEEDS A DIFFERENT ORDER
+		// -------------------------------------------------------------
+		//
+		// Retrying after a failed/abandoned attempt keeps the same order, but
+		// only while it is the same customer. Once the email or phone has been
+		// edited, this order and its ByteNFT link belong to the old details and
+		// must not be resumed. Dropping the session pointer makes
+		// WC_Checkout::create_order() build a brand new order from the newly
+		// posted data, which then mints its own payment link.
+		//
+		// This runs before the status guard below on purpose: the abandoned
+		// order may still be 'pending', which WooCommerce would resume on its
+		// own without ever reaching the re-open branch.
+		if ( bytenft_order_customer_identity_changed( $order ) ) {
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				'[Order #' . $order_id . '] Customer details changed, starting a new order',
+				[
+					'order_id'      => $order_id,
+					'stored_email'  => $order->get_meta( '_bytenft_request_email' ),
+					'stored_phone'  => $order->get_meta( '_bytenft_request_phone' ),
+					'wc_status'     => $order->get_status(),
+				]
+			);
+
+			$order->add_order_note(
+				__( 'Customer changed their contact details before retrying; a new order was started for the new details.', 'bytenft-payment-gateway' )
+			);
+
+			$order->save();
+
+			WC()->session->set( 'order_awaiting_payment', 0 );
+			WC()->session->save_data();
+
+			return;
+		}
+
+		// Only ByteNFT's own unpaid, non-finalized attempts are retryable.
+		if ( ! $order->has_status( [ 'cancelled', 'on-hold' ] ) ) {
+			return;
+		}
+
+		$order->update_status(
+			'pending',
+			__( 'Reopened for a new ByteNFT payment attempt.', 'bytenft-payment-gateway' )
+		);
 	}
 
 	private function get_api_url($endpoint) {
@@ -668,22 +767,54 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return ob_get_clean();
 	}
 
+
 	public function process_payment($order_id, $used_accounts = [])
 	{
+		$log_prefix = "[Order #{$order_id}]";
+
+		// -------------------------------------------------
+		// 0. RATE LIMITING (MOVED TO TOP FOR DDOS PROTECTION)
+		// -------------------------------------------------
+		$ip_address  = filter_var(wp_unslash($_SERVER['REMOTE_ADDR'] ?? ''), FILTER_VALIDATE_IP) ?: 'invalid';
+		$window_size = 10;
+		$max_requests = 5;
+
+		$timestamp_key = "rate_limit_{$ip_address}_timestamps";
+		$timestamps    = get_transient($timestamp_key) ?: [];
+		$current_time  = time();
+
+		$timestamps = array_filter($timestamps, fn($ts) => $current_time - $ts <= $window_size);
+
+		if (count($timestamps) >= $max_requests) {
+
+			ByteNFT_Payment_Gateway_Logger::warning(
+				$log_prefix . ' Rate limit exceeded',
+				[
+					'ip_address' => $ip_address,
+				]
+			);
+
+			if (is_checkout()) {
+				wc_add_notice(__('Too many requests. Please try again later.', 'bytenft-payment-gateway'), 'error');
+			}
+
+			return $this->build_response(
+				'fail',
+				'Too many requests. Please try again later.',
+				[],
+				429,
+				$order_id
+			);
+		}
+
+		$timestamps[] = $current_time;
+		set_transient($timestamp_key, $timestamps, $window_size);
+
 		global $wpdb;
 
 		$lock_name = '';
 
-		$log_prefix = "[Order #{$order_id}]";
-
 		$start_time = microtime(true);
-
-		ByteNFT_Payment_Gateway_Logger::info(
-			$log_prefix . ' Payment process started',
-			[
-				'order_id' => $order_id
-			]
-		);
 
 		wc_clear_notices();
 
@@ -706,6 +837,144 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				400,
 				$order_id
 			);
+		}
+
+		// -------------------------------------------------
+		// CUSTOMER ACCOUNT SELECTION
+		// -------------------------------------------------
+
+		$customer_account_action = WC()->session
+			? sanitize_key(
+				WC()->session->get(
+					'bytenft_customer_account_action',
+					''
+				)
+			)
+			: '';
+
+		$customer_user_id = WC()->session
+			? absint(
+				WC()->session->get(
+					'bytenft_customer_user_id',
+					0
+				)
+			)
+			: 0;
+
+		// Also check order-level decision.
+		$order_account_action = sanitize_key(
+			$order->get_meta(
+				'_bytenft_account_action',
+				true
+			)
+		);
+
+		// If session action is unavailable, use order action.
+		if ( empty( $customer_account_action ) && ! empty( $order_account_action ) ) {
+
+			$customer_account_action = $order_account_action;
+
+		}
+
+		// -------------------------------------------------
+		// EXPLICIT CREATE NEW
+		// -------------------------------------------------
+
+		if ( self::ACCOUNT_ACTION_CREATE_NEW === $customer_account_action ) {
+
+			$customer_user_id = 0;
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' Customer selected CREATE NEW',
+				[
+					'customer_user_id' => 0,
+					'account_action'   => $customer_account_action,
+					'order_action'     => $order_account_action,
+				]
+			);
+		}
+
+		// -------------------------------------------------
+		// EXPLICIT USE EXISTING
+		// -------------------------------------------------
+
+		elseif ( self::ACCOUNT_ACTION_USE_EXISTING === $customer_account_action ) {
+
+			$customer_user_id = absint(
+				WC()->session
+					? WC()->session->get(
+						'bytenft_customer_user_id',
+						0
+					)
+					: 0
+			);
+
+			if ( $customer_user_id <= 0 ) {
+
+				ByteNFT_Payment_Gateway_Logger::warning(
+					$log_prefix . ' USE EXISTING selected but no customer ID found',
+					[
+						'account_action' => $customer_account_action,
+					]
+				);
+
+				if ( is_checkout() ) {
+					wc_add_notice(
+						__(
+							'The selected customer account could not be found. Please select the account again.',
+							'bytenft-payment-gateway'
+						),
+						'error'
+					);
+				}
+
+				return $this->build_response(
+					'fail',
+					'Selected customer account is missing.',
+					[],
+					400,
+					$order_id
+				);
+			}
+		}
+
+		// -------------------------------------------------
+		// NO EXPLICIT DECISION
+		// -------------------------------------------------
+
+		else {
+
+			$customer_user_id = 0;
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' No explicit ByteNFT customer account selected',
+				[
+					'session_action' => $customer_account_action,
+					'order_action'   => $order_account_action,
+				]
+			);
+		}
+
+		// -------------------------------------------------
+		// PERSIST SELECTED CUSTOMER
+		// -------------------------------------------------
+
+		if ( $customer_user_id > 0 ) {
+
+			$order->update_meta_data(
+				'_bytenft_customer_user_id',
+				$customer_user_id
+			);
+
+			$order->save();
+
+		} else {
+
+			$order->delete_meta_data(
+				'_bytenft_customer_user_id'
+			);
+
+			$order->save();
 		}
 
 		if ( (float) $order->get_total() < 0.01 ) {
@@ -749,44 +1018,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		}
 
 		try {
-
-			// -------------------------------------------------
-			// 4. RATE LIMITING (UNCHANGED)
-			// -------------------------------------------------
-			$ip_address  = filter_var(wp_unslash($_SERVER['REMOTE_ADDR'] ?? ''), FILTER_VALIDATE_IP) ?: 'invalid';
-			$window_size = 10;
-			$max_requests = 5;
-
-			$timestamp_key = "rate_limit_{$ip_address}_timestamps";
-			$timestamps    = get_transient($timestamp_key) ?: [];
-			$current_time  = time();
-
-			$timestamps = array_filter($timestamps, fn($ts) => $current_time - $ts <= $window_size);
-
-			if (count($timestamps) >= $max_requests) {
-
-				ByteNFT_Payment_Gateway_Logger::warning(
-					$log_prefix . ' Rate limit exceeded',
-					[
-						'ip_address' => $ip_address,
-					]
-				);
-
-				if (is_checkout()) {
-					wc_add_notice(__('Too many requests. Please try again later.', 'bytenft-payment-gateway'), 'error');
-				}
-
-				return $this->build_response(
-					'fail',
-					'Too many requests. Please try again later.',
-					[],
-					429,
-					$order_id
-				);
-			}
-
-			$timestamps[] = $current_time;
-			set_transient($timestamp_key, $timestamps, $window_size);
 
 			// -------------------------------------------------
 			// 5. ORDER STATUS PROTECTION
@@ -875,7 +1106,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			// Prepare payment data
-			$data = $this->bytenft_prepare_payment_data($order, $public_key, $secret_key);
+			$data = $this->bytenft_prepare_payment_data(
+				$order,
+				$public_key,
+				$secret_key,
+				$customer_user_id,
+				$customer_account_action
+			);
 
 			if (is_array($data) && ($data['result'] ?? '') === 'fail') {
 
@@ -904,6 +1141,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				continue;
 			}
+
+			ByteNFT_Payment_Gateway_Logger::warning(
+				$log_prefix . ' Data before send :: ',
+				[
+					'data'          => $data,
+				]
+			);
 
 			$limit_url = $this->get_api_url('/api/dailylimit');
 
@@ -966,15 +1210,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				continue; // skip to next priority account (e.g. wert fail), sandbox or not
 			}
-
-			// ✅ SUCCESS
-			ByteNFT_Payment_Gateway_Logger::info(
-				$log_prefix . ' Account selected',
-				[
-					'account_title' => $account['title'] ?? null,
-					'public_key'    => $public_key,
-				]
-			);
 
 			$selected_account = $account;
 			$payment_data     = $data;
@@ -1079,42 +1314,25 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$resp_data = json_decode(wp_remote_retrieve_body($response), true);
 				}
 
-				ByteNFT_Payment_Gateway_Logger::info(
-					'Full API response',
-					$resp_data
-				);
+				if ( ( $resp_data['status'] ?? '' ) === 'error' ) {
 
-				if (($resp_data['status'] ?? '') === 'error') {
-
-					// Always extract the API validation message
-					$error_msg = sanitize_text_field(
-						$resp_data['message']
-						?? $resp_data['context']['message']
-						?? 'Payment failed.'
-					);
+					$error_msg = $this->bytenft_format_api_error( $resp_data );
 
 					ByteNFT_Payment_Gateway_Logger::warning(
 						'Request-payment API returned an error',
 						[
-							'sandbox' => $this->sandbox,
+							'sandbox'  => $this->sandbox,
 							'response' => $resp_data,
-							'message' => $error_msg,
+							'errors'   => $resp_data['errors'] ?? null,
+							'message'  => $error_msg,
 						]
 					);
 
-					// Show WooCommerce notice for Classic Checkout
-					if (!$this->is_block_checkout_request() && is_checkout()) {
-						wc_add_notice($error_msg, 'error');
+					if ( ! $this->is_block_checkout_request() && is_checkout() ) {
+						wc_add_notice( $error_msg, 'error' );
 					}
 
-					// Return the API validation message for BOTH sandbox and live
-					return $this->build_response(
-						'fail',
-						$error_msg,
-						[],
-						400,
-						$order_id
-					);
+					return $this->build_response( 'fail', $error_msg, [], 400, $order_id );
 				}
 
 				// -------------------------------------------------
@@ -1175,6 +1393,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 					$order->update_meta_data('_bytenft_active_pay_id', $pay_id);
 					$order->update_meta_data('_bytenft_payment_finalized', false);
+
+					// Remember WHO this link was minted for. The next submit
+					// compares the posted email/phone against this to tell
+					// "another attempt" apart from "a different customer".
+					bytenft_store_order_customer_identity($order);
 				}
 
 				// -------------------------------------------------
@@ -1288,6 +1511,67 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return $response;
 	}
 
+	private function bytenft_format_api_error( $resp_data, $fallback = 'Payment failed.' ) {
+
+		// Some gateways return the body as a JSON string inside "response".
+		if ( is_string( $resp_data ) ) {
+			$decoded   = json_decode( $resp_data, true );
+			$resp_data = is_array( $decoded ) ? $decoded : [];
+		}
+
+		$labels = [
+			'phone_number'   => __( 'Phone number', 'bytenft-payment-gateway' ),
+			'customer_email' => __( 'Email address', 'bytenft-payment-gateway' ),
+			'first_name'     => __( 'First name', 'bytenft-payment-gateway' ),
+			'last_name'      => __( 'Last name', 'bytenft-payment-gateway' ),
+			'address_1'      => __( 'Street address', 'bytenft-payment-gateway' ),
+			'city'           => __( 'Town / City', 'bytenft-payment-gateway' ),
+			'state'          => __( 'State', 'bytenft-payment-gateway' ),
+			'zip'            => __( 'ZIP code', 'bytenft-payment-gateway' ),
+			'postcode'       => __( 'ZIP code', 'bytenft-payment-gateway' ),
+			'amount'         => __( 'Order total', 'bytenft-payment-gateway' ),
+		];
+
+		$lines = [];
+
+		if ( ! empty( $resp_data['errors'] ) && is_array( $resp_data['errors'] ) ) {
+
+			foreach ( $resp_data['errors'] as $field => $field_errors ) {
+
+				foreach ( (array) $field_errors as $err ) {
+
+					$err = sanitize_text_field( (string) $err );
+
+					if ( '' === $err ) {
+						continue;
+					}
+
+					$key = sanitize_key( $field );
+
+					// Replace the API's raw field slug with a friendly label.
+					if ( isset( $labels[ $key ] ) ) {
+						$err = preg_replace(
+							'/\b' . preg_quote( str_replace( '_', ' ', $key ), '/' ) . '\b/i',
+							$labels[ $key ],
+							$err
+						);
+					}
+
+					$lines[ $key . '|' . $err ] = $err; // de-dupe
+				}
+			}
+		}
+
+		if ( empty( $lines ) ) {
+			return sanitize_text_field(
+				(string) ( $resp_data['message'] ?? $resp_data['context']['message'] ?? $fallback )
+			);
+		}
+
+		// Each piece is already sanitized, so the <br> is safe to add afterwards.
+		return implode( '<br>', array_values( $lines ) );
+	}
+
 	private function is_block_checkout_request() {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Checking action name only; actual nonce is verified in the AJAX handler itself.
 		return wp_doing_ajax() && isset($_REQUEST['action'])
@@ -1312,7 +1596,13 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return preg_match('/pob|postoffice/', $clean) === 1;
 	}
 
-	private function bytenft_prepare_payment_data($order, $api_public_key, $api_secret) {
+	private function bytenft_prepare_payment_data(
+		$order,
+		$api_public_key,
+		$api_secret,
+		$customer_user_id = 0,
+		$customer_account_action = ''
+	) {
 		$order_id    = $order->get_id();
 		$is_sandbox  = $this->get_option('sandbox') === 'yes';
 		$request_for = sanitize_email($order->get_billing_email() ?: $order->get_billing_phone());
@@ -1321,6 +1611,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$amount      = number_format($order->get_total(), 2, '.', '');
 		$email       = sanitize_text_field($order->get_billing_email());
 		$phone = '';
+
+		$customer_user_id = absint( $customer_user_id );
+
+		$customer_account_action = sanitize_key(
+			$customer_account_action
+		);
 
 		if (isset($_POST['billing_phone'])) {
 			$phone = sanitize_text_field(
@@ -1377,6 +1673,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'meta_data'        => $meta_data_array,
 			'remarks'          => 'Order ' . $order->get_order_number(),
 			'email'            => $email,
+			'phone_number'     => $phone,
 			'billing_address_1'=> $billing_address_1,
 			'billing_address_2'=> $billing_address_2,
 			'billing_city'     => $billing_city,
@@ -1386,20 +1683,23 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'is_sandbox'       => $is_sandbox,
 			'curr_code'        => sanitize_text_field($order->get_currency()),
 			'plugin_source'    => 'bytenft',
+			'customer_user_id' => $customer_user_id,
+			'is_guest'	=> 1,
 		];
 
 			$countryCode = preg_replace('/[^0-9]/', '', $country_code ?? '');
-$payload['country_code'] = '+' . $countryCode;
+		$payload['country_code'] = '+' . $countryCode;
 
 		return $payload;
 	}
 
 	private function bytenft_normalize_phone($phone, $country_code) {
 
-		$cleanedPhone = preg_replace('/[()\s-]/', '', $phone ?? '');
+		$phone = trim((string) $phone);
+		// Remove all characters except digits and the plus sign
+		$cleanedPhone = preg_replace('/[^\d+]/', '', $phone);
 		$countryCode  = preg_replace('/[^0-9]/', '', $country_code ?? '');
 		$phoneNumber  = preg_replace('/[^\d]/', '', $cleanedPhone);
-
 		if (!empty($countryCode) && strlen($phoneNumber) > strlen($countryCode) && strpos($phoneNumber, $countryCode) === 0) {
 			$normalizedPhone = substr($phoneNumber, strlen($countryCode));
 		} else {
@@ -1708,13 +2008,6 @@ $payload['country_code'] = '+' . $countryCode;
 	public function validate_fields() {
 
 		// ---------------------------------------------------------------------
-		// Security
-		// ---------------------------------------------------------------------
-		if ( ! $this->check_for_sql_injection() ) {
-			return false;
-		}
-
-		// ---------------------------------------------------------------------
 		// Restricted States
 		// ---------------------------------------------------------------------
 		if ( $this->is_restricted_state() ) {
@@ -1970,12 +2263,6 @@ $payload['country_code'] = '+' . $countryCode;
 				$force_refresh
 			);
 
-			// TEMP DEBUG — remove after confirming the response shape.
-			ByteNFT_Payment_Gateway_Logger::info(
-				'DEBUG dailylimit raw response for ' . ($account['title'] ?? ''),
-				['response' => $limit_check]
-			);
-
 			if (($limit_check['status'] ?? '') === 'error') {
 				ByteNFT_Payment_Gateway_Logger::info(
 					'Account skipped at display-time: daily transaction limit reached',
@@ -2103,10 +2390,6 @@ $payload['country_code'] = '+' . $countryCode;
 	{
 		if (!function_exists('WC') || !WC()) {
 			return;
-		}
-
-		if (!WC()->session) {
-			WC()->initialize_session();
 		}
 
 		// -----------------------------
@@ -2432,7 +2715,7 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 		$failed = WC()->session->get('bytenft_failed_accounts', []);
 
-		$settings = array_filter($settings, function ($account) use ($failed) {
+		$filtered_settings = array_filter($settings, function ($account) use ($failed) {
 
 			$public_key = $this->sandbox
 				? ($account['sandbox_public_key'] ?? '')
@@ -2440,6 +2723,13 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 			return !in_array($public_key, $failed, true);
 		});
+
+		if (empty($filtered_settings) && !empty($settings)) {
+			WC()->session->__unset('bytenft_failed_accounts');
+			// Keep $settings as is to retry all accounts
+		} else {
+			$settings = $filtered_settings;
+		}
 
 
 		$mode = $this->sandbox ? 'sandbox' : 'live';
@@ -2543,40 +2833,6 @@ private function get_routing_sorted_accounts(array $accounts): array {
 
 	private function release_lock($lock_key) {
 		delete_option($lock_key);
-	}
-
-	function check_for_sql_injection() {
-		$sql_injection_patterns = [
-			'/\b(SELECT|INSERT|UPDATE|DELETE|DROP|ALTER)\b(?![^{}]*})/i',
-			'/(\-\-|\/\*|\*\/)/i',
-			'/(\b(AND|OR)\b\s*\d+\s*[=<>])/i',
-		];
-		$errors = [];
-		$checkout_fields = WC()->checkout()->get_checkout_fields();
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing
-		foreach ($_POST as $key => $value) {
-			if (is_string($value)) {
-				foreach ($sql_injection_patterns as $pattern) {
-					if (preg_match($pattern, $value)) {
-						$field_label = isset($checkout_fields['billing'][$key]['label'])
-							? $checkout_fields['billing'][$key]['label']
-							: (isset($checkout_fields['shipping'][$key]['label'])
-								? $checkout_fields['shipping'][$key]['label']
-								: ucfirst(str_replace('_', ' ', $key)));
-						$ip_address = sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'] ?? ''));
-						wc_get_logger()->info("SecurityCheck | Potential SQL Injection | Field: {$field_label}, IP: {$ip_address}", ['source' => 'bytenft-payment-gateway']);
-						/* translators: %s is the field label. */
-						$errors[] = sprintf(esc_html__('Please enter a valid "%s".', 'bytenft-payment-gateway'), $field_label);
-						break;
-					}
-				}
-			}
-		}
-		if (!empty($errors)) {
-			foreach ($errors as $error) wc_add_notice($error, 'error');
-			return false;
-		}
-		return true;
 	}
 
 	public function is_gateway_available()
