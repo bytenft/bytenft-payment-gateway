@@ -34,6 +34,7 @@
             buttonObserver: null,
             blockEventsBound: false,
             popupStarted: null,
+            popupBlocked: false,
             customerUserId: null,
             createNewCustomer: false,
             accountAction: null,
@@ -143,35 +144,7 @@
 
                     /*
                     * =========================================================
-                    * STEP 2: OPEN THE PAYMENT WINDOW (MUST STAY SYNCHRONOUS)
-                    * =========================================================
-                    *
-                    * Safari and Chrome on mobile only honour window.open()
-                    * while the browser is still inside the user gesture that
-                    * triggered it. Opening it from the checkCustomerAccount()
-                    * promise - a whole AJAX round trip later - is outside that
-                    * gesture, so those browsers silently block the window.
-                    *
-                    * So it is opened here, on the submit itself, and parked on
-                    * a loading screen until the payment link is known. If an
-                    * existing account has to be confirmed first,
-                    * showCustomerConfirmation() closes it and re-opens it from
-                    * the modal button click, which is a fresh gesture.
-                    */
-
-                    self.setStatus('popup');
-
-                    if (!self.openPopupImmediately()) {
-
-                        self.releaseLock('Classic');
-                        self.setStatus('idle');
-
-                        return false;
-                    }
-
-                    /*
-                    * =========================================================
-                    * STEP 3: CHECK CUSTOMER ACCOUNT
+                    * STEP 2: CHECK CUSTOMER ACCOUNT
                     * =========================================================
                     */
 
@@ -195,22 +168,18 @@
                                 : 'use_existing';
 
                         /*
-                        * The payment window is already open - it was opened
-                        * synchronously on submit, and re-opened from the
-                        * confirmation modal's button if one was shown.
-                        *
-                        * Never call window.open() here: this runs after an
-                        * AJAX round trip, outside the user gesture, which is
-                        * exactly what Safari and Chrome mobile block.
+                        * Phone + customer validation passed.
+                        * Now open payment popup.
                         */
-                        if (
-                            !self.state.popup ||
-                            self.state.popup.closed
-                        ) {
-                            self.releaseLock('Classic');
-                            self.setStatus('idle');
-                            return;
-                        }
+                        self.setStatus('popup');
+
+                        /*
+                        * A blocked window is not a failure. On mobile Safari
+                        * and Chrome this call is outside the original click
+                        * gesture, so the window may simply not open - the
+                        * payment then continues in this tab. Do not abort.
+                        */
+                        self.openPopupImmediately();
 
                         /*
                         * Start payment.
@@ -718,32 +687,7 @@
 
                     /*
                     * =================================================
-                    * STEP 1: OPEN THE PAYMENT WINDOW (SYNCHRONOUS)
-                    * =================================================
-                    *
-                    * Safari and Chrome on mobile only honour window.open()
-                    * while the browser is still inside the user gesture
-                    * that triggered it. Opening it from the
-                    * checkCustomerAccount() promise - an AJAX round trip
-                    * later - is outside that gesture and gets blocked.
-                    *
-                    * It is opened here, on the submit itself, and parked
-                    * on a loading screen until the payment link is known.
-                    */
-
-                    self.setStatus('popup');
-
-                    if (!self.openPopupImmediately()) {
-
-                        self.releaseLock('Block');
-                        self.setStatus('idle');
-
-                        return;
-                    }
-
-                    /*
-                    * =================================================
-                    * STEP 2: CHECK CUSTOMER ACCOUNT
+                    * STEP 1: CHECK CUSTOMER ACCOUNT
                     * =================================================
                     *
                     * This calls /api/check-customer through the
@@ -753,9 +697,7 @@
                     *      continue automatically.
                     *
                     * If confirmation is required:
-                    *      show the customer confirmation popup, which
-                    *      closes the payment window while the modal is up
-                    *      and re-opens it from the button click.
+                    *      show the customer confirmation popup.
                     */
 
                     self.checkCustomerAccount()
@@ -795,34 +737,28 @@
 
                             /*
                             * =================================================
-                            * STEP 3: CONFIRM THE WINDOW SURVIVED
+                            * STEP 2: OPEN PAYMENT POPUP
                             * =================================================
                             *
-                            * The payment window is already open - opened
-                            * synchronously on submit, and re-opened from the
-                            * confirmation modal's button if one was shown.
-                            *
-                            * Never call window.open() here: this runs after
-                            * an AJAX round trip, outside the user gesture,
-                            * which is what Safari and Chrome mobile block.
+                            * We only open the payment popup after the
+                            * customer confirmation has been completed.
                             */
 
-                            if (
-                                !self.state.popup ||
-                                self.state.popup.closed
-                            ) {
+                            self.setStatus('popup');
 
-                                self.releaseLock('Block');
-
-                                self.setStatus('idle');
-
-                                return;
-                            }
+                            /*
+                            * A blocked window is not a failure. On mobile
+                            * Safari and Chrome this call is outside the
+                            * original click gesture, so the window may simply
+                            * not open - the payment then continues in this
+                            * tab. Do not abort.
+                            */
+                            self.openPopupImmediately();
 
 
                             /*
                             * =================================================
-                            * STEP 4: START PAYMENT PROCESSING
+                            * STEP 3: START PAYMENT PROCESSING
                             * =================================================
                             */
 
@@ -1180,7 +1116,16 @@
                         }
                         self.trackPopupClose();
                     } else {
-                        window.location.href = redirect;
+
+                        /*
+                        * No window - either it was blocked (mobile Safari /
+                        * Chrome) or the customer closed it. Send this tab to
+                        * the payment page instead. Same no-referrer rule as
+                        * the popup path: the Laravel payment page must not
+                        * receive the WP checkout URL as its Referer.
+                        */
+                        self.navigateSameTabWithoutReferrer(redirect);
+
                         self.finish();
                     }
                     return;
@@ -1245,10 +1190,33 @@
                 'width=700,height=700'
             );
 
+            /*
+            * Blocked - almost always Safari or Chrome on mobile.
+            *
+            * Those browsers only honour window.open() while the browser is
+            * still inside the user gesture that triggered it, and by the time
+            * we get here the check-customer request (and possibly the account
+            * confirmation modal) has already broken that gesture.
+            *
+            * This is NOT an error and must not stop the payment. The caller
+            * carries on without a window and handleResponse() sends the
+            * customer to the payment link in this same tab instead, which is
+            * how mobile checkouts normally behave anyway. They come back
+            * through the ByteNFT return URL exactly as the popup flow does.
+            */
             if (!this.state.popup) {
-                alert('Popup blocked. Please allow popups for your payment.');
+
+                console.log(
+                    '[Bytenft] Payment window blocked by the browser - ' +
+                    'falling back to same-tab redirect'
+                );
+
+                this.state.popupBlocked = true;
+
                 return null;
             }
+
+            this.state.popupBlocked = false;
 
             const logoUrl = bytenft_params.bytenft_loader
                 ? encodeURI(bytenft_params.bytenft_loader)
@@ -1345,6 +1313,33 @@
                 // Last resort fallback — referrer may leak but payment still works
                 console.log('[Bytenft] navigateWithoutReferrer fallback', e);
                 popup.location.href = url;
+            }
+        },
+
+        navigateSameTabWithoutReferrer: function (url) {
+
+            /*
+            * rel="noreferrer" suppresses the Referer header on a same-tab
+            * navigation, which a plain location.href assignment cannot do.
+            */
+            try {
+
+                const link = document.createElement('a');
+
+                link.href = url;
+                link.rel = 'noreferrer noopener';
+                link.target = '_self';
+                link.style.display = 'none';
+
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+            } catch (e) {
+
+                console.log('[Bytenft] same-tab navigation fallback', e);
+
+                window.location.href = url;
             }
         },
 
@@ -1697,6 +1692,37 @@
                 .prop('disabled', false)
                 .removeClass('loading')
                 .text(this.state.buttonText || 'Place order');
+        },
+
+        hideCheckoutLoader: function () {
+
+            /*
+            * The "Existing Account Found" modal is a QUESTION, not a wait.
+            *
+            * Place Order puts the checkout into its loading state, and that
+            * overlay/spinner is still up when the modal appears - so the
+            * customer sees a spinner sitting on top of a dialog that is
+            * waiting on them. Take the loader down first.
+            *
+            * Only jQuery blockUI is touched here. It is what WooCommerce and
+            * FunnelKit use, and its nodes are safe to remove; React-owned
+            * spinners in the block checkout are left alone deliberately.
+            */
+            const $forms = $(
+                'form.checkout, form.wc-block-checkout__form, form#wcf-embed-checkout-form, .wcf-embed-checkout-form-steps'
+            );
+
+            $forms.removeClass('processing');
+
+            if (typeof $forms.unblock === 'function') {
+                $forms.unblock();
+            }
+
+            /*
+            * blockUI orphans its overlay whenever the element it blocked has
+            * been re-rendered underneath it, so sweep up any strays too.
+            */
+            $('.blockUI').remove();
         },
 
         showCheckoutError: function (message, fields = []) {
@@ -2356,20 +2382,11 @@
                 `;
 
                 /*
-                * =========================================================
-                * PARK THE PAYMENT WINDOW WHILE THE MODAL IS UP
-                * =========================================================
-                *
-                * The payment window was opened on submit so mobile Safari
-                * and Chrome would allow it at all. On a phone that window
-                * is a new TAB and it has the foreground, so the customer
-                * would never see this modal behind it.
-                *
-                * Close it now and re-open it from whichever button they
-                * press below. A button click is its own user gesture, so
-                * the re-open is allowed on mobile too.
+                * Drop the checkout loading overlay before the modal appears -
+                * this dialog waits on the customer, so a spinner over it is
+                * wrong.
                 */
-                self.cleanupPopup();
+                self.hideCheckoutLoader();
 
                 $('body').append(html);
 
@@ -2451,13 +2468,6 @@
                         self.state.createNewCustomer = true;
                         self.state.accountAction = 'create_new';
 
-                        /*
-                        * Re-open the payment window from inside this click,
-                        * while the user gesture is still live. Doing it later
-                        * in the promise chain is what mobile browsers block.
-                        */
-                        self.openPopupImmediately();
-
                         resolve(false);
 
                         return false;
@@ -2496,13 +2506,6 @@
                         self.state.customerUserId = userId || null;
                         self.state.createNewCustomer = false;
                         self.state.accountAction = 'use_existing';
-
-                        /*
-                        * Re-open the payment window from inside this click,
-                        * while the user gesture is still live. Doing it later
-                        * in the promise chain is what mobile browsers block.
-                        */
-                        self.openPopupImmediately();
 
                         resolve(true);
 
