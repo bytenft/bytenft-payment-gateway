@@ -530,7 +530,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'title'       => __('Title', 'bytenft-payment-gateway'),
 				'type'        => 'text',
 				'description' => __('This controls the title which the user sees during checkout.', 'bytenft-payment-gateway'),
-				'default'     => __('Buy with USDC Using Your Credit/Debit Card, Apple Pay or Google Pay — Secure, Modern Checkout 🔐', 'bytenft-payment-gateway'),
+				'default'     => __('APPLE PAY, GOOGLE PAY, CASH APP or Use Any Credit or Debit Card', 'bytenft-payment-gateway'),
 				'desc_tip'    => true,
 			],
 
@@ -539,8 +539,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'type'        => 'textarea',
 				'description' => __('Provide a brief description of the payment option.', 'bytenft-payment-gateway'),
 				'default'     => __(
-					'<p style="margin:0 0 6px; font-size:13px;">Use a Credit Card, Debit Card or Google Pay, Apple Pay to complete your purchase via USDC.</p>
-					<p style="margin:0 0 6px; font-size:13px;">The transaction will appear on your bank or card statement as *ByteNFT</p>',
+					'<p style="margin:0 0 6px; font-size:13px;">Bank Statement Information</p>
+					<p style="margin:0 0 6px; font-size:13px;">On your bank or card statement, this transaction will appear as from Wert*ByteNFT.</p>',
 					'bytenft-payment-gateway'
 				),
 				'desc_tip'    => true,
