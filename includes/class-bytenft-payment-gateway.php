@@ -218,6 +218,40 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return $this->base_url . $endpoint;
 	}
 
+	/**
+	 * Output the admin options with the prominent Merchant Integration Validation Guide banner.
+	 */
+	public function admin_options() {
+		$guide_url = admin_url('admin.php?page=bytenft-integration-guide');
+		?>
+		<div class="bytenft-guide-banner">
+			<div class="bytenft-guide-banner-inner">
+				<div class="bytenft-guide-banner-icon">
+					<i class="fa fa-shield" aria-hidden="true"></i>
+				</div>
+				<div class="bytenft-guide-banner-content">
+					<div class="bytenft-guide-banner-badge">
+						<i class="fa fa-check-circle" aria-hidden="true"></i> <?php esc_html_e('Pre-Launch Readiness', 'bytenft-payment-gateway'); ?>
+					</div>
+					<h3 class="bytenft-guide-banner-title">
+						<?php esc_html_e('Merchant Integration Validation Guide', 'bytenft-payment-gateway'); ?>
+					</h3>
+					<p class="bytenft-guide-banner-text">
+						<?php esc_html_e('Before enabling Live Mode, complete the Merchant Integration Validation Guide to test your payment flow, verify webhooks and order status updates, and confirm that your integration is working correctly.', 'bytenft-payment-gateway'); ?>
+					</p>
+				</div>
+				<div class="bytenft-guide-banner-action">
+					<a href="<?php echo esc_url($guide_url); ?>" class="button bytenft-guide-btn" target="_blank" rel="noopener noreferrer">
+						<i class="fa fa-external-link" aria-hidden="true"></i>
+						<span><?php esc_html_e('Merchant Integration Validation Guide', 'bytenft-payment-gateway'); ?></span>
+					</a>
+				</div>
+			</div>
+		</div>
+		<?php
+		parent::admin_options();
+	}
+
 	public function bytenft_process_admin_options() {
 		$enabled     = isset($_POST['woocommerce_' . $this->id . '_enabled']) ? 'yes' : 'no';
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WooCommerce admin options handler before this method runs.
@@ -1398,6 +1432,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					// compares the posted email/phone against this to tell
 					// "another attempt" apart from "a different customer".
 					bytenft_store_order_customer_identity($order);
+
+					update_option('bytenft_payment_created_verified', true);
+					update_option('bytenft_payment_page_verified', true);
 				}
 
 				// -------------------------------------------------
@@ -1659,6 +1696,37 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'source'   => 'woocommerce',
 		]);
 
+		$is_guest = 1;
+
+		if ( $customer_user_id > 0 ) {
+			$is_guest = 0;
+		} elseif ( $order->get_customer_id() > 0 ) {
+			$customer_user_id = $order->get_customer_id();
+			$is_guest         = 0;
+		} elseif ( is_user_logged_in() ) {
+			$customer_user_id = get_current_user_id();
+			$is_guest         = 0;
+		} elseif ( $customer_account_action === self::ACCOUNT_ACTION_USE_EXISTING ) {
+			$is_guest         = 0;
+		} else {
+			$wp_user = ! empty( $email ) ? get_user_by( 'email', $email ) : null;
+			if ( $wp_user ) {
+				$customer_user_id = $wp_user->ID;
+				$is_guest         = 0;
+			} else {
+				$previous_orders = wc_get_orders( [
+					'billing_email' => $email,
+					'limit'         => 1,
+					'exclude'       => [ $order_id ],
+					'return'        => 'ids',
+				] );
+				if ( ! empty( $previous_orders ) ) {
+					$customer_user_id = 1;
+					$is_guest         = 0;
+				}
+			}
+		}
+
 		$payload = [
 			'api_secret'       => $api_secret,
 			'api_public_key'   => $api_public_key,
@@ -1684,7 +1752,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'curr_code'        => sanitize_text_field($order->get_currency()),
 			'plugin_source'    => 'bytenft',
 			'customer_user_id' => $customer_user_id,
-			'is_guest'	=> 1,
+			'is_guest'         => $is_guest,
 		];
 
 			$countryCode = preg_replace('/[^0-9]/', '', $country_code ?? '');
@@ -2078,9 +2146,11 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		wp_enqueue_style('bytenft-admin-css', plugins_url('../assets/css/admin.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . '../assets/css/admin.css'), 'all');
 		wp_enqueue_script('bytenft-admin-script', plugins_url('../assets/js/bytenft-admin.js', __FILE__), ['jquery'], filemtime(plugin_dir_path(__FILE__) . '../assets/js/bytenft-admin.js'), true);
 		wp_localize_script('bytenft-admin-script', 'bytenft_admin_data', [
-			'ajax_url'   => admin_url('admin-ajax.php'),
-			'nonce'      => wp_create_nonce('bytenft_sync_nonce'),
-			'gateway_id' => $this->id,
+			'ajax_url'    => admin_url('admin-ajax.php'),
+			'nonce'       => wp_create_nonce('bytenft_sync_nonce'),
+			'guide_nonce' => wp_create_nonce('bytenft_guide_nonce'),
+			'gateway_id'  => $this->id,
+			'guide_state' => get_option('bytenft_validation_guide_state', []),
 		]);
 	}
 

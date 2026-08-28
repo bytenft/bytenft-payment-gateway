@@ -206,3 +206,366 @@
 	background-color: #fff0f0;
 	color: #dc3545;
 }
+
+/* ==========================================================================
+   ByteNFT Merchant Integration Validation Guide Banner (Settings Page)
+   ========================================================================== */
+.bytenft-guide-banner {
+	margin: 20px 0 25px 0;
+	background: linear-gradient(135deg, #0A0B21 0%, #16183D 60%, #1E1A47 100%);
+	border-radius: 12px;
+	border: 1px solid rgba(130, 100, 215, 0.4);
+	box-shadow: 0 8px 24px rgba(10, 11, 33, 0.25), 0 0 1px rgba(130, 100, 215, 0.4);
+	color: #ffffff;
+	overflow: hidden;
+	position: relative;
+}
+
+.bytenft-guide-banner::before {
+	content: '';
+	position: absolute;
+	top: -50px;
+	right: -50px;
+	width: 180px;
+	height: 180px;
+	background: radial-gradient(circle, rgba(130, 100, 215, 0.25) 0%, rgba(130, 100, 215, 0) 70%);
+	border-radius: 50%;
+	pointer-events: none;
+}
+
+.bytenft-guide-banner-inner {
+	display: flex;
+	align-items: center;
+	padding: 22px 28px;
+	gap: 22px;
+	position: relative;
+	z-index: 1;
+}
+
+.bytenft-guide-banner-icon {
+	flex-shrink: 0;
+	width: 54px;
+	height: 54px;
+	background: rgba(130, 100, 215, 0.2);
+	border: 1px solid rgba(130, 100, 215, 0.5);
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #A78BFA;
+	font-size: 24px;
+}
+
+.bytenft-guide-banner-content {
+	flex-grow: 1;
+}
+
+.bytenft-guide-banner-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	background: rgba(130, 100, 215, 0.25);
+	color: #C4B5FD;
+	border: 1px solid rgba(130, 100, 215, 0.4);
+	border-radius: 20px;
+	padding: 2px 10px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	margin-bottom: 6px;
+}
+
+.bytenft-guide-banner-title {
+	margin: 0 0 6px 0 !important;
+	font-size: 18px !important;
+	font-weight: 700 !important;
+	color: #FFFFFF !important;
+}
+
+.bytenft-guide-banner-text {
+	margin: 0 !important;
+	font-size: 13px !important;
+	line-height: 1.5 !important;
+	color: #D1D5DB !important;
+	max-width: 820px;
+}
+
+.bytenft-guide-banner-action {
+	flex-shrink: 0;
+}
+
+.bytenft-guide-btn {
+	display: inline-flex !important;
+	align-items: center !important;
+	gap: 8px !important;
+	background: #8264D7 !important;
+	color: #FFFFFF !important;
+	border: 1px solid #9D84E2 !important;
+	border-radius: 8px !important;
+	padding: 10px 20px !important;
+	font-size: 14px !important;
+	font-weight: 600 !important;
+	text-decoration: none !important;
+	transition: all 0.2s ease-in-out !important;
+	box-shadow: 0 4px 14px rgba(130, 100, 215, 0.4) !important;
+	white-space: nowrap !important;
+}
+
+.bytenft-guide-btn:hover,
+.bytenft-guide-btn:focus {
+	background: #6F4ECF !important;
+	color: #FFFFFF !important;
+	border-color: #B49FF0 !important;
+	transform: translateY(-1px);
+	box-shadow: 0 6px 20px rgba(130, 100, 215, 0.55) !important;
+}
+
+/* ==========================================================================
+   ByteNFT Merchant Integration Validation Guide (7 Automatic Steps)
+   ========================================================================== */
+.bytenft-guide-wrap {
+	max-width: 960px;
+	margin: 25px auto 40px 0;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+	color: #1E293B;
+}
+
+/* Header */
+.bytenft-guide-header {
+	background: #FFFFFF;
+	border-radius: 12px;
+	border: 1px solid #E2E8F0;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+	margin-bottom: 24px;
+	overflow: hidden;
+}
+
+.bytenft-guide-header-top {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 24px 28px;
+	flex-wrap: wrap;
+	gap: 16px;
+}
+
+.bytenft-brand-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	background: #0A0B21;
+	color: #A78BFA;
+	padding: 4px 12px;
+	border-radius: 20px;
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.6px;
+	margin-bottom: 8px;
+}
+
+.bytenft-guide-title {
+	margin: 0 0 4px 0 !important;
+	font-size: 24px !important;
+	font-weight: 800 !important;
+	color: #0A0B21 !important;
+}
+
+.bytenft-guide-subtitle {
+	margin: 0 !important;
+	font-size: 13px !important;
+	color: #64748B !important;
+}
+
+.bytenft-guide-header-actions {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.bytenft-btn {
+	display: inline-flex !important;
+	align-items: center !important;
+	gap: 6px !important;
+	border-radius: 6px !important;
+	padding: 7px 14px !important;
+	font-size: 13px !important;
+	font-weight: 600 !important;
+	cursor: pointer !important;
+	transition: all 0.15s ease-in-out !important;
+}
+
+.bytenft-btn-outline {
+	background: #FFFFFF !important;
+	border: 1px solid #CBD5E1 !important;
+	color: #334155 !important;
+}
+
+.bytenft-btn-outline:hover {
+	background: #F8FAFC !important;
+	border-color: #94A3B8 !important;
+	color: #0A0B21 !important;
+}
+
+.bytenft-btn-primary {
+	background: #8264D7 !important;
+	border: 1px solid #8264D7 !important;
+	color: #FFFFFF !important;
+}
+
+.bytenft-btn-primary:hover {
+	background: #6F4ECF !important;
+	color: #FFFFFF !important;
+}
+
+/* Step Cards */
+.bytenft-step-card {
+	background: #FFFFFF;
+	border: 1px solid #E2E8F0;
+	border-radius: 12px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+	margin-bottom: 16px;
+	overflow: hidden;
+	transition: all 0.2s ease-in-out;
+}
+
+.bytenft-step-card:hover {
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+	border-color: #CBD5E1;
+}
+
+.step-card-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 16px 22px;
+	background: #F8FAFC;
+	border-bottom: 1px solid #E2E8F0;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.step-title-wrap {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.step-num-badge {
+	background: #0A0B21;
+	color: #FFFFFF;
+	font-size: 12px;
+	font-weight: 700;
+	width: 26px;
+	height: 26px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.step-title {
+	margin: 0 !important;
+	font-size: 16px !important;
+	font-weight: 700 !important;
+	color: #0A0B21 !important;
+}
+
+/* Status Tags */
+.step-status-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	font-weight: 700;
+	padding: 5px 14px;
+	border-radius: 20px;
+	letter-spacing: 0.4px;
+	text-transform: uppercase;
+}
+
+.step-status-tag.status-pending {
+	background: #F1F5F9;
+	color: #64748B;
+	border: 1px solid #CBD5E1;
+}
+
+.step-status-tag.status-passed {
+	background: #D1FAE5;
+	color: #065F46;
+	border: 1px solid #6EE7B7;
+}
+
+.step-status-tag.status-failed {
+	background: #FEE2E2;
+	color: #991B1B;
+	border: 1px solid #FCA5A5;
+}
+
+/* Step Card Body */
+.step-card-body {
+	padding: 18px 22px;
+}
+
+.step-description {
+	margin: 0 !important;
+	font-size: 14px;
+	line-height: 1.5;
+	color: #334155;
+}
+
+/* ==========================================================================
+   YOU ARE GOOD TO GO - Final Result Section
+   ========================================================================== */
+.bytenft-good-to-go-wrap {
+	margin: 30px 0 20px 0;
+	transition: all 0.3s ease;
+}
+
+.bytenft-good-to-go {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	background: linear-gradient(135deg, #0A0B21 0%, #064E3B 100%);
+	border: 2px solid #10B981;
+	border-radius: 12px;
+	padding: 24px 32px;
+	box-shadow: 0 8px 24px rgba(16, 185, 129, 0.25);
+	text-align: center;
+}
+
+.bytenft-good-to-go .good-to-go-icon {
+	font-size: 34px;
+	color: #34D399;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.bytenft-good-to-go .good-to-go-text {
+	margin: 0 !important;
+	font-size: 26px !important;
+	font-weight: 900 !important;
+	color: #34D399 !important;
+	letter-spacing: 1.5px;
+	text-transform: uppercase;
+}
+
+/* Responsive */
+@media screen and (max-width: 782px) {
+	.bytenft-guide-banner-inner {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+	.bytenft-good-to-go {
+		flex-direction: column;
+		padding: 20px;
+	}
+	.bytenft-good-to-go .good-to-go-text {
+		font-size: 20px !important;
+	}
+}

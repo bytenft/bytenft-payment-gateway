@@ -94,16 +94,17 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	            continue;
 	        }
 
-	        $public_key = $sandbox
-	            ? sanitize_text_field($account['sandbox_public_key'] ?? '')
-	            : sanitize_text_field($account['live_public_key'] ?? '');
+	        $live_pub = sanitize_text_field($account['live_public_key'] ?? '');
+	        $sand_pub = sanitize_text_field($account['sandbox_public_key'] ?? '');
+	        $live_sec = sanitize_text_field($account['live_secret_key'] ?? '');
+	        $sand_sec = sanitize_text_field($account['sandbox_secret_key'] ?? '');
 
-	        ByteNFT_Payment_Gateway_Logger::info('Checking public key :: ' . $public_key, [
-	            'source' => 'bytenft-payment-gateway',
-	            'sandbox' => $sandbox,
-	        ]);
-
-	        if (!empty($public_key) && hash_equals($public_key, $api_key)) {
+	        if (
+	            (!empty($live_pub) && hash_equals($live_pub, $api_key)) ||
+	            (!empty($sand_pub) && hash_equals($sand_pub, $api_key)) ||
+	            (!empty($live_sec) && hash_equals($live_sec, $api_key)) ||
+	            (!empty($sand_sec) && hash_equals($sand_sec, $api_key))
+	        ) {
 	            ByteNFT_Payment_Gateway_Logger::info('Keys matched successfully', [
 	                'source' => 'bytenft-payment-gateway',
 	                'account_id' => $account_id,
@@ -141,10 +142,11 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			? $params['api_data']
 			: $params;
 
-		$order_id         = intval($data['order_id'] ?? 0);
-		$api_order_status = sanitize_text_field($data['order_status'] ?? '');
-		$pay_id           = sanitize_text_field($data['pay_id'] ?? '');
-		$api_key_raw      = $data['nonce'] ?? '';
+		$order_id_raw     = trim((string)($data['order_id'] ?? 0), " \t\n\r\0\x0B\"'");
+		$order_id         = intval($order_id_raw);
+		$api_order_status = trim(sanitize_text_field($data['order_status'] ?? ''), " \t\n\r\0\x0B\"'");
+		$pay_id           = trim(sanitize_text_field($data['pay_id'] ?? ''), " \t\n\r\0\x0B\"'");
+		$api_key_raw      = trim((string)($data['nonce'] ?? ''), " \t\n\r\0\x0B\"'");
 
 		ByteNFT_Payment_Gateway_Logger::info(
 			"ByteNFT API HIT | Order #{$order_id} | Status: {$api_order_status} | Pay ID: {$pay_id} | Method: {$method}",
@@ -156,6 +158,12 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		// ---------------------------------------------------------
 
 		if ($order_id <= 0) {
+			if ($method === 'POST') {
+				update_option('bytenft_webhook_validation_status', 'failed');
+				update_option('bytenft_last_webhook_status', 'failed');
+				update_option('bytenft_webhook_failure_reason', 'Invalid order ID in webhook payload');
+			}
+
 			return new WP_REST_Response([
 				'success' => false,
 				'message' => 'Invalid ID',
@@ -165,6 +173,12 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$order = wc_get_order($order_id);
 
 		if (!$order) {
+			if ($method === 'POST') {
+				update_option('bytenft_webhook_validation_status', 'failed');
+				update_option('bytenft_last_webhook_status', 'failed');
+				update_option('bytenft_webhook_failure_reason', 'Referenced order not found in WooCommerce');
+			}
+
 			return new WP_REST_Response([
 				'success' => false,
 				'message' => 'Order not found',
@@ -178,12 +192,16 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		if ($method === 'POST') {
 
 			$decoded_nonce = base64_decode($api_key_raw, true);
+			$is_key_valid  = (
+				(!empty($decoded_nonce) && $this->bytenft_verify_api_key($decoded_nonce)) ||
+				(!empty($api_key_raw) && $this->bytenft_verify_api_key($api_key_raw))
+			);
 
-			if (
-				empty($api_key_raw) ||
-				$decoded_nonce === false ||
-				!$this->bytenft_verify_api_key($decoded_nonce)
-			) {
+			if ( empty($api_key_raw) || !$is_key_valid ) {
+				update_option('bytenft_webhook_validation_status', 'failed');
+				update_option('bytenft_last_webhook_status', 'failed');
+				update_option('bytenft_webhook_failure_reason', 'Invalid API key or signature in webhook');
+
 				ByteNFT_Payment_Gateway_Logger::info(
 					"ByteNFT API | Order #{$order_id} | Invalid API key",
 					$log_context
@@ -242,6 +260,12 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$order = wc_get_order($order_id);
 
 		if (!$order) {
+			if ($is_webhook) {
+				update_option('bytenft_webhook_validation_status', 'failed');
+				update_option('bytenft_last_webhook_status', 'failed');
+				update_option('bytenft_webhook_failure_reason', 'Order disappeared during webhook execution');
+			}
+
 			return new WP_REST_Response([
 				'success' => false,
 				'message' => 'Order no longer exists',
@@ -249,6 +273,28 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		}
 
 		$wc_status = $order->get_status();
+
+		// ---------------------------------------------------------
+		// 5b. WEBHOOK AUTOMATIC VALIDATION STATE RECORDING
+		// ---------------------------------------------------------
+		if ($is_webhook) {
+			$is_engine_success = !empty($result) && !empty($result['success']);
+			$is_engine_locked  = is_array($result) && (($result['reason'] ?? '') === 'locked_skip');
+			$is_engine_done    = is_array($result) && in_array(($result['reason'] ?? ''), ['final_success_locked', 'duplicate_event_ignored'], true);
+
+			if (!empty($api_order_status) && ($is_engine_success || $is_engine_locked || $is_engine_done || !empty($wc_status))) {
+				update_option('bytenft_webhook_verified', true);
+				update_option('bytenft_webhook_validation_status', 'passed');
+				update_option('bytenft_webhook_last_verified_at', current_time('mysql'));
+				update_option('bytenft_webhook_last_order_id', $order_id);
+				update_option('bytenft_last_webhook_status', 'success');
+				delete_option('bytenft_webhook_failure_reason');
+			} else {
+				update_option('bytenft_webhook_validation_status', 'failed');
+				update_option('bytenft_last_webhook_status', 'failed');
+				update_option('bytenft_webhook_failure_reason', 'Failed to update order status from webhook');
+			}
+		}
 
 		// ---------------------------------------------------------
 		// 6. RESOLVE FINAL BYTE NFT STATE
@@ -368,11 +414,14 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		if ($state === 'success') {
 
 			$redirect = $order->get_checkout_order_received_url();
+			update_option('bytenft_successful_payment_verified', true);
+			update_option('bytenft_thankyou_page_verified', true);
 
 		} elseif (
 			in_array($state, ['failed', 'cancelled', 'expired'], true)
 		) {
-
+			update_option('bytenft_last_payment_status', 'failed');
+			update_option('bytenft_thankyou_page_status', 'failed');
 			$redirect = wc_get_checkout_url();
 		}
 
