@@ -104,6 +104,7 @@
                     const $form = $(this);
 
                     if (!self.canProceed('Classic')) {
+                        console.warn('[Bytenft] Classic: duplicate click ignored — request already in flight');
                         return false;
                     }
 
@@ -122,6 +123,8 @@
 
                     if (requiredError) {
 
+                        console.error('[Bytenft] Classic: required field validation failed:', requiredError.message);
+
                         self.releaseLock('Classic');
                         self.setStatus('idle');
 
@@ -133,6 +136,8 @@
                     const validationError = self.validateAll($form);
 
                     if (validationError) {
+
+                        console.error('[Bytenft] Classic: validateAll failed:', validationError);
 
                         self.releaseLock('Classic');
                         self.setStatus('idle');
@@ -487,6 +492,8 @@
 
                     self.state.requestInFlightClassic = false;
 
+                    console.log('[Bytenft] Classic: AJAX success', response);
+
                     self.handleResponse(response);
                 },
 
@@ -494,8 +501,8 @@
 
                     self.state.requestInFlightClassic = false;
 
-                    console.log(
-                        '[Bytenft] checkout network error:',
+                    console.error(
+                        '[Bytenft] Classic: AJAX error — HTTP ' + xhr.status + ' ' + xhr.statusText,
                         xhr.responseText
                     );
 
@@ -653,6 +660,7 @@
                     e.stopImmediatePropagation();
 
                     if (!self.canProceed('Block')) {
+                        console.warn('[Bytenft] Block: duplicate click ignored — request already in flight');
                         return;
                     }
 
@@ -669,6 +677,7 @@
                     const requiredError = self.validateRequiredFields($form);
 
                     if (requiredError) {
+                        console.error('[Bytenft] Block: required field validation failed:', requiredError.message);
                         self.releaseLock('Block');
                         self.setStatus('idle');
                         self.showCheckoutError(requiredError.message);
@@ -678,6 +687,7 @@
                     const validationError = self.validateAll($form);
 
                     if (validationError) {
+                        console.error('[Bytenft] Block: validateAll failed:', validationError);
                         self.releaseLock('Block');
                         self.setStatus('idle');
                         self.showCheckoutError(validationError);
@@ -975,6 +985,8 @@
 
                     self.state.requestInFlightBlock = false;
 
+                    console.log('[Bytenft] Block: AJAX success', response);
+
                     self.handleResponse(response);
                 },
 
@@ -982,10 +994,8 @@
 
                     self.state.requestInFlightBlock = false;
 
-                    console.log(
-                        '[Bytenft] block checkout error:',
-                        xhr.responseText
-                    );
+                    console.error('[Bytenft] Block AJAX error — HTTP ' + xhr.status + ' ' + xhr.statusText);
+                    console.error('[Bytenft] Block AJAX error — response body:', xhr.responseText);
 
                     let message =
                         'There was an error processing your order.';
@@ -1037,8 +1047,9 @@
 
                     } catch (e) {
 
-                        console.log(
-                            '[Bytenft] Unable to parse error response'
+                        console.error(
+                            '[Bytenft] Unable to parse error response body:', e,
+                            '| raw:', xhr.responseText
                         );
                     }
 
@@ -1083,6 +1094,8 @@
                         response?.message ||
                         response?.data?.message ||
                         'Payment failed. Please try again.';
+
+                    console.error('[Bytenft] handleResponse: payment failed. error:', errorMessage, '| full response:', response);
 
                     self.cleanupPopup();          // Close loading popup
                     self.showCheckoutError(errorMessage);
@@ -1131,10 +1144,11 @@
                     return;
                 }
 
+                console.error('[Bytenft] handleResponse: success=true but redirect URL is missing! Full response:', response);
                 self.failSafe('Missing redirect URL.');
 
             } catch (e) {
-                console.log('[Bytenft] response processing exception', e);
+                console.error('[Bytenft] handleResponse: exception while processing response:', e, '| raw response was:', response);
                 self.failSafe('Unexpected checkout error.');
             }
         },
@@ -1144,6 +1158,8 @@
          * ========================================================= */
 
         failSafe: function (message) {
+            console.error('[Bytenft] failSafe:', message);
+            console.trace('[Bytenft] failSafe stack trace');
             this.releaseLock();
             this.cleanupPopup();
             this.showCheckoutError(message);
@@ -2018,11 +2034,14 @@
                             response.success !== true
                         ) {
 
-                            reject(
+                            const errMsg =
                                 response?.data?.message ||
                                 response?.message ||
-                                'Unable to validate customer information.'
-                            );
+                                'Unable to validate customer information.';
+
+                            console.error('[Bytenft] checkCustomerAccount: rejected —', errMsg, '| response:', response);
+
+                            reject(errMsg);
 
                             return;
                         }
@@ -2215,10 +2234,8 @@
 
                     error: function (xhr) {
 
-                        console.log(
-                            '[Bytenft] Customer account validation error:',
-                            xhr.responseText
-                        );
+                        console.error('[Bytenft] checkCustomerAccount AJAX error — HTTP ' + xhr.status + ' ' + xhr.statusText);
+                        console.error('[Bytenft] checkCustomerAccount AJAX error — body:', xhr.responseText);
 
                         let message =
                             'Unable to validate customer information. Please try again.';
