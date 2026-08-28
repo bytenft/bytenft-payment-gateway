@@ -1,0 +1,164 @@
+<div class="wrap bytenft-guide-wrap" id="bytenft-guide-app">
+	<header class="bytenft-guide-header">
+		<div class="bytenft-guide-header-top">
+			<div class="bytenft-guide-brand">
+				<div class="bytenft-brand-badge">
+					<i class="fa fa-shield" aria-hidden="true"></i> ByteNFT Integration Guide
+				</div>
+				<h1 class="bytenft-guide-title">Merchant Integration Validation Guide</h1>
+				<p class="bytenft-guide-subtitle">
+					The system automatically tracks and validates your payment integration across each step below.
+				</p>
+			</div>
+			<div class="bytenft-guide-header-actions">
+				<a href="admin.php?page=wc-settings&tab=checkout&section=bytenft" class="button bytenft-btn bytenft-btn-outline" id="bytenft-settings-link">
+					<i class="fa fa-cog" aria-hidden="true"></i> Gateway Settings
+				</a>
+				<button type="button" id="bytenft-reset-status-btn" class="button bytenft-btn bytenft-btn-outline">
+					<i class="fa fa-undo" aria-hidden="true"></i> Reset Status
+				</button>
+				<button type="button" id="bytenft-refresh-status-btn" class="button bytenft-btn bytenft-btn-primary">
+					<i class="fa fa-refresh" aria-hidden="true"></i> Refresh Status
+				</button>
+			</div>
+		</div>
+	</header>
+
+	<main class="bytenft-guide-body">
+
+		<!-- STEP 1 -->
+		<div class="bytenft-step-card" id="step-card-1">
+			<div class="step-card-header">
+				<div class="step-title-wrap">
+					<span class="step-num-badge">1</span>
+					<h2 class="step-title">Configure the Plugin</h2>
+				</div>
+				<div class="step-status-tag status-pending" id="badge-step-1">
+					<i class="fa fa-clock-o"></i> <span>PENDING</span>
+				</div>
+			</div>
+			<div class="step-card-body">
+				<p class="step-description">
+					Configure the ByteNFT payment gateway with your API credentials and ensure the gateway is enabled in your settings.
+				</p>
+			</div>
+		</div>
+
+		<!-- STEP 2 -->
+		<div class="bytenft-step-card" id="step-card-2">
+			<div class="step-card-header">
+				<div class="step-title-wrap">
+					<span class="step-num-badge">2</span>
+					<h2 class="step-title">Verify the Payment Page</h2>
+				</div>
+				<div class="step-status-tag status-pending" id="badge-step-2">
+					<i class="fa fa-clock-o"></i> <span>PENDING</span>
+				</div>
+			</div>
+			<div class="step-card-body">
+				<p class="step-description">
+					Verify that the ByteNFT payment interface opens correctly during the checkout flow without errors.
+				</p>
+			</div>
+		</div>
+
+		<!-- STEP 3 -->
+		<div class="bytenft-step-card" id="step-card-3">
+			<div class="step-card-header">
+				<div class="step-title-wrap">
+					<span class="step-num-badge">3</span>
+					<h2 class="step-title">Create a Test Payment</h2>
+				</div>
+				<div class="step-status-tag status-pending" id="badge-step-3">
+					<i class="fa fa-clock-o"></i> <span>PENDING</span>
+				</div>
+			</div>
+			<div class="step-card-body">
+				<p class="step-description">
+					Create a payment request from the checkout page to initiate the payment process.
+				</p>
+			</div>
+		</div>
+
+		<!-- STEP 4 -->
+		<div class="bytenft-step-card" id="step-card-4">
+			<div class="step-card-header">
+				<div class="step-title-wrap">
+					<span class="step-num-badge">4</span>
+					<h2 class="step-title">Verify a Successful Payment</h2>
+				</div>
+				<div class="step-status-tag status-pending" id="badge-step-4">
+					<i class="fa fa-clock-o"></i> <span>PENDING</span>
+				</div>
+			</div>
+			<div class="step-card-body">
+				<p class="step-description">
+					Complete a payment transaction and verify that the WooCommerce order status updates to Completed or Processing.
+				</p>
+			</div>
+		</div>
+
+		<!-- STEP 5 -->
+		<div class="bytenft-step-card" id="step-card-5">
+			<div class="step-card-header">
+				<div class="step-title-wrap">
+					<span class="step-num-badge">5</span>
+					<h2 class="step-title">Verify the Thank You Page</h2>
+				</div>
+				<div class="step-status-tag status-pending" id="badge-step-5">
+					<i class="fa fa-clock-o"></i> <span>PENDING</span>
+				</div>
+			</div>
+			<div class="step-card-body">
+				<p class="step-description">
+					Confirm that the customer is successfully returned and redirected to the WooCommerce order confirmation / thank-you page after payment.
+				</p>
+			</div>
+		</div>
+
+		<!-- STEP 6 -->
+		<div class="bytenft-step-card" id="step-card-6">
+			<div class="step-card-header">
+				<div class="step-title-wrap">
+					<span class="step-num-badge">6</span>
+					<h2 class="step-title">Verify Webhook</h2>
+				</div>
+				<div class="step-status-tag status-pending" id="badge-step-6">
+					<i class="fa fa-clock-o"></i> <span>PENDING</span>
+				</div>
+			</div>
+			<div class="step-card-body">
+				<p class="step-description">
+					Verify that asynchronous payment webhook notifications from ByteNFT are received and processed by your website.
+				</p>
+			</div>
+		</div>
+
+		<!-- STEP 7 -->
+		<div class="bytenft-step-card" id="step-card-7">
+			<div class="step-card-header">
+				<div class="step-title-wrap">
+					<span class="step-num-badge">7</span>
+					<h2 class="step-title">Review Before Enabling Live Mode</h2>
+				</div>
+				<div class="step-status-tag status-pending" id="badge-step-7">
+					<i class="fa fa-clock-o"></i> <span>PENDING</span>
+				</div>
+			</div>
+			<div class="step-card-body">
+				<p class="step-description">
+					Final integration verification. Automatically marked as complete once all previous validation steps have passed.
+				</p>
+			</div>
+		</div>
+
+		<!-- FINAL RESULT MESSAGE: ONLY SHOWN WHEN ALL 7 STEPS PASSED -->
+		<div class="bytenft-good-to-go-wrap" id="bytenft-good-to-go-wrap" style="display:none;">
+			<div class="bytenft-good-to-go">
+				<div class="good-to-go-icon"><i class="fa fa-check-circle" aria-hidden="true"></i></div>
+				<h2 class="good-to-go-text">YOU ARE GOOD TO GO</h2>
+			</div>
+		</div>
+
+	</main>
+</div>
