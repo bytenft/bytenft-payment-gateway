@@ -1531,6 +1531,53 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	}
 
 
+	/**
+	 * First usable public key from the configured accounts.
+	 *
+	 * The customer validation call previously read $this->public_key, a
+	 * property this class never declares or assigns. On PHP 8 that is an
+	 * undefined-property warning evaluating to null, so the request went out
+	 * as "Authorization: Bearer " with no credential at all.
+	 *
+	 * Mirrors the resolution already used by the plugin status call: live key
+	 * first, sandbox only when that account has sandbox enabled.
+	 *
+	 * @return string Public key, or '' when none is configured.
+	 */
+	private function bytenft_get_first_public_key() {
+
+		$accounts = get_option( 'woocommerce_bytenft_payment_gateway_accounts', [] );
+
+		if ( is_string( $accounts ) ) {
+			$unserialized = maybe_unserialize( $accounts );
+			$accounts     = is_array( $unserialized ) ? $unserialized : [];
+		}
+
+		if ( ! is_array( $accounts ) ) {
+			return '';
+		}
+
+		foreach ( $accounts as $account ) {
+
+			if ( ! empty( $account['live_public_key'] ) ) {
+				return (string) $account['live_public_key'];
+			}
+
+			$sandbox_enabled = isset( $account['has_sandbox'] ) && $account['has_sandbox'] === 'on';
+
+			if ( $sandbox_enabled && ! empty( $account['sandbox_public_key'] ) ) {
+				return (string) $account['sandbox_public_key'];
+			}
+		}
+
+		ByteNFT_Payment_Gateway_Logger::warning(
+			'Customer validation has no public key available',
+			[ 'accounts_found' => count( $accounts ) ]
+		);
+
+		return '';
+	}
+
 	public function bytenft_check_customer_account() {
 
 		/*
@@ -2043,7 +2090,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'body'      => $payload,
 				'headers'   => [
 					'Content-Type'  => 'application/x-www-form-urlencoded',
-					'Authorization' => 'Bearer ' . sanitize_text_field( $this->public_key ),
+					'Authorization' => 'Bearer ' . sanitize_text_field( $this->bytenft_get_first_public_key() ),
 				],
 				'sslverify' => true,
 			]
@@ -2081,6 +2128,25 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		* Invalid JSON response.
 		*/
 		if ( ! is_array( $response_data ) ) {
+
+			/*
+			* Log what the service actually said.
+			*
+			* Without this the only evidence is "HTTP %d" on screen, which is
+			* not enough to tell a wrong URL from a wrong method from an auth
+			* failure. On a 405 the Allow header names the methods the route
+			* really accepts, which settles it outright.
+			*/
+			ByteNFT_Payment_Gateway_Logger::error(
+				'Customer account validation returned a non-JSON response',
+				[
+					'url'           => $api_url,
+					'status_code'   => $status_code,
+					'allow_header'  => wp_remote_retrieve_header( $response, 'allow' ),
+					'content_type'  => wp_remote_retrieve_header( $response, 'content-type' ),
+					'body_snippet'  => substr( (string) $body, 0, 500 ),
+				]
+			);
 
 			return [
 				'valid'   => false,

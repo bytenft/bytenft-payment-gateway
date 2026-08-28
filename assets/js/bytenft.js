@@ -1126,7 +1126,27 @@
                         */
                         self.navigateSameTabWithoutReferrer(redirect);
 
-                        self.finish();
+                        /*
+                        * Do NOT unlock the checkout here.
+                        *
+                        * This tab is on its way to the payment page, but on a
+                        * slow mobile connection that takes a moment. Calling
+                        * finish() immediately re-enables Place Order, and a
+                        * customer who taps it again during that gap fires a
+                        * second payment request. Hold the lock and let the
+                        * navigation unload the page.
+                        *
+                        * The timer is only a safety net for the case where the
+                        * navigation never happens, so the checkout cannot end
+                        * up locked forever.
+                        */
+                        if (self.state.button && self.state.button.length) {
+                            self.state.button.text('Redirecting to secure payment...');
+                        }
+
+                        setTimeout(function () {
+                            self.finish();
+                        }, 15000);
                     }
                     return;
                 }
@@ -1175,7 +1195,70 @@
          * POPUP HANDLERS
          * ========================================================= */
 
+        /*
+        * Should this device get a payment popup at all?
+        *
+        * On a phone the answer is no. The payment window can only be opened
+        * after checkCustomerAccount() has answered, which is one AJAX round
+        * trip after the tap - and by then the user gesture is spent. Safari
+        * responds to a non-gesture window.open() with "This site is
+        * attempting to open a pop-up window / Block / Allow", and Chrome
+        * mobile blocks it outright. Either way the customer is interrupted
+        * by a decision they should never have been asked to make.
+        *
+        * Desktop keeps the popup: it has room for it, and the browsers there
+        * do not prompt. Phones go straight to the payment page in this tab,
+        * which is the normal mobile checkout pattern anyway - and they return
+        * through the same ByteNFT return URL the popup flow uses.
+        */
+        shouldUsePaymentPopup: function () {
+
+            try {
+
+                const ua = navigator.userAgent || '';
+
+                if (/Android|iPhone|iPad|iPod|IEMobile|Opera Mini|Mobile|Silk/i.test(ua)) {
+                    return false;
+                }
+
+                /*
+                * iPadOS 13+ reports a desktop Mac user agent, so fall back to
+                * the touch-capable-and-narrow test to catch it.
+                */
+                const touchPoints = navigator.maxTouchPoints || 0;
+
+                if (touchPoints > 1 && window.innerWidth <= 1024) {
+                    return false;
+                }
+
+                return true;
+
+            } catch (e) {
+                // If detection itself fails, keep the desktop behaviour.
+                return true;
+            }
+        },
+
         openPopupImmediately: function () {
+
+            /*
+            * Never even attempt the window on a device that would prompt or
+            * block. Leaving state.popup null routes handleResponse() to its
+            * same-tab navigation branch.
+            */
+            if (!this.shouldUsePaymentPopup()) {
+
+                console.log(
+                    '[Bytenft] Mobile browser - skipping popup, ' +
+                    'payment will continue in this tab'
+                );
+
+                this.state.popup = null;
+                this.state.popupBlocked = false;
+
+                return null;
+            }
+
 
             if (
                 this.state.popup &&
