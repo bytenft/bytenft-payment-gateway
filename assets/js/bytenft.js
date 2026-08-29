@@ -1113,20 +1113,12 @@
             if (!email) return 'Please enter your email address.';
             if (!this.isValidEmail(email)) return 'Please enter a valid email address.';
 
-             /*
-            * US phone validation
+            /*
+            * Phone is still collected and still sent with the order - only the
+            * hard 10-digit US format rule is gone. It rejected every valid
+            * international number, and numbers people write with an extension
+            * or a country code, none of which the payment side requires.
             */
-            const phone = this.getPhoneNumber($form);
-
-            if (phone) {
-
-                const digits = phone.replace(/\D/g, '');
-
-                if (digits.length !== 10) {
-                    return 'Please enter a valid 10-digit US phone number.';
-                }
-            }
-
 
             const poBox = this.validatePOBox($form);
             if (poBox) return poBox;
