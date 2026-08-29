@@ -329,13 +329,58 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
             if ($order && ($order->has_status('checkout-draft') || $order->has_status('pending'))) {
                 try {
-                    $cart_hash = (!empty(WC()->cart)) ? WC()->cart->get_cart_hash() : '';
+                    $has_cart  = !empty(WC()->cart) && !WC()->cart->is_empty();
+                    $cart_hash = $has_cart ? WC()->cart->get_cart_hash() : '';
 
-                    // Rebuild the line items when the order has none yet, or when
-                    // the cart changed since the previous attempt. Reusing the
-                    // order must never mean shipping stale contents.
+                    $cart_total  = $has_cart ? (float) WC()->cart->get_total('edit') : null;
+                    $order_total = (float) $order->get_total();
+
+                    /*
+                    * Rebuild the line items when the order has none yet, when
+                    * the cart changed since the previous attempt, or when the
+                    * order total simply does not match the cart any more.
+                    *
+                    * The total comparison is the important one. The amount sent
+                    * to request-payment comes from $order->get_total(), and on a
+                    * reused order that value is whatever the LAST attempt left
+                    * behind. Relying on the cart hash alone means any case where
+                    * the hash does not move - or cannot be read - silently sends
+                    * the previous amount, and ByteNFT answers an identical
+                    * order+amount with "This order appears to be a duplicate".
+                    */
+                    $total_mismatch = ($cart_total !== null)
+                        && (abs($cart_total - $order_total) >= 0.01);
+
                     $needs_items = count($order->get_items()) === 0
-                        || ($cart_hash && $order->get_cart_hash() !== $cart_hash);
+                        || ($cart_hash && $order->get_cart_hash() !== $cart_hash)
+                        || $total_mismatch;
+
+                    if ($total_mismatch) {
+                        ByteNFT_Payment_Gateway_Logger::info(
+                            'Order total was stale, resyncing from cart',
+                            [
+                                'order_id'     => $order->get_id(),
+                                'order_total'  => $order_total,
+                                'cart_total'   => $cart_total,
+                                'hash_changed' => $cart_hash && $order->get_cart_hash() !== $cart_hash ? 'yes' : 'no',
+                            ]
+                        );
+                    }
+
+                    /*
+                    * No cart in this request means the order total cannot be
+                    * verified at all and whatever it already holds is about to
+                    * be charged. Worth a warning rather than a silent pass.
+                    */
+                    if (!$has_cart) {
+                        ByteNFT_Payment_Gateway_Logger::warning(
+                            'No cart available while preparing payment - order total cannot be verified',
+                            [
+                                'order_id'    => $order->get_id(),
+                                'order_total' => $order_total,
+                            ]
+                        );
+                    }
 
                     if ($needs_items && !empty(WC()->cart) && !WC()->cart->is_empty()) {
                         $order->remove_order_items('line_item');
@@ -379,12 +424,23 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
                     }
 
                     $order->set_currency(get_woocommerce_currency());
-                    
+
                     if ((float) $order->get_total() < 0.01) {
                         $order->calculate_totals();
                     }
-                    
+
                     $order->save();
+
+                    ByteNFT_Payment_Gateway_Logger::info(
+                        'Order synced before payment',
+                        [
+                            'order_id'    => $order->get_id(),
+                            'order_total' => (float) $order->get_total(),
+                            'cart_total'  => $cart_total,
+                            'items'       => count($order->get_items()),
+                            'rebuilt'     => $needs_items ? 'yes' : 'no',
+                        ]
+                    );
                 } catch (Exception $e) {
                     ByteNFT_Payment_Gateway_Logger::error('Order sync error: ' . $e->getMessage(), ['source' => 'bytenft-payment-gateway']);
                 }
