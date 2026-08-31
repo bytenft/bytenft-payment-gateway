@@ -41,17 +41,58 @@ spl_autoload_register(function ($class) {
 
 BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
 
-add_action(
-    'woocommerce_cancel_unpaid_order',
-    'bytenft_cancel_unpaid_order_action'
-);
+add_action('woocommerce_cancel_unpaid_order', 'bytenft_cancel_unpaid_order_action');
+add_action('woocommerce_order_status_cancelled', 'bytenft_cancel_unpaid_order_action');
+add_action('woocommerce_order_status_changed', 'bytenft_cancel_unpaid_order_action', 10, 4);
 
-add_action(
-    'woocommerce_order_status_cancelled',
-    'bytenft_cancel_unpaid_order_action',
-    10,
-    1
-);
+add_filter('woocommerce_get_checkout_order_received_url', function($url, $order) {
+
+    if (!$order || !is_a($order, 'WC_Order')) {
+        return $url;
+    }
+
+	// Only police ByteNFT orders
+	if ($order->get_payment_method() !== 'bytenft') {
+		return $url;
+	}
+
+	$wc_status    = $order->get_status();
+	$engine_state = $order->get_meta('_bytenft_state');
+	$success_meta = $order->get_meta('_bytenft_payment_success');
+
+	ByteNFT_Payment_Gateway_Logger::info(
+		sprintf(
+			"[Order #%d] ThankYou Filter | WC=%s | Engine=%s | Success=%s",
+			$order->get_id(),
+			$wc_status,
+			$engine_state,
+			$success_meta ?: 'EMPTY'
+		)
+	);
+
+	$is_valid = in_array($wc_status, ['processing', 'completed'], true) && $success_meta === 'yes';
+	if (!$is_valid) {
+		ByteNFT_Payment_Gateway_Logger::info(
+			sprintf(
+				'[Order #%d] ThankYou Filter BLOCKED -> %s',
+				$order->get_id(),
+				wc_get_checkout_url()
+			)
+		);
+		return wc_get_checkout_url();
+	}
+
+	ByteNFT_Payment_Gateway_Logger::info(
+		sprintf(
+			'[Order #%d] ThankYou Filter ALLOWED -> %s',
+			$order->get_id(),
+			$url
+		)
+	);
+
+	return $url;
+
+}, 10, 2);
 
 
 /**
@@ -212,3 +253,4 @@ function bytenft_cancel_unpaid_order_action($order_id)
 	}
 	
 }
+

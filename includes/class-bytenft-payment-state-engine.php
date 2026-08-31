@@ -3,8 +3,7 @@ if (!defined('ABSPATH')) exit;
 
 class BYTENFT_PAYMENT_ENGINE
 {
-    const LOCK_WAIT_TIMEOUT = 10;
-
+    const LOCK_TTL  = 12;
     const EVENT_TTL = 86400;
 
     /* =========================================================
@@ -15,24 +14,22 @@ class BYTENFT_PAYMENT_ENGINE
         $order = wc_get_order($order_id);
         if (!$order) return false;
 
-        $event_id = self::generate_event_id($order_id, $event_type, $payload);
+        $event_id = self::generate_event_id($event_type, $payload);
 
-        if (self::is_duplicate_event($order_id, $event_id)) {
+        if ($event_type === 'api_update' && self::is_duplicate_event($order_id, $event_id)) {
             return self::safe_response($order, 'duplicate_event_ignored', self::get_state($order));
         }
 
         self::mark_event($order_id, $event_id);
 
-        if (!self::acquire_lock($order_id)) {
+        $lock_key = "bytenft_lock_{$order_id}";
+        if (get_transient($lock_key)) {
             return self::safe_response($order, 'locked_skip');
         }
 
-        try {
+        set_transient($lock_key, 1, self::LOCK_TTL);
 
-            $order = wc_get_order($order_id);
-            if (!$order) {
-                return self::safe_response($order, 'order_missing');
-            }
+        try {
 
             $current_state = self::normalize_state(self::get_state($order));
             $new_state     = self::normalize_state(self::resolve_state($payload));
@@ -45,14 +42,21 @@ class BYTENFT_PAYMENT_ENGINE
                 return self::safe_response($order, 'final_success_locked', 'success');
             }
 
+            // ONLY apply state change (NO NOTES HERE)
             $can_transition = self::can_transition($current_state, $new_state);
 
-            // ALWAYS allow success recovery
+            /**
+             * ALWAYS allow success recovery
+             */
             if ($new_state === 'success') {
                 $can_transition = true;
             }
 
+            /**
+             * BLOCK invalid transitions
+             */
             if (!$can_transition) {
+
                 return self::safe_response(
                     $order,
                     'invalid_transition_blocked',
@@ -101,44 +105,8 @@ class BYTENFT_PAYMENT_ENGINE
             return self::safe_response($order, 'updated', $new_state);
 
         } finally {
-            self::release_lock($order_id);
+            delete_transient($lock_key);
         }
-    }
-
-    /* =========================================================
-     * LOCKING
-     * ========================================================= */
-    private static function lock_name($order_id)
-    {
-        global $wpdb;
-        return $wpdb->dbname . '_bytenft_order_lock_' . $order_id;
-    }
-
-    private static function acquire_lock($order_id)
-    {
-        global $wpdb;
-
-        $result = $wpdb->get_var(
-            $wpdb->prepare(
-                'SELECT GET_LOCK(%s, %d)',
-                self::lock_name($order_id),
-                self::LOCK_WAIT_TIMEOUT
-            )
-        );
-
-        return (string) $result === '1';
-    }
-
-    private static function release_lock($order_id)
-    {
-        global $wpdb;
-
-        $wpdb->query(
-            $wpdb->prepare(
-                'SELECT RELEASE_LOCK(%s)',
-                self::lock_name($order_id)
-            )
-        );
     }
 
     private static function timeline_has_state_for_token($order, $state, $payment_token)
@@ -185,7 +153,9 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function apply($order, $state, $event_type, $payload)
     {
-        if (self::get_state($order) === 'success') { return; }
+        if (self::get_state($order) === 'success') {
+            return;
+        }
 
         $order_id = $order->get_id();
         $payment_token = $payload['payment_token'] ?? '';
@@ -201,7 +171,18 @@ class BYTENFT_PAYMENT_ENGINE
 
         $order->update_meta_data('_bytenft_state_lock', $state_lock_key);
 
-        // Always save engine state
+        $wc_status = match ($state) {
+            'success'    => self::get_success_wc_status(),
+            'failed'     => 'failed',
+            'cancelled'  => 'cancelled',
+            'expired'    => 'failed',
+            default      => null
+        };
+
+        if (!$wc_status) return;
+
+        $order->update_status($wc_status, '');
+
         $order->update_meta_data('_bytenft_state', $state);
         $order->update_meta_data('_bytenft_last_event', $event_type);
         $order->update_meta_data('_bytenft_last_event_time', current_time('mysql'));
@@ -212,18 +193,6 @@ class BYTENFT_PAYMENT_ENGINE
 
         if ($state === 'success') {
             $order->update_meta_data('_bytenft_payment_success', 'yes');
-        }
-
-        $wc_status = match ($state) {
-            'success'    => self::get_success_wc_status(),
-            'failed'     => 'failed',
-            'cancelled'  => 'cancelled',
-            'expired'    => 'failed',
-            default      => null
-        };
-
-        if ($wc_status) {
-            $order->update_status($wc_status, '');
         }
 
         $order->save();
@@ -457,13 +426,13 @@ class BYTENFT_PAYMENT_ENGINE
     private static function can_transition($from, $to)
     {
         if ($from === 'success') return false;
+        if ($from === 'processing') return false;
 
         $map = [
-            'pending' => ['processing','cancelled','success','failed','expired'],
+            'pending' => ['cancelled','processing','success','failed'],
             'failed' => ['failed','success','processing','cancelled'],
-            'cancelled' => ['failed','success'],
+            'cancelled' => ['success'],
             'expired' => ['failed','cancelled','success'],
-            'processing' => ['success', 'failed', 'cancelled', 'expired'],
         ];
 
         return in_array($to, $map[$from] ?? [], true);
@@ -474,14 +443,6 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function get_state($order)
     {
-        // Get the merchant's chosen success status from settings (processing or completed)
-        $success_wc_status = self::get_success_wc_status();
-
-        // If WooCommerce is already sitting on the successful status, force 'success' state
-        if ($order->has_status([$success_wc_status, 'processing', 'completed'])) {
-            return 'success';
-        }
-
         return $order->get_meta('_bytenft_state') ?: 'pending';
     }
 
@@ -499,12 +460,11 @@ class BYTENFT_PAYMENT_ENGINE
     }
 
     /* =========================================================
-     * EVENT ID
+     * EVENT ID (webhook dedupe only)
      * ========================================================= */
-    private static function generate_event_id($order_id, $type, $payload)
+    private static function generate_event_id($type, $payload)
     {
         return hash('sha256', implode('|', [
-            $order_id,
             $type,
             $payload['status'] ?? '',
             $payload['payment_token'] ?? ''
@@ -529,8 +489,8 @@ class BYTENFT_PAYMENT_ENGINE
         return [
             'ok' => true,
             'reason' => $reason,
-            'order_id' => $order ? $order->get_id() : 0,
-            'state' => $state ?? ($order ? self::get_state($order) : null)
+            'order_id' => $order->get_id(),
+            'state' => $state ?? self::get_state($order)
         ];
     }
 
@@ -549,7 +509,6 @@ class BYTENFT_PAYMENT_ENGINE
                 'success', 'paid', 'completed' => 'success',
                 'failed' => 'failed',
                 'cancelled', 'canceled' => 'cancelled',
-                'expired' => 'expired',
                 'processing', 'pending' => 'processing',
                 default => null
             };
