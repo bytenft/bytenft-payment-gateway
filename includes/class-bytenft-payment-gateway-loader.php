@@ -201,22 +201,30 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'email',
 			];
 
-			foreach ( [ 'billing', 'shipping' ] as $group ) {
+			/*
+			 * BILLING ONLY - never shipping.
+			 *
+			 * WooCommerce already owns shipping: get_posted_data() decides via
+			 * maybe_skip_fieldset() whether shipping was submitted at all, and
+			 * create_order() copies billing into shipping when ship-to-different
+			 * is off. Writing shipping keys here puts WC()->customer's copy on
+			 * top of that decision, which overrides the address FunnelKit (and
+			 * any other checkout that manages shipping itself) already set.
+			 *
+			 * Leaving shipping untouched keeps WooCommerce's own behaviour.
+			 */
+			foreach ( $fields as $field ) {
 
-				foreach ( $fields as $field ) {
+				$key = 'billing_' . $field;
 
-					$key = $group . '_' . $field;
+				if ( ! empty( $data[ $key ] ) ) {
+					continue;
+				}
 
-					if ( ! empty( $data[ $key ] ) ) {
-						continue;
-					}
+				$getter = 'get_' . $key;
 
-					$getter = 'get_' . $key;
-
-					// shipping_email has no getter; the guard skips it.
-					if ( is_callable( [ $customer, $getter ] ) ) {
-						$data[ $key ] = $customer->$getter();
-					}
+				if ( is_callable( [ $customer, $getter ] ) ) {
+					$data[ $key ] = $customer->$getter();
 				}
 			}
 		}
