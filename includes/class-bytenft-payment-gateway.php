@@ -572,6 +572,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			$api_url       = esc_url($this->base_url . '/api/plugin/check/plugin');
 			$plugin_version = BYTENFT_PLUGIN_VERSION;
 
+			global $wp_version;
+
 			$body = [
 				'valid_accounts' => $valid_accounts,
 				'plugin_status'  => $enabled === 'yes' ? 1 : 0,
@@ -579,6 +581,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				'gateway_loaded' => 0,
 				'group_id'       => get_option('bytenft_group_id'),
 				'domain_name'    => parse_url(home_url(), PHP_URL_HOST),
+				'wordpress_version'     => $wp_version,
+				'woocommerce_version'   => class_exists('WooCommerce') ? WC()->version : null,
+				'woocommerce_db_version'=> get_option('woocommerce_db_version'),
 			];
 
 			wp_remote_post($api_url, [

@@ -925,4 +925,97 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		wp_die(); // Always include this
 	}
+
+	public function bytenft_send_plugin_status($plugin_status, $gateway_loaded)
+	{
+		$accounts = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
+
+		if (is_string($accounts)) {
+			$unserialized = maybe_unserialize($accounts);
+			$accounts = is_array($unserialized) ? $unserialized : [];
+		}
+
+		if (empty($accounts) || !is_array($accounts)) {
+			return;
+		}
+
+		// Find first available public key
+		$public_key = '';
+
+		foreach ($accounts as $account) {
+			if (!empty($account['live_public_key'])) {
+				$public_key = $account['live_public_key'];
+				break;
+			}
+
+			if (!empty($account['sandbox_public_key'])) {
+				$public_key = $account['sandbox_public_key'];
+				break;
+			}
+		}
+
+		if (empty($public_key)) {
+			ByteNFT_Payment_Gateway_Logger::error(
+				'Unable to send plugin status. No public key found.',
+				[
+					'source' => 'bytenft-payment-gateway',
+				]
+			);
+			return;
+		}
+
+		global $wp_version;
+
+		$body = [
+			'valid_accounts'         => $accounts,
+			'plugin_status'          => (int) $plugin_status,
+			'gateway_loaded'         => (int) $gateway_loaded,
+			'plugin_version'         => BYTENFT_PLUGIN_VERSION,
+			'wordpress_version'      => $wp_version,
+			'woocommerce_version'    => class_exists('WooCommerce') && function_exists('WC')
+				? WC()->version
+				: '',
+			'woocommerce_db_version' => get_option('woocommerce_db_version'),
+			'group_id'               => get_option('bytenft_group_id'),
+			'domain_name'            => wp_parse_url(home_url(), PHP_URL_HOST),
+		];
+
+		$response = wp_remote_post(
+			trailingslashit(BYTENFT_BASE_URL) . 'api/plugin/check/plugin',
+			[
+				'method'    => 'POST',
+				'timeout'   => 30,
+				'sslverify' => true,
+				'headers'   => [
+					'Authorization' => 'Bearer ' . sanitize_text_field($public_key),
+				],
+				'body'      => $body,
+			]
+		);
+
+		if (is_wp_error($response)) {
+			ByteNFT_Payment_Gateway_Logger::error(
+				'Plugin status API call failed.',
+				[
+					'source'  => 'bytenft-payment-gateway',
+					'context' => [
+						'error' => $response->get_error_message(),
+					],
+				]
+			);
+			return;
+		}
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Plugin status updated successfully.',
+			[
+				'source'  => 'bytenft-payment-gateway',
+				'context' => [
+					'plugin_status'  => $plugin_status,
+					'gateway_loaded' => $gateway_loaded,
+					'response_code'  => wp_remote_retrieve_response_code($response),
+				],
+			]
+		);
+	}
 }
