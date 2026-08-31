@@ -2267,10 +2267,6 @@ private function get_routing_sorted_accounts(array $accounts): array {
 			if (($limit_data['status'] ?? '') === 'success') {
 				$eligible_accounts[] = $account;
 			} else {
-				$this->log_info_once_per_session('skip_limit_' . $acc_title, "Skipping '{$acc_title}': daily limit exceeded", [
-					'response_status' => $limit_data['status'] ?? 'unknown',
-					'message' => $limit_data['message'] ?? '',
-				]);
 				continue;
 			}
 			if (!empty($limit_data['status']) && $limit_data['status'] === 'success') {

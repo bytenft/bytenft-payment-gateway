@@ -130,7 +130,26 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			);
 		}
 
-		$orderID = WC()->session ? WC()->session->get('store_api_draft_order') : null;
+		$orderID = WC()->session
+			? ( WC()->session->get('store_api_draft_order') ?: WC()->session->get('order_awaiting_payment') )
+			: null;
+
+		/*
+		 * WooCommerce 10.8+ writes 'store_api_draft_order' in exactly one place:
+		 * the Store API /checkout route (StoreApi/Routes/V1/Checkout.php). This
+		 * handler bypasses that route - the JS calls preventDefault() on Place
+		 * Order and posts here instead - so on WooCommerce 11 the key is never
+		 * set and every block checkout ended at "Invalid order.".
+		 *
+		 * Older WooCommerce created the draft order during the cart routes, so
+		 * the key was already populated by the time Place Order ran. That is why
+		 * this worked in 1.0.16 and stopped working since.
+		 *
+		 * Build the order here when neither pointer gives one.
+		 */
+		if ( ! $orderID && ! empty( WC()->cart ) && ! WC()->cart->is_empty() ) {
+			$orderID = $this->bytenft_create_block_order();
+		}
 
 		$status = [];
 		if($orderID){
@@ -142,6 +161,100 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		
 		wp_send_json($status);
 		die;
+	}
+
+	/**
+	 * Create the WooCommerce order for a block checkout payment.
+	 *
+	 * Delegates to WC_Checkout::create_order() so line items, shipping lines,
+	 * coupons, taxes and totals are built by WooCommerce itself rather than by
+	 * hand here.
+	 *
+	 * @return int Order ID, or 0 on failure.
+	 */
+	private function bytenft_create_block_order() {
+
+		$checkout = WC()->checkout();
+		$data     = $checkout->get_posted_data();
+		$customer = WC()->customer;
+
+		/*
+		 * Block checkout inputs carry no name attribute, so the serialized form
+		 * posts almost nothing and get_posted_data() returns blanks - it reads
+		 * $_POST only, with no customer fallback. WC()->customer is what the
+		 * Store API keeps in sync as the shopper types, so use it to fill in
+		 * anything the post did not carry.
+		 */
+		if ( $customer ) {
+
+			$fields = [
+				'first_name',
+				'last_name',
+				'company',
+				'address_1',
+				'address_2',
+				'city',
+				'state',
+				'postcode',
+				'country',
+				'phone',
+				'email',
+			];
+
+			foreach ( [ 'billing', 'shipping' ] as $group ) {
+
+				foreach ( $fields as $field ) {
+
+					$key = $group . '_' . $field;
+
+					if ( ! empty( $data[ $key ] ) ) {
+						continue;
+					}
+
+					$getter = 'get_' . $key;
+
+					// shipping_email has no getter; the guard skips it.
+					if ( is_callable( [ $customer, $getter ] ) ) {
+						$data[ $key ] = $customer->$getter();
+					}
+				}
+			}
+		}
+
+		if ( empty( $data['payment_method'] ) ) {
+			$data['payment_method'] = 'bytenft';
+		}
+
+		$order_id = $checkout->create_order( $data );
+
+		if ( is_wp_error( $order_id ) ) {
+
+			ByteNFT_Payment_Gateway_Logger::error(
+				'Could not create order for block checkout',
+				[
+					'error' => $order_id->get_error_message(),
+				]
+			);
+
+			return 0;
+		}
+
+		if ( WC()->session ) {
+			WC()->session->set( 'order_awaiting_payment', $order_id );
+		}
+
+		$created = wc_get_order( $order_id );
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Created order for block checkout',
+			[
+				'order_id' => $order_id,
+				'total'    => $created ? $created->get_total() : null,
+				'email'    => $created ? $created->get_billing_email() : null,
+			]
+		);
+
+		return $order_id;
 	}
 
 	/**
