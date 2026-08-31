@@ -145,10 +145,27 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		 * the key was already populated by the time Place Order ran. That is why
 		 * this worked in 1.0.16 and stopped working since.
 		 *
-		 * Build the order here when neither pointer gives one.
+		 * Build the order here, ALWAYS - not only when the pointers are empty.
+		 *
+		 * Reusing a session order id verbatim was sending whatever total that
+		 * order was built with. Once an attempt had been rejected, changing the
+		 * amount changed the cart but never the order, so request-payment kept
+		 * receiving the identical order+amount and kept answering "This order
+		 * appears to be a duplicate".
+		 *
+		 * WC_Checkout::create_order() already resolves this correctly: it
+		 * resumes 'order_awaiting_payment' only while the cart hash still
+		 * matches and the order is pending/failed, otherwise it starts a new
+		 * order - and either way it calls set_data_from_cart(), so items,
+		 * shipping, coupons and totals are rebuilt from the current cart every
+		 * time. A changed amount therefore produces a correct amount, and a
+		 * changed cart produces a new order id that is not a duplicate.
+		 *
+		 * The session pointers stay as the fallback for the case where there is
+		 * no cart to build from.
 		 */
-		if ( ! $orderID && ! empty( WC()->cart ) && ! WC()->cart->is_empty() ) {
-			$orderID = $this->bytenft_create_block_order();
+		if ( ! empty( WC()->cart ) && ! WC()->cart->is_empty() ) {
+			$orderID = $this->bytenft_create_block_order() ?: $orderID;
 		}
 
 		$status = [];
