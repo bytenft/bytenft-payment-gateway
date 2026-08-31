@@ -144,7 +144,6 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 
 ### Version 1.1.20
 
-- Removed the customer confirmation popup from the checkout flow to prevent the popup from appearing unexpectedly.
 - Updated the checkout flow to open the payment link directly without requiring the customer confirmation popup.
 - Improved payment link opening and checkout stability across browsers.
 
