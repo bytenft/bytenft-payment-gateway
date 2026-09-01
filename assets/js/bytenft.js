@@ -631,25 +631,26 @@
 
                             clearInterval(self.state.popupInterval);
 
-                            try {
-
-                                if (
-                                    self.state.popup &&
-                                    !self.state.popup.closed
-                                ) {
-                                    self.state.popup.close();
-                                }
-
-                            } catch (e) {
-                                console.log(
-                                    '[Bytenft] popup close blocked'
-                                );
-                            }
-
-                            self.state.popup = null;
-
+                            /*
+                            * Do NOT close the payment window here.
+                            *
+                            * "payment_status: success" means the payment was
+                            * confirmed - it does NOT mean the customer is
+                            * finished. The ByteNFT page continues to a redeem
+                            * step ("Redeem & Ship My Order") that the customer
+                            * still has to complete, and force-closing the
+                            * window took that screen away mid-flow.
+                            *
+                            * The hosted page owns its own ending: it redirects
+                            * itself to the redirect_url we sent with the
+                            * payment request once the customer is done. Our
+                            * job here is only to move THIS tab on, which the
+                            * line below already does. A popup is not closed by
+                            * its opener navigating away.
+                            */
                             console.log(
-                                '[Bytenft] redirect success page'
+                                '[Bytenft] payment confirmed - leaving the ' +
+                                'payment window open for the redeem step'
                             );
 
                             window.location.replace(redirectUrl);
