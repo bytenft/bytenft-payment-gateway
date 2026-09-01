@@ -167,27 +167,6 @@
 
                     self.clearCheckoutErrors();
 
-                    const requiredError = self.validateRequiredFields($form);
-
-                    if (requiredError) {
-
-                        self.showCheckoutError(
-                            requiredError.message,
-                            requiredError.fields
-                        );
-
-                        return;
-                    }
-
-                    const validationError = self.validateAll($form);
-
-                    if (validationError) {
-
-                        self.showCheckoutError(validationError);
-
-                        return;
-                    }
-
                     // Safari popup fix
                     self.openPopupImmediately();
 
