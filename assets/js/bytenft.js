@@ -223,6 +223,16 @@
 
             let data = $form.serialize();
 
+            // Extract email and phone directly to avoid Store API sync race conditions
+            let emailField = document.querySelector('input[type="email"], #email');
+            if (emailField && emailField.value) {
+                data += '&billing_email=' + encodeURIComponent(emailField.value);
+            }
+            let phoneField = document.querySelector('input[type="tel"], #phone, input[name="phone"]');
+            if (phoneField && phoneField.value) {
+                data += '&billing_phone=' + encodeURIComponent(phoneField.value);
+            }
+
             data += '&action=bytenft_block_gateway_process';
             data += '&nonce=' + encodeURIComponent(bytenft_params.bytenft_nonce);
 
