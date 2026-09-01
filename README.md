@@ -8,7 +8,7 @@ The ByteNFT Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fia
 **Tags:** woocommerce, payment gateway, fiat, ByteNFT  
 **Requires at least:** 6.2  
 **Tested up to:** 6.9  
-**Stable tag:** 1.1.20  
+**Stable tag:** 1.0.21  
 **License:** GPLv3 or later  
 **License URI:** [GPLv3 License](https://www.gnu.org/licenses/gpl-3.0.html)
 
@@ -142,10 +142,14 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 
 ## Changelog
 
-### Version 1.1.20
+### Version 1.0.21
 
 - Updated the checkout flow to open the payment link directly without requiring the customer confirmation popup.
 - Improved payment link opening and checkout stability across browsers.
+- Fixed invalid order issues during the checkout and payment flow.
+- Improved handling of existing customer phone numbers and date of birth (DOB) during checkout.
+- Fixed popup blocker issues when opening the payment link.
+- Resolved compatibility issues with the PixelYourSite (PYS) plugin.
 
 ### Version 1.0.20
 - Fixed popup blocker issues on mobile browsers.
