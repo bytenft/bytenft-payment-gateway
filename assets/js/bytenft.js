@@ -379,7 +379,7 @@
                             self.navigateWithoutReferrer(self.state.popup, redirect);
                         }
 
-                     //   self.trackPopupClose();
+                      self.trackPopupClose();
 
                     } else {
 
