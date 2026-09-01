@@ -83,6 +83,15 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		});
 
 		add_action('woocommerce_before_checkout_form', [$this, 'bytenft_show_checkout_error']);
+
+		// Prevent order reuse on standard checkout for this gateway
+		add_action('woocommerce_before_checkout_process', function() {
+			if ( isset( $_POST['payment_method'] ) && 'bytenft' === $_POST['payment_method'] ) {
+				if ( function_exists('WC') && WC()->session ) {
+					WC()->session->set( 'order_awaiting_payment', null );
+				}
+			}
+		});
 	}
 
 	/**
@@ -248,6 +257,12 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 		if ( empty( $data['payment_method'] ) ) {
 			$data['payment_method'] = 'bytenft';
+		}
+
+		// UNCONDITIONALLY prevent reusing an order for this gateway so every attempt gets a fresh WP Order ID
+		if ( WC()->session ) {
+			WC()->session->set( 'order_awaiting_payment', null );
+			WC()->session->set( 'store_api_draft_order', null );
 		}
 
 		$order_id = $checkout->create_order( $data );
