@@ -83,27 +83,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		});
 
 		add_action('woocommerce_before_checkout_form', [$this, 'bytenft_show_checkout_error']);
-
-		/*
-		 * Classic checkout never reaches bytenft_create_block_order(), so the
-		 * same check runs here. 'woocommerce_checkout_process' fires inside
-		 * WC_Checkout::process_checkout() BEFORE create_order(), which is the
-		 * only window where clearing the pointer still changes the outcome.
-		 */
-		add_action('woocommerce_checkout_process', function () {
-
-			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- WC_Checkout::process_checkout() verifies the checkout nonce before this hook fires.
-			$method = isset( $_POST['payment_method'] )
-				? sanitize_text_field( wp_unslash( $_POST['payment_method'] ) )
-				: '';
-
-			// Only ByteNFT's own checkouts - never interfere with another gateway.
-			if ( 'bytenft' !== $method ) {
-				return;
-			}
-
-			$this->bytenft_release_order_if_customer_changed();
-		});
 	}
 
 	/**
@@ -202,101 +181,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	}
 
 	/**
-	 * Stop a changed customer from inheriting the previous order.
-	 *
-	 * WC_Checkout::create_order() resumes 'order_awaiting_payment' whenever
-	 * $order->has_cart_hash( $cart_hash ) matches and the order is pending or
-	 * failed. That hash is md5( cart contents . cart total ) - it contains no
-	 * billing data at all - so editing the email or phone after a failed
-	 * attempt leaves it identical and the same order id is reused.
-	 *
-	 * Dropping the session pointer makes create_order() start a fresh order for
-	 * the new details. Nothing else is touched: the old order is left exactly as
-	 * it is, and WooCommerce still handles the resume in every other case.
-	 *
-	 * Deliberately conservative - it only reacts to a NON-EMPTY incoming value
-	 * that differs from a NON-EMPTY stored one, so a field that simply was not
-	 * posted (block checkout posts very little, FunnelKit posts billing late)
-	 * can never be mistaken for the customer clearing it.
-	 *
-	 * @return void
-	 */
-	private function bytenft_release_order_if_customer_changed() {
-
-		if ( ! function_exists( 'WC' ) || ! WC()->session ) {
-			return;
-		}
-
-		$order_id = absint( WC()->session->get( 'order_awaiting_payment' ) );
-
-		if ( ! $order_id ) {
-			return;
-		}
-
-		$order = wc_get_order( $order_id );
-
-		if ( ! $order instanceof WC_Order ) {
-			return;
-		}
-
-		$customer = WC()->customer;
-
-		// phpcs:disable WordPress.Security.NonceVerification.Missing -- read-only comparison; the caller has already verified its own nonce.
-		$new_email = '';
-
-		foreach ( [ 'billing_email', 'contact_email' ] as $key ) {
-			if ( ! empty( $_POST[ $key ] ) ) {
-				$new_email = sanitize_email( wp_unslash( $_POST[ $key ] ) );
-				break;
-			}
-		}
-
-		if ( '' === $new_email && $customer ) {
-			$new_email = (string) $customer->get_billing_email();
-		}
-
-		$new_phone = '';
-
-		foreach ( [ 'billing_phone', 'shipping_phone' ] as $key ) {
-			if ( ! empty( $_POST[ $key ] ) ) {
-				$new_phone = sanitize_text_field( wp_unslash( $_POST[ $key ] ) );
-				break;
-			}
-		}
-		// phpcs:enable WordPress.Security.NonceVerification.Missing
-
-		if ( '' === $new_phone && $customer ) {
-			$new_phone = (string) $customer->get_billing_phone();
-		}
-
-		$old_email = strtolower( trim( (string) $order->get_billing_email() ) );
-		$new_email = strtolower( trim( $new_email ) );
-
-		$old_phone = preg_replace( '/\D/', '', (string) $order->get_billing_phone() );
-		$new_phone = preg_replace( '/\D/', '', $new_phone );
-
-		$changed =
-			( '' !== $new_email && '' !== $old_email && $new_email !== $old_email )
-			|| ( '' !== $new_phone && '' !== $old_phone && $new_phone !== $old_phone );
-
-		if ( ! $changed ) {
-			return;
-		}
-
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Customer details changed - starting a new order',
-			[
-				'previous_order_id' => $order_id,
-				'previous_email'    => $old_email,
-				'previous_phone'    => $old_phone,
-				'wc_status'         => $order->get_status(),
-			]
-		);
-
-		WC()->session->set( 'order_awaiting_payment', 0 );
-	}
-
-	/**
 	 * Create the WooCommerce order for a block checkout payment.
 	 *
 	 * Delegates to WC_Checkout::create_order() so line items, shipping lines,
@@ -306,8 +190,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	 * @return int Order ID, or 0 on failure.
 	 */
 	private function bytenft_create_block_order() {
-
-		$this->bytenft_release_order_if_customer_changed();
 
 		$checkout = WC()->checkout();
 		$data     = $checkout->get_posted_data();
