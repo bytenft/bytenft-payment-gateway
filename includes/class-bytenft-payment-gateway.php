@@ -1084,9 +1084,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 				if (WC()->cart) {
 					WC()->cart->empty_cart();
-					WC()->session->cleanup_sessions();
-					WC()->session->destroy_session();
-					WC()->session->set_customer_session_cookie(false);
 				}
 
 				$redirect = $status === 'completed'
