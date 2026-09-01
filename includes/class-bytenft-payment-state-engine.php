@@ -431,7 +431,7 @@ class BYTENFT_PAYMENT_ENGINE
         $map = [
             'pending' => ['cancelled','processing','success','failed'],
             'failed' => ['failed','success','processing','cancelled'],
-            'cancelled' => ['success'],
+            'cancelled' => ['success','failed'],
             'expired' => ['failed','cancelled','success'],
         ];
 
