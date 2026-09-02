@@ -7,7 +7,7 @@
  * Author URI: https://pay.bytenft.xyz/
  * Text Domain: bytenft-payment-gateway
  * Plugin URI: https://github.com/bytenft/bytenft-payment-gateway
- * Version: 1.0.20
+ * Version: 1.0.21
  * License: GPLv3 or later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  *
@@ -41,17 +41,9 @@ spl_autoload_register(function ($class) {
 
 BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
 
-add_action(
-    'woocommerce_cancel_unpaid_order',
-    'bytenft_cancel_unpaid_order_action'
-);
-
-add_action(
-    'woocommerce_order_status_cancelled',
-    'bytenft_cancel_unpaid_order_action',
-    10,
-    1
-);
+add_action('woocommerce_cancel_unpaid_order', 'bytenft_cancel_unpaid_order_action');
+add_action('woocommerce_order_status_cancelled', 'bytenft_cancel_unpaid_order_action');
+add_action('woocommerce_order_status_changed', 'bytenft_cancel_unpaid_order_action', 10, 4);
 
 
 /**
@@ -212,3 +204,4 @@ function bytenft_cancel_unpaid_order_action($order_id)
 	}
 	
 }
+
