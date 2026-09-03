@@ -674,6 +674,37 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		return false;
 	}
 
+	/**
+	 * Output the admin options screen with the Pre-Launch Readiness Banner.
+	 */
+	public function admin_options() {
+		$guide_url = admin_url('admin.php?page=bytenft-integration-guide');
+		?>
+		<div class="bytenft-guide-banner">
+			<div class="bytenft-guide-banner-inner">
+				<div class="bytenft-guide-banner-icon">
+					<i class="fa fa-shield" aria-hidden="true"></i>
+				</div>
+				<div class="bytenft-guide-banner-content">
+					<div class="bytenft-guide-banner-badge">
+						<i class="fa fa-check-circle" aria-hidden="true"></i> <?php esc_html_e('Pre-Launch Readiness', 'bytenft-payment-gateway'); ?>
+					</div>
+					<h3 class="bytenft-guide-banner-title"><?php esc_html_e('Merchant Integration Validation Guide', 'bytenft-payment-gateway'); ?></h3>
+					<p class="bytenft-guide-banner-text"><?php esc_html_e('Track and verify your setup step-by-step before accepting real customer payments. Ensure payments, webhooks, and thank you pages work flawlessly.', 'bytenft-payment-gateway'); ?></p>
+				</div>
+				<div class="bytenft-guide-banner-action">
+					<a href="<?php echo esc_url($guide_url); ?>" class="button bytenft-guide-btn">
+						<i class="fa fa-external-link" aria-hidden="true"></i> <?php esc_html_e('Open Integration Guide', 'bytenft-payment-gateway'); ?>
+					</a>
+				</div>
+			</div>
+		</div>
+		<table class="form-table">
+			<?php $this->generate_settings_html(); ?>
+		</table>
+		<?php
+	}
+
 	public function bytenft_init_form_fields() {
 		$this->form_fields = $this->bytenft_get_form_fields();
 	}
@@ -1395,6 +1426,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 							]
 						);
 					}
+
+					update_option('bytenft_payment_created_verified', true);
+					update_option('bytenft_payment_page_verified', true);
 				}
 
 				// -------------------------------------------------
@@ -1568,6 +1602,16 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'source'   => 'woocommerce',
 		]);
 
+		$user_id = $order->get_customer_id();
+		$is_guest = empty($user_id) ? 1 : 0;
+		if ($is_guest === 1 && !empty($email)) {
+			$existing_user = get_user_by('email', $email);
+			if ($existing_user) {
+				$is_guest = 0;
+				$user_id = $existing_user->ID;
+			}
+		}
+
 		return [
 			'api_secret'       => $api_secret,
 			'api_public_key'   => $api_public_key,
@@ -1593,6 +1637,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'is_sandbox'       => $is_sandbox,
 			'curr_code'        => sanitize_text_field($order->get_currency()),
 			'plugin_source'    => 'bytenft',
+			'is_guest'         => $is_guest,
+			'customer_user_id' => $user_id ? $user_id : 0,
 		];
 	}
 
