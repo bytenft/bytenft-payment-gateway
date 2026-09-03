@@ -589,9 +589,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			wp_remote_post($api_url, [
 				'method'    => 'POST',
 				'timeout'   => 30,
-				'body'      => $body,
+				'body'      => wp_json_encode($body),
 				'headers'   => [
-					'Content-Type'  => 'application/x-www-form-urlencoded',
+					'Content-Type'  => 'application/json',
 					'Authorization' => 'Bearer ' . sanitize_text_field($public_key),
 				],
 				'sslverify' => true,

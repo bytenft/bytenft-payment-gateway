@@ -1158,9 +1158,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'timeout'   => 30,
 				'sslverify' => true,
 				'headers'   => [
+					'Content-Type'  => 'application/json',
 					'Authorization' => 'Bearer ' . sanitize_text_field($public_key),
 				],
-				'body'      => $body,
+				'body'      => wp_json_encode($body),
 			]
 		);
 
