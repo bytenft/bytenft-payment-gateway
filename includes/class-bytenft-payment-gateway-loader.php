@@ -1135,17 +1135,13 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			return;
 		}
 
-		global $wp_version;
-
 		$body = [
 			'valid_accounts'         => $accounts,
 			'plugin_status'          => (int) $plugin_status,
 			'gateway_loaded'         => (int) $gateway_loaded,
 			'plugin_version'         => BYTENFT_PLUGIN_VERSION,
-			'wordpress_version'      => $wp_version,
-			'woocommerce_version'    => class_exists('WooCommerce') && function_exists('WC')
-				? WC()->version
-				: '',
+			'wordpress_version'      => get_bloginfo('version'),
+			'woocommerce_version'    => get_option('woocommerce_version') ?: '',
 			'woocommerce_db_version' => get_option('woocommerce_db_version'),
 			'group_id'               => get_option('bytenft_group_id'),
 			'domain_name'            => wp_parse_url(home_url(), PHP_URL_HOST),
