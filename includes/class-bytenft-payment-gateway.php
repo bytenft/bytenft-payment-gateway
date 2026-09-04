@@ -2006,15 +2006,18 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$cache_base     = 'bytenft_daily_limit_' . md5($public_key . $amount);
 
 		$plugin_logs_data = [
-			'valid_accounts' => $accounts,
-			'gateway_loaded' => $gateway_loaded,
-			'plugin_status'  => $gateway_loaded,
-			'plugin_version' => $plugin_version,
-			'api_public_key' => $public_key,
-			'api_secret_key' => $secret_key,
-			'is_sandbox'     => $this->sandbox,
-			'group_id'       => $group_id ? $group_id : $this->bytenft_get_group_id(),
-			'domain_name'    => parse_url(home_url(), PHP_URL_HOST),
+		    'valid_accounts'         => $accounts,
+			'gateway_loaded'         => $gateway_loaded,
+			'plugin_status'          => $gateway_loaded,
+			'plugin_version'         => $plugin_version,
+			'api_public_key'         => $public_key,
+			'api_secret_key'         => $secret_key,
+			'is_sandbox'             => $this->sandbox,
+			'group_id'               => $group_id ? $group_id : $this->bytenft_get_group_id(),
+			'domain_name'            => parse_url(home_url(), PHP_URL_HOST),
+			'wordpress_version'      => get_bloginfo('version'),
+			'woocommerce_version'    => get_option('woocommerce_version') ?: '',
+			'woocommerce_db_version' => get_option('woocommerce_db_version'),
 		];
 
 		$this->get_cached_api_response(
