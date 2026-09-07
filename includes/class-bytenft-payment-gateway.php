@@ -597,6 +597,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			ByteNFT_Payment_Gateway_Logger::info('Account settings updated successfully.', ['count' => count($valid_accounts)]);
 
+			update_option('bytenft_config_verified', true);
+
 			if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
 				$loader = BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
 				if (method_exists($loader, 'handle_cron_event')) {
