@@ -1287,7 +1287,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			}
 		}
 
-		if ($is_enabled && $has_valid_account) {
+		if ($is_enabled && $has_valid_account && (get_option('bytenft_config_verified') || !$reset_time)) {
 			$statuses[1] = 'passed';
 		} elseif (!empty($accounts) && !$is_enabled) {
 			$statuses[1] = 'failed';
@@ -1567,6 +1567,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		}
 
 		update_option('bytenft_guide_reset_time', current_time('mysql'));
+		delete_option('bytenft_config_verified');
 		delete_option('bytenft_webhook_verified');
 		delete_option('bytenft_webhook_validation_status');
 		delete_option('bytenft_last_webhook_status');
