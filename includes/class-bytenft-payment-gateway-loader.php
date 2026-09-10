@@ -66,11 +66,11 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			    10
 			);
 			// Clear queued notices (errors, success, info)
-			if ( function_exists( 'wc_clear_notices' ) ) {
+			if ( function_exists( 'wc_clear_notices' ) && isset( WC()->session ) ) {
 				wc_clear_notices();
 			}
 		    }
-
+			
 		});
 
 		add_action('woocommerce_checkout_create_order', function($order){
