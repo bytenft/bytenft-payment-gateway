@@ -481,114 +481,61 @@ jQuery(document).ready(function ($) {
 	}
 
 	// =========================================================================
-	// ByteNFT Merchant Integration Validation Guide Controller (7 Automatic Steps)
+	// ByteNFT Integration Health Controller
 	// =========================================================================
-	var $guideApp = $('#bytenft-guide-app');
-	if ($guideApp.length) {
-		initIntegrationGuide();
+	if ($('#bytenft-health-app').length) {
+		initIntegrationHealth();
 	}
 
-	function initIntegrationGuide() {
-		const totalSteps = 7;
+	function initIntegrationHealth() {
+		var statusClasses = 'bytenft-health-status--healthy bytenft-health-status--attention bytenft-health-status--setup';
+		var statusIcons = {
+			healthy: 'fa-check-circle',
+			attention: 'fa-exclamation-triangle',
+			setup: 'fa-cog'
+		};
 
-		function updateStepBadges(statuses, allPassed) {
-			for (let step = 1; step <= totalSteps; step++) {
-				const status = statuses[step] || 'pending';
-				const $badge = $('#badge-step-' + step);
-
-				$badge.removeClass('status-pending status-passed status-failed');
-				if (status === 'passed') {
-					$badge.addClass('status-passed').html('<i class="fa fa-check-circle"></i> <span>PASSED</span>');
-				} else if (status === 'failed') {
-					$badge.addClass('status-failed').html('<i class="fa fa-times-circle"></i> <span>FAILED</span>');
-				} else {
-					$badge.addClass('status-pending').html('<i class="fa fa-clock-o"></i> <span>PENDING</span>');
-				}
+		function render(health, areasHtml) {
+			if (health && health.status) {
+				$('#bytenft-health-status')
+					.removeClass(statusClasses)
+					.addClass('bytenft-health-status--' + health.status);
+				$('#bytenft-health-status-value').text(health.label || '');
+				$('#bytenft-health-status-desc').text(health.description || '');
+				$('#bytenft-health-status-icon')
+					.removeClass('fa-check-circle fa-exclamation-triangle fa-cog')
+					.addClass(statusIcons[health.status] || 'fa-cog');
 			}
 
-			// Toggle YOU ARE GOOD TO GO message
-			const $goodToGoWrap = $('#bytenft-good-to-go-wrap');
-			if (allPassed) {
-				$goodToGoWrap.slideDown(250);
-			} else {
-				$goodToGoWrap.hide();
+			// Area markup is rendered server side so it has a single definition.
+			if (typeof areasHtml === 'string' && areasHtml.length) {
+				$('#bytenft-health-areas').html(areasHtml);
 			}
 		}
 
-		function fetchLatestStatus() {
-			const $refreshBtn = $('#bytenft-refresh-status-btn');
-			$refreshBtn.find('i').addClass('fa-spin');
-
-			$.ajax({
-				url: bytenft_admin_data.ajax_url,
-				method: 'POST',
-				dataType: 'json',
-				data: {
-					action: 'bytenft_get_guide_status',
-					nonce: bytenft_admin_data.guide_nonce || bytenft_admin_data.nonce
-				},
-				success: function (response) {
-					if (response.success && response.data) {
-						updateStepBadges(response.data.statuses, response.data.all_passed);
-					}
-				},
-				complete: function () {
-					$refreshBtn.find('i').removeClass('fa-spin');
-				}
-			});
-		}
-
-		// Dynamic settings link
-		if (bytenft_admin_data && bytenft_admin_data.settings_url) {
-			$('#bytenft-settings-link').attr('href', bytenft_admin_data.settings_url);
-		}
-
-		// Refresh status button click
 		$('#bytenft-refresh-status-btn').on('click', function (e) {
 			e.preventDefault();
-			fetchLatestStatus();
-		});
 
-		// Reset status button click
-		$('#bytenft-reset-status-btn').on('click', function (e) {
-			e.preventDefault();
-			if (!confirm('Are you sure you want to reset the validation status for a new test run?')) {
-				return;
-			}
-			const $btn = $(this);
-			$btn.find('i').addClass('fa-spin');
+			var $btn = $(this);
+			$btn.prop('disabled', true).find('i').addClass('fa-spin');
 
 			$.ajax({
 				url: bytenft_admin_data.ajax_url,
 				method: 'POST',
 				dataType: 'json',
 				data: {
-					action: 'bytenft_reset_guide_status',
+					action: 'bytenft_get_health_status',
 					nonce: bytenft_admin_data.guide_nonce || bytenft_admin_data.nonce
 				},
 				success: function (response) {
 					if (response.success && response.data) {
-						updateStepBadges(response.data.statuses, response.data.all_passed);
+						render(response.data.health, response.data.areas_html);
 					}
 				},
 				complete: function () {
-					$btn.find('i').removeClass('fa-spin');
+					$btn.prop('disabled', false).find('i').removeClass('fa-spin');
 				}
 			});
 		});
-
-		// Initialize from localized data if available
-		if (bytenft_admin_data && bytenft_admin_data.statuses) {
-			updateStepBadges(bytenft_admin_data.statuses, bytenft_admin_data.all_passed);
-		} else {
-			fetchLatestStatus();
-		}
-
-		// Auto-poll status every 10 seconds while tab is active
-		setInterval(function () {
-			if (document.visibilityState === 'visible') {
-				fetchLatestStatus();
-			}
-		}, 10000);
 	}
 });

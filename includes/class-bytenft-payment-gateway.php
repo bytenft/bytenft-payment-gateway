@@ -456,6 +456,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		parent::process_admin_options();
 
+		// Configuration changed: force the next health read to recompute.
+		BYTENFT_PAYMENT_GATEWAY_Loader::bytenft_flush_integration_health_cache();
+
 		if (!isset($_POST['bytenft_accounts_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['bytenft_accounts_nonce'])), 'bytenft_accounts_nonce_action')) {
 			ByteNFT_Payment_Gateway_Logger::info('CSRF check failed during admin options update.');
 			wp_die(esc_html__('Security check failed!', 'bytenft-payment-gateway'));
@@ -677,29 +680,38 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	/**
-	 * Output the admin options screen with the Pre-Launch Readiness Banner.
+	 * Output the admin options screen.
+	 *
+	 * This screen stays focused on configuration. The full validation guide lives on
+	 * the dedicated ByteNFT > Integration Health page; here we only surface a compact,
+	 * automatically maintained status indicator that links to it.
 	 */
 	public function admin_options() {
-		$guide_url = admin_url('admin.php?page=bytenft-integration-guide');
+		$health     = BYTENFT_PAYMENT_GATEWAY_Loader::bytenft_get_integration_health();
+		$status     = isset($health['status']) ? $health['status'] : 'setup';
+		$health_url = BYTENFT_PAYMENT_GATEWAY_Loader::bytenft_get_integration_health_url();
+
+		$icons = [
+			'healthy'   => 'fa-check-circle',
+			'attention' => 'fa-exclamation-triangle',
+			'setup'     => 'fa-cog',
+		];
+		$icon = isset($icons[$status]) ? $icons[$status] : 'fa-cog';
 		?>
-		<div class="bytenft-guide-banner">
-			<div class="bytenft-guide-banner-inner">
-				<div class="bytenft-guide-banner-icon">
-					<i class="fa fa-shield" aria-hidden="true"></i>
-				</div>
-				<div class="bytenft-guide-banner-content">
-					<div class="bytenft-guide-banner-badge">
-						<i class="fa fa-check-circle" aria-hidden="true"></i> <?php esc_html_e('Pre-Launch Readiness', 'bytenft-payment-gateway'); ?>
-					</div>
-					<h3 class="bytenft-guide-banner-title"><?php esc_html_e('Merchant Integration Validation Guide', 'bytenft-payment-gateway'); ?></h3>
-					<p class="bytenft-guide-banner-text"><?php esc_html_e('Track and verify your setup step-by-step before accepting real customer payments. Ensure payments, webhooks, and thank you pages work flawlessly.', 'bytenft-payment-gateway'); ?></p>
-				</div>
-				<div class="bytenft-guide-banner-action">
-					<a href="<?php echo esc_url($guide_url); ?>" class="button bytenft-guide-btn">
-						<i class="fa fa-external-link" aria-hidden="true"></i> <?php esc_html_e('Open Integration Guide', 'bytenft-payment-gateway'); ?>
-					</a>
-				</div>
-			</div>
+		<div class="bytenft-integration-status bytenft-integration-status--<?php echo esc_attr($status); ?>">
+			<span class="bytenft-integration-status-icon" aria-hidden="true">
+				<i class="fa <?php echo esc_attr($icon); ?>"></i>
+			</span>
+			<span class="bytenft-integration-status-text">
+				<span class="bytenft-integration-status-label"><?php esc_html_e('Integration Status:', 'bytenft-payment-gateway'); ?></span>
+				<strong class="bytenft-integration-status-value"><?php echo esc_html($health['label']); ?></strong>
+				<?php if (!empty($health['description'])) : ?>
+					<span class="bytenft-integration-status-desc"><?php echo esc_html($health['description']); ?></span>
+				<?php endif; ?>
+			</span>
+			<a class="bytenft-integration-status-link" href="<?php echo esc_url($health_url); ?>">
+				<?php esc_html_e('Integration Health', 'bytenft-payment-gateway'); ?> <span aria-hidden="true">&rarr;</span>
+			</a>
 		</div>
 		<table class="form-table">
 			<?php $this->generate_settings_html(); ?>

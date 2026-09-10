@@ -7,6 +7,7 @@ if (!defined('ABSPATH')) {
 require_once plugin_dir_path(__FILE__) . 'config.php';
 require_once plugin_dir_path(__FILE__) . 'class-bytenft-payment-state-engine.php';
 require_once plugin_dir_path(__FILE__) . 'class-bytenft-payment-logger.php';
+require_once plugin_dir_path(__FILE__) . 'class-bytenft-payment-gateway-health.php';
 /**
  * Class BYTENFT_PAYMENT_GATEWAY_Loader
  * Handles the loading and initialization of the ByteNFT Payment Gateway plugin.
@@ -102,20 +103,32 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			}
 		});
 
-		// Integration Validation Guide hooks
+		// Integration Health hooks
 		add_action('admin_menu', [$this, 'bytenft_admin_menu']);
 		add_action('admin_enqueue_scripts', [$this, 'bytenft_guide_admin_scripts']);
-		add_action('wp_ajax_bytenft_get_guide_status', [$this, 'bytenft_get_guide_status']);
-		add_action('wp_ajax_bytenft_reset_guide_status', [$this, 'bytenft_reset_guide_status']);
+		add_action('wp_ajax_bytenft_get_health_status', [$this, 'bytenft_get_health_status']);
 
-		// Track thank you page visits for validation guide (runs only when browser renders thank you page)
+		// Automatic background monitoring. Merchants never run the checks manually: the
+		// report behind the gateway settings indicator is refreshed on a schedule.
+		add_action('bytenft_health_check_event', [__CLASS__, 'bytenft_refresh_integration_health']);
+		add_action('admin_init', [$this, 'bytenft_schedule_health_check']);
+
+		// Invalidate the cached report as soon as the gateway configuration changes.
+		foreach (self::bytenft_get_health_signal_options() as $bytenft_health_option) {
+			add_action('add_option_' . $bytenft_health_option, [__CLASS__, 'bytenft_flush_integration_health_cache']);
+			add_action('update_option_' . $bytenft_health_option, [__CLASS__, 'bytenft_flush_integration_health_cache']);
+			add_action('delete_option_' . $bytenft_health_option, [__CLASS__, 'bytenft_flush_integration_health_cache']);
+		}
+
+		// Runs only when the browser renders the thank you page.
 		add_action('woocommerce_thankyou_bytenft', function ($order_id) {
 			update_option('bytenft_thankyou_page_verified', true);
 			delete_option('bytenft_last_payment_status');
 			delete_option('bytenft_thankyou_page_status');
+			self::bytenft_flush_integration_health_cache();
 		});
 
-		// Track order status changes for real-time validation guide updates
+		// Keep the cached health report in step with order status changes.
 		add_action('woocommerce_order_status_changed', function ($order_id, $old_status, $new_status) {
 			$order = wc_get_order($order_id);
 			if (!$order || $order->get_payment_method() !== 'bytenft') {
@@ -127,6 +140,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				update_option('bytenft_last_payment_status', 'failed');
 				update_option('bytenft_thankyou_page_status', 'failed');
 			}
+			self::bytenft_flush_integration_health_cache();
 		}, 10, 3);
 	}
 
@@ -946,6 +960,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	{
 		ByteNFT_Payment_Gateway_Logger::info('Automatic payment status checks have been disabled.', ['source' => 'bytenft-payment-gateway']);
 		wp_clear_scheduled_hook('bytenft_cron_event');
+		wp_clear_scheduled_hook('bytenft_health_check_event');
 	}
 
 
@@ -1215,28 +1230,70 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	}
 
 	/**
-	 * Register the Merchant Integration Validation Guide admin page.
+	 * Slug of the dedicated ByteNFT Integration Health admin page.
+	 *
+	 * Kept as the historical slug so existing links and bookmarks keep working.
+	 */
+	const HEALTH_PAGE_SLUG = 'bytenft-integration-guide';
+
+	/** Transient holding the cached integration health report. */
+	const HEALTH_TRANSIENT = 'bytenft_integration_health';
+
+	/** Option holding the last computed integration health report. */
+	const HEALTH_OPTION = 'bytenft_integration_health_snapshot';
+
+	/** How long a computed health report stays fresh. */
+	const HEALTH_TTL = 900; // 15 minutes.
+
+	/**
+	 * Register the ByteNFT top level menu and the Integration Health admin page.
+	 *
+	 * The full health report and validation guide live here so the gateway settings
+	 * screen can stay focused on configuration only.
 	 */
 	public function bytenft_admin_menu()
 	{
-		add_submenu_page(
-			null,
-			__('ByteNFT Merchant Integration Validation Guide', 'bytenft-payment-gateway'),
-			__('Integration Guide', 'bytenft-payment-gateway'),
+		add_menu_page(
+			__('ByteNFT', 'bytenft-payment-gateway'),
+			__('ByteNFT', 'bytenft-payment-gateway'),
 			'manage_woocommerce',
-			'bytenft-integration-guide',
+			self::HEALTH_PAGE_SLUG,
+			[$this, 'bytenft_display_integration_guide'],
+			'dashicons-shield-alt',
+			56
+		);
+
+		add_submenu_page(
+			self::HEALTH_PAGE_SLUG,
+			__('ByteNFT Integration Health', 'bytenft-payment-gateway'),
+			__('Integration Health', 'bytenft-payment-gateway'),
+			'manage_woocommerce',
+			self::HEALTH_PAGE_SLUG,
 			[$this, 'bytenft_display_integration_guide']
 		);
 	}
 
 	/**
-	 * Render the Merchant Integration Validation Guide admin page.
+	 * URL of the Integration Health admin page.
+	 *
+	 * @return string
+	 */
+	public static function bytenft_get_integration_health_url()
+	{
+		return admin_url('admin.php?page=' . self::HEALTH_PAGE_SLUG);
+	}
+
+	/**
+	 * Render the ByteNFT Integration Health admin page.
 	 */
 	public function bytenft_display_integration_guide()
 	{
 		if (!current_user_can('manage_woocommerce')) {
 			wp_die(esc_html__('You do not have sufficient permissions to access this page.', 'bytenft-payment-gateway'));
 		}
+
+		// Always show a freshly computed result on the dedicated health page.
+		$bytenft_health = self::bytenft_refresh_integration_health();
 
 		$template_path = BYTENFT_PAYMENT_GATEWAY_PLUGIN_DIR . 'integration-guide.html';
 		if (file_exists($template_path)) {
@@ -1247,219 +1304,84 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	}
 
 	/**
-	 * Automatically compute the validation statuses for the 7 steps based on real system state.
+	 * Options whose changes invalidate the cached integration health report.
 	 *
-	 * @return array<int, string> Map of step numbers to 'passed', 'failed', or 'pending'.
+	 * @return array<int, string>
 	 */
-	public static function bytenft_get_validation_guide_statuses()
+	public static function bytenft_get_health_signal_options()
 	{
-		global $wpdb;
-
-		$statuses = [
-			1 => 'pending',
-			2 => 'pending',
-			3 => 'pending',
-			4 => 'pending',
-			5 => 'pending',
-			6 => 'pending',
-			7 => 'pending',
+		return [
+			'woocommerce_bytenft_settings',
+			'woocommerce_bytenft_payment_gateway_accounts',
 		];
+	}
 
-		$reset_time      = get_option('bytenft_guide_reset_time');
-		$reset_timestamp = $reset_time ? strtotime($reset_time) : 0;
+	/**
+	 * Make sure the hourly background health check is scheduled.
+	 *
+	 * Self-healing on every admin request so installs that were already active when
+	 * this feature shipped pick the schedule up without a reactivation.
+	 */
+	public function bytenft_schedule_health_check()
+	{
+		if (!wp_next_scheduled('bytenft_health_check_event')) {
+			wp_schedule_event(time() + MINUTE_IN_SECONDS, 'hourly', 'bytenft_health_check_event');
+		}
+	}
 
-		// STEP 1: Configure the Plugin
-		$settings          = get_option('woocommerce_bytenft_settings', []);
-		$accounts          = get_option('woocommerce_bytenft_payment_gateway_accounts', []);
-		$is_enabled        = !empty($settings['enabled']) && $settings['enabled'] === 'yes';
-		$has_valid_account = false;
+	/**
+	 * Drop the cached health report so the next read recomputes it.
+	 */
+	public static function bytenft_flush_integration_health_cache()
+	{
+		delete_transient(self::HEALTH_TRANSIENT);
+	}
 
-		if (!empty($accounts) && is_array($accounts)) {
-			foreach ($accounts as $acc) {
-				if (!empty($acc['live_public_key']) && !empty($acc['live_secret_key'])) {
-					$has_valid_account = true;
-					break;
-				}
-				if (!empty($acc['sandbox_public_key']) && !empty($acc['sandbox_secret_key'])) {
-					$has_valid_account = true;
-					break;
-				}
+	/**
+	 * Recompute the integration health report and cache it.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function bytenft_refresh_integration_health()
+	{
+		// The checks read WooCommerce orders. If WooCommerce is unavailable, reuse the
+		// last stored report rather than reporting a false problem.
+		if (!function_exists('wc_get_orders')) {
+			$stored = get_option(self::HEALTH_OPTION);
+			if (is_array($stored) && isset($stored['status'])) {
+				return $stored;
+			}
+
+			return BYTENFT_PAYMENT_GATEWAY_Health::bytenft_unavailable_report();
+		}
+
+		$health = BYTENFT_PAYMENT_GATEWAY_Health::bytenft_run_checks();
+
+		set_transient(self::HEALTH_TRANSIENT, $health, self::HEALTH_TTL);
+		update_option(self::HEALTH_OPTION, $health, false);
+
+		return $health;
+	}
+
+	/**
+	 * Read the integration health report, recomputing only when the cache is cold.
+	 *
+	 * This is what lightweight consumers (such as the gateway settings indicator)
+	 * should call so opening settings never triggers a full validation run.
+	 *
+	 * @param bool $force Recompute even when a cached report exists.
+	 * @return array<string, mixed>
+	 */
+	public static function bytenft_get_integration_health($force = false)
+	{
+		if (!$force) {
+			$cached = get_transient(self::HEALTH_TRANSIENT);
+			if (is_array($cached) && isset($cached['status'])) {
+				return $cached;
 			}
 		}
 
-		if ($is_enabled && $has_valid_account && (get_option('bytenft_config_verified') || !$reset_time)) {
-			$statuses[1] = 'passed';
-		} elseif (!empty($accounts) && !$is_enabled) {
-			$statuses[1] = 'failed';
-		} else {
-			$statuses[1] = 'pending';
-		}
-
-		// STEP 2: Verify the Payment Page
-		$table_name       = $wpdb->prefix . 'order_payment_link';
-		$has_payment_link = false;
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-		$has_table        = ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_name)) === $table_name);
-
-		if ($has_table) {
-			$sql = "SELECT COUNT(*) FROM {$table_name} WHERE payment_link IS NOT NULL AND payment_link != ''";
-			if ($reset_time) {
-				$sql .= $wpdb->prepare(" AND (created_at >= %s OR updated_at >= %s)", $reset_time, $reset_time);
-			}
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-			$count = $wpdb->get_var($sql);
-			if ($count && intval($count) > 0) {
-				$has_payment_link = true;
-			}
-		}
-
-		if ($has_payment_link || get_option('bytenft_payment_page_verified')) {
-			$statuses[2] = 'passed';
-		} elseif (get_option('bytenft_last_payment_page_status') === 'failed') {
-			$statuses[2] = 'failed';
-		} else {
-			$statuses[2] = 'pending';
-		}
-
-		// STEP 3: Create a Test Payment
-		$order_args_3 = [
-			'payment_method' => 'bytenft',
-			'limit'          => 1,
-			'return'         => 'ids',
-		];
-		if ($reset_timestamp > 0) {
-			$order_args_3['date_created'] = '>=' . $reset_timestamp;
-		}
-		$bytenft_orders = wc_get_orders($order_args_3);
-
-		if (!empty($bytenft_orders) || $has_payment_link || get_option('bytenft_payment_created_verified')) {
-			$statuses[3] = 'passed';
-		} elseif (get_option('bytenft_last_payment_creation_status') === 'failed') {
-			$statuses[3] = 'failed';
-		} else {
-			$statuses[3] = 'pending';
-		}
-
-		// Fetch the latest ByteNFT order in the test window
-		$latest_order_args = [
-			'payment_method' => 'bytenft',
-			'limit'          => 1,
-			'orderby'        => 'date',
-			'order'          => 'DESC',
-		];
-		if ($reset_timestamp > 0) {
-			$latest_order_args['date_created'] = '>=' . $reset_timestamp;
-		}
-		$latest_orders = wc_get_orders($latest_order_args);
-		$latest_order  = !empty($latest_orders) ? $latest_orders[0] : null;
-
-		// STEP 4: Verify a Successful Payment
-		$order_args_4 = [
-			'payment_method' => 'bytenft',
-			'status'         => ['processing', 'completed'],
-			'limit'          => 1,
-			'return'         => 'ids',
-		];
-		if ($reset_timestamp > 0) {
-			$order_args_4['date_created'] = '>=' . $reset_timestamp;
-		}
-		$successful_orders = wc_get_orders($order_args_4);
-
-		if (!empty($successful_orders)) {
-			if ($latest_order && in_array($latest_order->get_status(), ['failed', 'cancelled'], true)) {
-				$statuses[4] = 'failed';
-			} else {
-				$statuses[4] = 'passed';
-			}
-		} elseif (get_option('bytenft_last_payment_status') === 'failed' || ($latest_order && in_array($latest_order->get_status(), ['failed', 'cancelled'], true))) {
-			$statuses[4] = 'failed';
-		} else {
-			$statuses[4] = 'pending';
-		}
-
-		// STEP 5: Verify the Thank You Page (ONLY verified when customer loads thank you page)
-		if (get_option('bytenft_thankyou_page_verified')) {
-			if ($latest_order && in_array($latest_order->get_status(), ['failed', 'cancelled'], true)) {
-				$statuses[5] = 'failed';
-			} else {
-				$statuses[5] = 'passed';
-			}
-		} elseif (get_option('bytenft_thankyou_page_status') === 'failed' || ($latest_order && in_array($latest_order->get_status(), ['failed', 'cancelled'], true))) {
-			$statuses[5] = 'failed';
-		} else {
-			$statuses[5] = 'pending';
-		}
-
-		// STEP 6: Verify Webhook
-		$webhook_validation = get_option('bytenft_webhook_validation_status');
-		if ($webhook_validation === 'passed' || get_option('bytenft_webhook_verified')) {
-			$statuses[6] = 'passed';
-		} elseif ($webhook_validation === 'failed' || get_option('bytenft_last_webhook_status') === 'failed') {
-			$statuses[6] = 'failed';
-		} else {
-			// Check if any order has recorded webhook events in timeline metadata
-			$order_args_wh = [
-				'payment_method' => 'bytenft',
-				'limit'          => 10,
-			];
-			if ($reset_timestamp > 0) {
-				$order_args_wh['date_created'] = '>=' . $reset_timestamp;
-			}
-			$bytenft_orders_wh = wc_get_orders($order_args_wh);
-
-			$found_webhook = false;
-			if (!empty($bytenft_orders_wh) && is_array($bytenft_orders_wh)) {
-				foreach ($bytenft_orders_wh as $o) {
-					$timeline = $o->get_meta('_bytenft_timeline');
-					if (is_array($timeline)) {
-						foreach ($timeline as $evt) {
-							if (
-								($evt['event_type'] ?? '') === 'webhook_update' ||
-								($evt['source'] ?? '') === 'Webhook'
-							) {
-								$found_webhook = true;
-								break 2;
-							}
-						}
-					}
-				}
-			}
-
-			if ($found_webhook) {
-				update_option('bytenft_webhook_verified', true);
-				update_option('bytenft_webhook_validation_status', 'passed');
-				$statuses[6] = 'passed';
-			} else {
-				$statuses[6] = 'pending';
-			}
-		}
-
-		// STEP 7: Review Before Enabling Live Mode
-		$has_failed_step = (
-			$statuses[1] === 'failed' ||
-			$statuses[2] === 'failed' ||
-			$statuses[3] === 'failed' ||
-			$statuses[4] === 'failed' ||
-			$statuses[5] === 'failed' ||
-			$statuses[6] === 'failed'
-		);
-
-		if (
-			$statuses[1] === 'passed' &&
-			$statuses[2] === 'passed' &&
-			$statuses[3] === 'passed' &&
-			$statuses[4] === 'passed' &&
-			$statuses[5] === 'passed' &&
-			$statuses[6] === 'passed'
-		) {
-			$statuses[7] = 'passed';
-		} elseif ($has_failed_step) {
-			$statuses[7] = 'failed';
-		} else {
-			$statuses[7] = 'pending';
-		}
-
-		return $statuses;
+		return self::bytenft_refresh_integration_health();
 	}
 
 	/**
@@ -1499,32 +1421,20 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			true
 		);
 
-		$statuses   = self::bytenft_get_validation_guide_statuses();
-		$all_passed = (
-			($statuses[1] ?? '') === 'passed' &&
-			($statuses[2] ?? '') === 'passed' &&
-			($statuses[3] ?? '') === 'passed' &&
-			($statuses[4] ?? '') === 'passed' &&
-			($statuses[5] ?? '') === 'passed' &&
-			($statuses[6] ?? '') === 'passed' &&
-			($statuses[7] ?? '') === 'passed'
-		);
-
 		wp_localize_script('bytenft-admin-script', 'bytenft_admin_data', [
 			'ajax_url'     => admin_url('admin-ajax.php'),
 			'nonce'        => wp_create_nonce('bytenft_guide_nonce'),
 			'guide_nonce'  => wp_create_nonce('bytenft_guide_nonce'),
 			'gateway_id'   => 'bytenft',
-			'statuses'     => $statuses,
-			'all_passed'   => $all_passed,
+			'health'       => self::bytenft_get_integration_health(),
 			'settings_url' => admin_url('admin.php?page=wc-settings&tab=checkout&section=bytenft'),
 		]);
 	}
 
 	/**
-	 * AJAX handler to get latest automatic integration validation statuses.
+	 * AJAX handler returning the latest integration health report.
 	 */
-	public function bytenft_get_guide_status()
+	public function bytenft_get_health_status()
 	{
 		if (!current_user_can('manage_woocommerce')) {
 			wp_send_json_error(['message' => __('Unauthorized permission.', 'bytenft-payment-gateway')], 403);
@@ -1535,67 +1445,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			wp_send_json_error(['message' => __('Security check failed.', 'bytenft-payment-gateway')], 403);
 		}
 
-		$statuses   = self::bytenft_get_validation_guide_statuses();
-		$all_passed = (
-			($statuses[1] ?? '') === 'passed' &&
-			($statuses[2] ?? '') === 'passed' &&
-			($statuses[3] ?? '') === 'passed' &&
-			($statuses[4] ?? '') === 'passed' &&
-			($statuses[5] ?? '') === 'passed' &&
-			($statuses[6] ?? '') === 'passed' &&
-			($statuses[7] ?? '') === 'passed'
-		);
+		// Recompute and refresh the cached report so the settings page indicator stays
+		// in sync without the merchant having to run anything there.
+		$health = self::bytenft_refresh_integration_health();
 
 		wp_send_json_success([
-			'statuses'   => $statuses,
-			'all_passed' => $all_passed,
+			'health'     => $health,
+			'areas_html' => BYTENFT_PAYMENT_GATEWAY_Health::bytenft_render_areas($health['areas'] ?? []),
 		]);
 	}
 
-	/**
-	 * AJAX handler to reset validation guide status.
-	 */
-	public function bytenft_reset_guide_status()
-	{
-		if (!current_user_can('manage_woocommerce')) {
-			wp_send_json_error(['message' => __('Unauthorized permission.', 'bytenft-payment-gateway')], 403);
-		}
-
-		$nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
-		if (!wp_verify_nonce($nonce, 'bytenft_guide_nonce') && !wp_verify_nonce($nonce, 'bytenft_sync_nonce')) {
-			wp_send_json_error(['message' => __('Security check failed.', 'bytenft-payment-gateway')], 403);
-		}
-
-		update_option('bytenft_guide_reset_time', current_time('mysql'));
-		delete_option('bytenft_config_verified');
-		delete_option('bytenft_webhook_verified');
-		delete_option('bytenft_webhook_validation_status');
-		delete_option('bytenft_last_webhook_status');
-		delete_option('bytenft_webhook_failure_reason');
-		delete_option('bytenft_payment_page_verified');
-		delete_option('bytenft_payment_created_verified');
-		delete_option('bytenft_successful_payment_verified');
-		delete_option('bytenft_thankyou_page_verified');
-		delete_option('bytenft_last_payment_page_status');
-		delete_option('bytenft_last_payment_creation_status');
-		delete_option('bytenft_last_payment_status');
-		delete_option('bytenft_thankyou_page_status');
-
-		$statuses   = self::bytenft_get_validation_guide_statuses();
-		$all_passed = (
-			($statuses[1] ?? '') === 'passed' &&
-			($statuses[2] ?? '') === 'passed' &&
-			($statuses[3] ?? '') === 'passed' &&
-			($statuses[4] ?? '') === 'passed' &&
-			($statuses[5] ?? '') === 'passed' &&
-			($statuses[6] ?? '') === 'passed' &&
-			($statuses[7] ?? '') === 'passed'
-		);
-
-		wp_send_json_success([
-			'statuses'   => $statuses,
-			'all_passed' => $all_passed,
-			'message'    => __('Validation guide status has been reset.', 'bytenft-payment-gateway'),
-		]);
-	}
 }
