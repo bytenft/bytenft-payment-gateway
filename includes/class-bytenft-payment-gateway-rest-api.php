@@ -134,11 +134,6 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		// 1. VALIDATION
 		// -------------------------
 		if ($order_id <= 0) {
-			if ($method === 'POST') {
-				update_option('bytenft_webhook_validation_status', 'failed');
-				update_option('bytenft_last_webhook_status', 'failed');
-				update_option('bytenft_webhook_failure_reason', 'Invalid Order ID');
-			}
 			return new WP_REST_Response([
 				'success' => false,
 				'message' => 'Invalid ID'
@@ -148,11 +143,6 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$order = wc_get_order($order_id);
 
 		if (!$order) {
-			if ($method === 'POST') {
-				update_option('bytenft_webhook_validation_status', 'failed');
-				update_option('bytenft_last_webhook_status', 'failed');
-				update_option('bytenft_webhook_failure_reason', 'Order not found');
-			}
 			return new WP_REST_Response([
 				'success' => false,
 				'message' => 'Order not found'
@@ -171,9 +161,6 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 				empty($api_key_raw) ||
 				(!$this->bytenft_verify_api_key($key_to_verify) && !$this->bytenft_verify_api_key($api_key_raw))
 			) {
-				update_option('bytenft_webhook_validation_status', 'failed');
-				update_option('bytenft_last_webhook_status', 'failed');
-				update_option('bytenft_webhook_failure_reason', 'Invalid signature / API key');
 				return new WP_REST_Response([
 					'success'    => false,
 					'error_code' => 'INVALID_API_KEY'
@@ -239,13 +226,6 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 
 		$is_success = ($state === 'success');
 
-		// Webhook automatic validation tracking
-		if ($method === 'POST') {
-			update_option('bytenft_webhook_verified', true);
-			update_option('bytenft_webhook_validation_status', 'passed');
-			update_option('bytenft_last_webhook_status', 'passed');
-		}
-
 		// -------------------------
 		// 7. MESSAGE
 		// -------------------------
@@ -278,18 +258,9 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		if ($state === 'success') {
 
 			$redirect = $order->get_checkout_order_received_url();
-			if ($method === 'GET') {
-				update_option('bytenft_thankyou_page_verified', true);
-				delete_option('bytenft_thankyou_page_status');
-			}
-			delete_option('bytenft_last_payment_status');
 
 		} elseif (in_array($state, ['failed', 'cancelled', 'expired'], true)) {
 
-			update_option('bytenft_last_payment_status', 'failed');
-			if ($method === 'GET') {
-				update_option('bytenft_thankyou_page_status', 'failed');
-			}
 			$redirect = wc_get_checkout_url();
 		}
 

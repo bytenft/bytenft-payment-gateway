@@ -597,8 +597,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			ByteNFT_Payment_Gateway_Logger::info('Account settings updated successfully.', ['count' => count($valid_accounts)]);
 
-			update_option('bytenft_config_verified', true);
-
 			if (class_exists('BYTENFT_PAYMENT_GATEWAY_Loader')) {
 				$loader = BYTENFT_PAYMENT_GATEWAY_Loader::get_instance();
 				if (method_exists($loader, 'handle_cron_event')) {
@@ -674,37 +672,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		ByteNFT_Payment_Gateway_Logger::info('No active account. Removing bytenft gateway.');
 		return false;
-	}
-
-	/**
-	 * Output the admin options screen with the Pre-Launch Readiness Banner.
-	 */
-	public function admin_options() {
-		$guide_url = admin_url('admin.php?page=bytenft-integration-guide');
-		?>
-		<div class="bytenft-guide-banner">
-			<div class="bytenft-guide-banner-inner">
-				<div class="bytenft-guide-banner-icon">
-					<i class="fa fa-shield" aria-hidden="true"></i>
-				</div>
-				<div class="bytenft-guide-banner-content">
-					<div class="bytenft-guide-banner-badge">
-						<i class="fa fa-check-circle" aria-hidden="true"></i> <?php esc_html_e('Pre-Launch Readiness', 'bytenft-payment-gateway'); ?>
-					</div>
-					<h3 class="bytenft-guide-banner-title"><?php esc_html_e('Merchant Integration Validation Guide', 'bytenft-payment-gateway'); ?></h3>
-					<p class="bytenft-guide-banner-text"><?php esc_html_e('Track and verify your setup step-by-step before accepting real customer payments. Ensure payments, webhooks, and thank you pages work flawlessly.', 'bytenft-payment-gateway'); ?></p>
-				</div>
-				<div class="bytenft-guide-banner-action">
-					<a href="<?php echo esc_url($guide_url); ?>" class="button bytenft-guide-btn">
-						<i class="fa fa-external-link" aria-hidden="true"></i> <?php esc_html_e('Open Integration Guide', 'bytenft-payment-gateway'); ?>
-					</a>
-				</div>
-			</div>
-		</div>
-		<table class="form-table">
-			<?php $this->generate_settings_html(); ?>
-		</table>
-		<?php
 	}
 
 	public function bytenft_init_form_fields() {
@@ -1428,9 +1395,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 							]
 						);
 					}
-
-					update_option('bytenft_payment_created_verified', true);
-					update_option('bytenft_payment_page_verified', true);
 				}
 
 				// -------------------------------------------------
@@ -1443,6 +1407,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 					$order->update_meta_data('_bytenft_active_pay_id', $pay_id);
 					$order->update_meta_data('_bytenft_payment_finalized', false);
+					$order->update_meta_data('_bytenft_public_key', sanitize_text_field($public_key));
+					$order->save();
 				}
 
 				// -------------------------------------------------
@@ -1495,7 +1461,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					'Payment initiated',
 					[
 						'payment_status' => $resp_data['data']['payment_status'] ?? 'pending',
-						'redirect' => esc_url($payment_link)
+						'redirect'       => esc_url($payment_link),
+						'order_key'      => $order->get_order_key(),
+						'bytenft_nonce'  => wp_create_nonce('bytenft_payment'),
 					],
 					200,
 					$order_id

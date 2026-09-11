@@ -16,6 +16,7 @@
             popup: null,
             popupInterval: null,
             orderId: null,
+            orderKey: null,
             button: null,
             buttonText: ''
         },
@@ -315,6 +316,16 @@
                     response.data?.order_id ||
                     null;
 
+                const orderKey =
+                    response.order_key ||
+                    response.data?.order_key ||
+                    null;
+
+                const refreshedNonce =
+                    response.bytenft_nonce ||
+                    response.data?.bytenft_nonce ||
+                    null;
+
                 const errorMessage =
                     response?.message ||
                     response?.messages ||
@@ -325,6 +336,11 @@
                     'Your payment could not be completed. Please try again.';
 
                 self.state.orderId = orderId;
+                self.state.orderKey = orderKey;
+
+                if (refreshedNonce && typeof bytenft_params !== 'undefined') {
+                    bytenft_params.bytenft_nonce = refreshedNonce;
+                }
 
                 // =====================================================
                 // ❌ FAILURE (FIXED - ERROR DISPLAY STABLE)
@@ -578,6 +594,8 @@
             const self = this;
 
             let redirected = false;
+            let pollAttempts = 0;
+            const maxAttempts = 120; // 3 minutes maximum polling (120 * 1.5s)
 
             clearInterval(self.state.popupInterval);
 
@@ -585,6 +603,14 @@
 
                 // Prevent duplicate execution
                 if (redirected) {
+                    clearInterval(self.state.popupInterval);
+                    return;
+                }
+
+                pollAttempts++;
+                if (pollAttempts > maxAttempts) {
+                    console.log('[Bytenft] Max polling attempts reached.');
+                    clearInterval(self.state.popupInterval);
                     return;
                 }
 
@@ -600,11 +626,13 @@
                     {
                         action: 'bytenft_popup_closed_event',
                         order_id: self.state.orderId,
+                        order_key: self.state.orderKey,
                         security: bytenft_params.bytenft_nonce
                     },
                     function (response) {
 
                         if (redirected) {
+                            clearInterval(self.state.popupInterval);
                             return;
                         }
 
@@ -612,6 +640,22 @@
                             '[Bytenft] popup status response',
                             response
                         );
+
+                        // Stop polling if server explicitly indicates stop_polling (e.g. fatal auth / order not found)
+                        if (response?.data?.stop_polling || response?.stop_polling) {
+                            clearInterval(self.state.popupInterval);
+                            if (!popupExists) {
+                                redirected = true;
+                                self.cleanupPopup();
+                                self.showCheckoutError(
+                                    response?.message ||
+                                    response?.data?.message ||
+                                    'Payment verification failed. Please try again.'
+                                );
+                                self.reset();
+                            }
+                            return;
+                        }
 
                         const paymentSuccess =
                             response?.success === true ||
@@ -680,7 +724,13 @@
 
                     },
                     'json'
-                );
+                ).fail(function (xhr, status, error) {
+                    console.log('[Bytenft] popup status check network error', status, error);
+                    // Stop polling if forbidden or bad request
+                    if (xhr.status === 403 || xhr.status === 400) {
+                        clearInterval(self.state.popupInterval);
+                    }
+                });
 
             }, 1500);
         },
