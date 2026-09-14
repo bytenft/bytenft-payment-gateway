@@ -7,14 +7,39 @@
 
     window.BytenftCheckoutInitialized = true;
 
+    const ENVELOPE_ICON =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="3" y="5" width="18" height="14" rx="2"></rect>' +
+        '<path d="M3 7l9 6 9-6"></path>' +
+        '</svg>';
+
+    const SPINNER_ICON =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
+        '<path d="M12 3a9 9 0 1 1-9 9"></path>' +
+        '</svg>';
+
+    const CHECK_ICON =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M5 12.5l4.5 4.5L19 7.5"></path>' +
+        '</svg>';
+
     const BytenftCheckout = {
 
         PAYMENT_METHOD: bytenft_params.payment_method,
 
+        // How often, and for how long, the "check your email" screen asks
+        // whether the customer has paid from the emailed link.
+        STATUS_POLL_INTERVAL: 5000,
+        STATUS_POLL_TIMEOUT: 30 * 60 * 1000,
+
         state: {
             submitting: false,
-            popup: null,
-            popupInterval: null,
+            statusInterval: null,
+            statusRequest: null,
+            redirecting: false,
+            paymentWindow: null,
+            panel: null,
+            panelDetails: null,
             orderId: null,
             button: null,
             buttonText: ''
@@ -58,9 +83,6 @@
                         }
 
                         self.clearCheckoutErrors();
-
-                        // Safari popup fix
-                        self.openPopupImmediately();
 
                         // Start custom flow
                         self.handleClassicCheckout($form);
@@ -113,8 +135,6 @@
                         'There was an error processing your order.'
                     );
 
-                    self.cleanupPopup();
-
                     self.reset();
                 }
             });
@@ -166,9 +186,6 @@
                     }
 
                     self.clearCheckoutErrors();
-
-                    // Safari popup fix
-                    self.openPopupImmediately();
 
                     // Start block flow
                     self.handleBlockCheckout($form);
@@ -260,8 +277,6 @@
                         'There was an error processing your order.'
                     );
 
-                    self.cleanupPopup();
-
                     self.reset();
                 }
             });
@@ -288,8 +303,6 @@
                         self.showCheckoutError(
                             'Invalid server response.'
                         );
-
-                        self.cleanupPopup();
 
                         self.reset();
 
@@ -335,8 +348,6 @@
 
                     console.log('[Bytenft] showing failed message:', msg);
 
-                    self.cleanupPopup();
-
                     // 🔥 IMPORTANT
                     setTimeout(function () {
 
@@ -362,45 +373,28 @@
                 }
 
                 // =====================================================
-                // ✅ SUCCESS — navigate popup WITHOUT sending referrer
-                // =====================================================    
+                // ✅ SUCCESS — payment link was emailed to the customer
+                // =====================================================
+                const paymentEmail = response.data?.payment_email;
+
+                if (paymentEmail) {
+
+                    self.showPaymentEmailSent(paymentEmail);
+
+                    self.watchPaymentStatus();
+
+                    self.reset();
+
+                    return;
+                }
+
                 if (redirect && typeof redirect === 'string' && redirect.length > 5) {
 
-                    if (self.state.popup && !self.state.popup.closed) {
-
-                        try {
-
-                            // FIX: Use navigateWithoutReferrer instead of
-                            // directly setting location.href, which would
-                            // send the WP checkout URL as Referer header
-                            // to the Laravel payment page.
-                            self.navigateWithoutReferrer(self.state.popup, redirect);
-
-                        } catch (e) {
-
-                            // Safari fallback — re-open popup and use same method
-                            if (!self.state.popup || self.state.popup.closed) {
-                                self.state.popup = window.open(
-                                    '',
-                                    '_blank'
-                                );
-                            }
-
-                            self.navigateWithoutReferrer(self.state.popup, redirect);
-                        }
-
-                      self.trackPopupClose();
-
-                    } else {
-
-                        window.location.href = redirect;
-                    }
+                    window.location.href = redirect;
 
                     self.reset(true);
                     return;
                 }
-
-                self.cleanupPopup();
 
                 self.showCheckoutError('Missing redirect URL.');
 
@@ -410,8 +404,6 @@
 
                 console.log('[Bytenft] handleResponse exception', e);
 
-                self.cleanupPopup();
-
                 self.showCheckoutError('Unexpected checkout error.');
 
                 self.reset();
@@ -419,270 +411,334 @@
         },
 
         /* =========================================================
-         * POPUP
+         * PAYMENT LINK EMAILED
          * ========================================================= */
 
-        openPopupImmediately: function () {
-
-            if (
-                this.state.popup &&
-                !this.state.popup.closed
-            ) {
-                return;
-            }
-
-            // NOTE: window.open() only takes 3 arguments — the 4th is ignored
-            // by all browsers. noopener/noreferrer do NOT go here when opening
-            // about:blank because we need to keep the popup reference to write
-            // into it. Referrer stripping is handled by navigateWithoutReferrer().
-            this.state.popup = window.open(
-                '',
-                '_blank',
-                'width=700,height=700'
-            );
-
-            if (!this.state.popup) {
-
-                alert('Popup blocked. Please allow popups.');
-
-                return;
-            }
-
-            const logoUrl = bytenft_params.bytenft_loader
-                ? encodeURI(bytenft_params.bytenft_loader)
-                : '';
-
-            // FIX: Add <meta name="referrer" content="no-referrer"> so that
-            // even this loading page does not leak referrer on any resource loads.
-            this.state.popup.document.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Secure Payment</title>
-                    <meta name="referrer" content="no-referrer">
-                </head>
-
-                <body style="
-                    margin:0;
-                    display:flex;
-                    justify-content:center;
-                    align-items:center;
-                    height:100vh;
-                    font-family:sans-serif;
-                    background:#fff;
-                    text-align:center;
-                ">
-
-                    <div>
-
-                        ${
-                            logoUrl
-                                ? `<img src="${logoUrl}" style="max-width:120px;margin-bottom:20px;" />`
-                                : ''
-                        }
-
-                        <h3>Connecting to secure payment...</h3>
-
-                        <p>Please do not close this window.</p>
-
-                    </div>
-
-                </body>
-                </html>
-            `);
-
-            this.state.popup.document.close();
-        },
-
-        /* =========================================================
-         * NAVIGATE WITHOUT REFERRER
-         * ========================================================= */
-
-        navigateWithoutReferrer: function (popup, url) {
-
-            // The popup is still on about:blank so we own its document.
-            // We write a new page into it that has:
-            //   1. <meta name="referrer" content="no-referrer">  — referrer policy
-            //   2. <meta http-equiv="refresh" content="0;url=..."> — immediate redirect
-            //
-            // The browser navigates from THIS intermediate page to the payment URL,
-            // so document.referrer on the Laravel payment page will be empty string.
-            // The SDK will see no referrer.
-            try {
-                var logoUrl = bytenft_params.bytenft_loader ? encodeURI(bytenft_params.bytenft_loader) : '';
-                popup.document.open();
-                popup.document.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Secure Payment</title>
-                    <meta name="referrer" content="no-referrer">
-                    <meta http-equiv="refresh" content="0;url=` + url + `">
-                </head>
-
-                <body style="
-                    margin:0;
-                    display:flex;
-                    justify-content:center;
-                    align-items:center;
-                    height:100vh;
-                    font-family:sans-serif;
-                    background:#fff;
-                    text-align:center;
-                ">
-
-                    <div>
-
-                        ${
-                            logoUrl
-                                ? `<img src="${logoUrl}" style="max-width:120px;margin-bottom:20px;" />`
-                                : ''
-                        }
-
-                        <h3>Connecting to secure payment...</h3>
-
-                        <p>Please do not close this window.</p>
-
-                    </div>
-
-                </body>
-                </html>
-            `);
-                popup.document.close();
-
-            } catch (e) {
-
-                // Last resort fallback — referrer may leak but payment still works
-                console.log('[Bytenft] navigateWithoutReferrer fallback', e);
-                popup.location.href = url;
-            }
-        },
-
-        cleanupPopup: function () {
-
-            if (
-                this.state.popup &&
-                !this.state.popup.closed
-            ) {
-
-                try {
-                    this.state.popup.close();
-                } catch (e) {}
-            }
-
-            this.state.popup = null;
-        },
-
-        trackPopupClose: function () {
+        showPaymentEmailSent: function (details) {
 
             const self = this;
 
-            let redirected = false;
+            const text = function (value) {
+                return document.createTextNode(value);
+            };
 
-            clearInterval(self.state.popupInterval);
+            // Only ever link to an http(s) URL.
+            const paymentLink = /^https?:\/\//i.test(details.payment_link || '')
+                ? details.payment_link
+                : '';
 
-            self.state.popupInterval = setInterval(function () {
+            // Customer-supplied values are only ever inserted as text.
+            const strong = function (value) {
+                return $('<strong>').text(value || '');
+            };
 
-                // Prevent duplicate execution
-                if (redirected) {
+            const $panel = $('<div>', {
+                'class': 'bytenft-email-sent',
+                role: 'status',
+                tabindex: '-1',
+                'data-state': 'waiting'
+            }).append(
+                $('<div>', {
+                    'class': 'bytenft-email-sent__icon',
+                    'aria-hidden': 'true'
+                }).html(ENVELOPE_ICON),
+
+                $('<h2>', { 'class': 'bytenft-email-sent__title' })
+                    .text('Check your email to continue'),
+
+                $('<p>', { 'class': 'bytenft-email-sent__lead' }).append(
+                    text('We’ve sent a secure payment link to '),
+                    strong(details.email),
+                    text(' for order '),
+                    strong('#' + details.order_number),
+                    text('. Open it and follow the link to pay '),
+                    strong(details.amount),
+                    text(' and confirm your order.')
+                ),
+
+                $('<div>', { 'class': 'bytenft-email-sent__note' }).append(
+                    $('<p>', { 'class': 'bytenft-email-sent__note-title' })
+                        .text('Who takes the payment'),
+                    $('<p>').text(
+                        'The link opens a secure payment page hosted by ByteNFT, so your card details are never handled by this website.'
+                    )
+                ),
+
+                $('<p>', { 'class': 'bytenft-email-sent__small' }).text(
+                    'Nothing has been charged yet, and this page updates once your payment is confirmed.'
+                ),
+
+                $('<p>', { 'class': 'bytenft-email-sent__small' }).text(
+                    paymentLink
+                        ? 'Can’t find the email? Check your spam folder, or click below to open your payment link.'
+                        : 'Didn’t get the email? Check your spam folder.'
+                ),
+
+                $('<div>', { 'class': 'bytenft-email-sent__actions' }).append(
+                    paymentLink
+                        ? $('<a>', {
+                            'class': 'button bytenft-email-sent__pay',
+                            href: paymentLink,
+                            target: '_blank',
+                            rel: 'noopener noreferrer'
+                        }).text('Open payment page').on('click', function (e) {
+                            // Keep a handle on the tab so it can be closed once paid;
+                            // if the browser blocks it, the plain link opens instead.
+                            if (self.openPaymentTab(paymentLink)) {
+                                e.preventDefault();
+                            }
+                        })
+                        : null,
+
+                    $('<a>', {
+                        'class': 'button bytenft-email-sent__back',
+                        href: details.shop_url || '/'
+                    }).text('Back to the shop')
+                )
+            );
+
+            this.state.panel = $panel;
+            this.state.panelDetails = details;
+
+            // Replace the checkout with the panel. Hide rather than remove so
+            // the block checkout's React tree stays intact.
+            const $blockCheckout = $('.wp-block-woocommerce-checkout').first();
+
+            const $target = $blockCheckout.length
+                ? $blockCheckout
+                : $('form.checkout').first();
+
+            this.clearCheckoutErrors();
+
+            $('.bytenft-email-sent').remove();
+
+            $('.woocommerce-form-coupon-toggle, .woocommerce-form-login-toggle, form.checkout_coupon, form.woocommerce-form-login').hide();
+
+            if ($target.length) {
+                $panel.insertBefore($target);
+                $target.hide();
+            } else {
+                $('body').prepend($panel);
+            }
+
+            $('html, body').animate({
+                scrollTop: Math.max($panel.offset().top - 80, 0)
+            }, 300);
+
+            $panel[0].focus({ preventScroll: true });
+        },
+
+        /**
+         * Open the payment link in a new tab this page keeps a reference to.
+         * Returns false when the browser blocks the tab.
+         */
+        openPaymentTab: function (url) {
+
+            const current = this.state.paymentWindow;
+
+            if (current && !current.closed) {
+                current.focus();
+                return true;
+            }
+
+            const tab = window.open('', '_blank');
+
+            if (!tab) {
+                return false;
+            }
+
+            const safeUrl = String(url)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            try {
+
+                // Redirect from a no-referrer page so the payment page never
+                // receives the checkout URL as Referer.
+                tab.document.open();
+                tab.document.write(
+                    '<!DOCTYPE html><html><head><title>Secure Payment</title>' +
+                    '<meta name="referrer" content="no-referrer">' +
+                    '<meta http-equiv="refresh" content="0;url=' + safeUrl + '">' +
+                    '</head><body style="margin:0;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;">' +
+                    '<p>Connecting to secure payment...</p></body></html>'
+                );
+                tab.document.close();
+
+            } catch (err) {
+
+                tab.location.href = url;
+            }
+
+            this.state.paymentWindow = tab;
+
+            return true;
+        },
+
+        /**
+         * Move the "check your email" panel on to "confirming" or "confirmed".
+         */
+        setPanelState: function (panelState) {
+
+            const $panel = this.state.panel;
+
+            if (!$panel || $panel.attr('data-state') === panelState) {
+                return;
+            }
+
+            // Never step back from confirmed to confirming.
+            if ($panel.attr('data-state') === 'confirmed') {
+                return;
+            }
+
+            const orderNumber = $('<strong>').text('#' + (this.state.panelDetails?.order_number || ''));
+
+            const views = {
+                confirming: {
+                    icon: SPINNER_ICON,
+                    iconClass: 'bytenft-email-sent__icon--busy',
+                    title: 'Confirming your payment',
+                    lead: [
+                        document.createTextNode('Your payment for order '),
+                        orderNumber,
+                        document.createTextNode(' is being processed. This can take a minute — keep this page open and you’ll be taken to your order confirmation automatically.')
+                    ]
+                },
+                confirmed: {
+                    icon: CHECK_ICON,
+                    iconClass: 'bytenft-email-sent__icon--done',
+                    title: 'Payment confirmed',
+                    lead: [
+                        document.createTextNode('Payment for order '),
+                        orderNumber,
+                        document.createTextNode(' is confirmed. Taking you to your order confirmation…')
+                    ]
+                }
+            };
+
+            const view = views[panelState];
+
+            if (!view) {
+                return;
+            }
+
+            $panel.attr('data-state', panelState);
+
+            $panel.find('.bytenft-email-sent__icon')
+                .removeClass('bytenft-email-sent__icon--busy bytenft-email-sent__icon--done')
+                .addClass(view.iconClass)
+                .html(view.icon);
+
+            $panel.find('.bytenft-email-sent__title').text(view.title);
+
+            $panel.find('.bytenft-email-sent__lead').empty().append(view.lead);
+
+            // Email instructions and the pay/shop buttons no longer apply.
+            $panel.find('.bytenft-email-sent__note, .bytenft-email-sent__small, .bytenft-email-sent__actions').hide();
+        },
+
+        closePaymentTab: function () {
+
+            const tab = this.state.paymentWindow;
+
+            this.state.paymentWindow = null;
+
+            if (tab && !tab.closed) {
+                try {
+                    tab.close();
+                } catch (err) {}
+            }
+        },
+
+        watchPaymentStatus: function () {
+
+            const self = this;
+
+            const startedAt = Date.now();
+
+            clearInterval(self.state.statusInterval);
+
+            if (!self.state.orderId) {
+                return;
+            }
+
+            const check = function () {
+
+                if (Date.now() - startedAt > self.STATUS_POLL_TIMEOUT) {
+                    clearInterval(self.state.statusInterval);
                     return;
                 }
 
-                const popupExists =
-                    self.state.popup &&
-                    !self.state.popup.closed;
+                self.checkPaymentStatus();
+            };
 
-                // =========================================
-                // SAFARI + CHROME PAYMENT CHECK
-                // =========================================
-                $.post(
-                    bytenft_params.ajax_url,
-                    {
-                        action: 'bytenft_popup_closed_event',
-                        order_id: self.state.orderId,
-                        security: bytenft_params.bytenft_nonce
-                    },
-                    function (response) {
+            self.state.statusInterval = setInterval(check, self.STATUS_POLL_INTERVAL);
 
-                        if (redirected) {
-                            return;
-                        }
+            // Check straight away when the customer returns from the payment tab.
+            $(document)
+                .off('visibilitychange.bytenft')
+                .on('visibilitychange.bytenft', function () {
+                    if (document.visibilityState === 'visible') {
+                        check();
+                    }
+                });
+        },
 
-                        console.log(
-                            '[Bytenft] popup status response',
-                            response
-                        );
+        checkPaymentStatus: function () {
 
-                        const paymentSuccess =
-                            response?.success === true ||
-                            response?.data?.payment_status === 'success' ||
-                            response?.data?.payment_status === 'paid';
+            const self = this;
 
-                        const redirectUrl =
-                            response?.data?.redirect ||
-                            response?.redirect;
+            if (self.state.statusRequest || self.state.redirecting) {
+                return;
+            }
 
-                        // =========================================
-                        // PAYMENT SUCCESS
-                        // =========================================
-                        if (paymentSuccess && redirectUrl) {
+            const request = $.post(
+                bytenft_params.ajax_url,
+                {
+                    action: 'bytenft_check_payment_status',
+                    order_id: self.state.orderId,
+                    security: bytenft_params.bytenft_nonce
+                },
+                function (response) {
 
-                            redirected = true;
+                    console.log('[Bytenft] payment status response', response);
 
-                            clearInterval(self.state.popupInterval);
+                    const data = response?.data || {};
 
-                            try {
+                    // Only a confirmed payment moves the customer on; they
+                    // may not have opened the email yet.
+                    if (data.status === 'success' && data.redirect_url) {
 
-                                if (
-                                    self.state.popup &&
-                                    !self.state.popup.closed
-                                ) {
-                                    self.state.popup.close();
-                                }
+                        self.state.redirecting = true;
 
-                            } catch (e) {
-                                console.log(
-                                    '[Bytenft] popup close blocked'
-                                );
-                            }
+                        clearInterval(self.state.statusInterval);
 
-                            self.state.popup = null;
+                        self.setPanelState('confirmed');
 
-                            console.log(
-                                '[Bytenft] redirect success page'
-                            );
+                        // The hosted page never returns the customer, so
+                        // finish here: close its tab, show the thank-you page.
+                        self.closePaymentTab();
 
-                            window.location.replace(redirectUrl);
+                        window.location.replace(data.redirect_url);
 
-                            return;
-                        }
+                        return;
+                    }
 
-                        // =========================================
-                        // USER MANUALLY CLOSED POPUP
-                        // =========================================
-                        if (!popupExists) {
+                    // The provider is processing the customer's payment.
+                    if (data.payment_status === 'processing') {
+                        self.setPanelState('confirming');
+                    }
+                },
+                'json'
+            );
 
-                            redirected = true;
+            self.state.statusRequest = request;
 
-                            clearInterval(self.state.popupInterval);
-
-                            const failedMessage =
-                                response?.message ||
-                                response?.data?.message ||
-                                'Your payment could not be completed. Please try again.';
-
-                            self.cleanupPopup();
-
-                            self.showCheckoutError(failedMessage);
-
-                            self.reset();
-                        }
-
-                    },
-                    'json'
-                );
-
-            }, 1500);
+            request.always(function () {
+                self.state.statusRequest = null;
+            });
         },
 
         /* =========================================================
@@ -848,7 +904,7 @@
                     }, 0);
                 }
             );
-            
+
 
             $('#billing_address_1')
                 .on('input', function () {

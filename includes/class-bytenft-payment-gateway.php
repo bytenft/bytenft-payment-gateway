@@ -97,6 +97,8 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		add_action('wp_ajax_bytenft_log_event', [$this, 'handle_log_event']);
 		add_action('wp_ajax_nopriv_bytenft_log_event', [$this, 'handle_log_event']);
 
+		add_action('woocommerce_thankyou_' . $this->id, [$this, 'bytenft_thankyou_payment_link_notice']);
+
 	}
 
 	/**
@@ -1456,12 +1458,48 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					]
 				);
 
+				// -------------------------------------------------
+				// 12. EMAIL PAYMENT LINK TO CUSTOMER
+				// -------------------------------------------------
+				// The customer pays from the link in their inbox; checkout
+				// never opens the payment page itself.
+				if (!$this->bytenft_send_payment_link_email($order, $payment_link)) {
+
+					$email_error = __('We could not email your payment link. Please check your email address and try again.', 'bytenft-payment-gateway');
+
+					// Classic checkout only relays queued notices in its failure response.
+					if (!$this->is_block_checkout_request() && is_checkout()) {
+						wc_add_notice($email_error, 'error');
+					}
+
+					return $this->build_response(
+						'fail',
+						$email_error,
+						[],
+						500,
+						$order_id
+					);
+				}
+
 				return $this->build_response(
 					'success',
-					'Payment initiated',
+					'Payment link emailed',
 					[
 						'payment_status' => $resp_data['data']['payment_status'] ?? 'pending',
-						'redirect' => esc_url($payment_link)
+						'payment_email'  => [
+							'email'        => $this->bytenft_mask_email($order->get_billing_email()),
+							'order_number' => $order->get_order_number(),
+							'amount'       => html_entity_decode(
+								wp_strip_all_tags(wc_price($order->get_total(), ['currency' => $order->get_currency()])),
+								ENT_QUOTES,
+								'UTF-8'
+							),
+							'shop_url'     => wc_get_page_permalink('shop'),
+							// Fallback for customers who can't find the email.
+							'payment_link' => esc_url_raw($payment_link),
+						],
+						// Followed by non-AJAX submissions such as the order-pay page.
+						'redirect'       => $order->get_checkout_order_received_url(),
 					],
 					200,
 					$order_id
@@ -1502,6 +1540,250 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'code'     => $code,
 			'success'  => $result === 'success',
 		];
+	}
+
+	/**
+	 * Email the hosted payment link to the order's billing address.
+	 *
+	 * @param WC_Order $order        Order being paid.
+	 * @param string   $payment_link Hosted payment page URL.
+	 * @return bool Whether the email was handed off for delivery.
+	 */
+	private function bytenft_send_payment_link_email($order, $payment_link) {
+		$order_id = $order->get_id();
+		$to       = $order->get_billing_email();
+
+		if (!is_email($to)) {
+			ByteNFT_Payment_Gateway_Logger::error(
+				'Payment link email not sent: invalid billing email',
+				['order_id' => $order_id]
+			);
+			return false;
+		}
+
+		$subject = apply_filters(
+			'bytenft_payment_link_email_subject',
+			sprintf(
+				/* translators: %s: order number */
+				__('Complete your payment for order #%s', 'bytenft-payment-gateway'),
+				$order->get_order_number()
+			),
+			$order
+		);
+
+		$message = apply_filters(
+			'bytenft_payment_link_email_message',
+			$this->bytenft_get_payment_link_email_html($order, $payment_link),
+			$order,
+			$payment_link
+		);
+
+		$headers = ['Content-Type: text/html; charset=UTF-8'];
+
+		// Send from the same address as the store's other WooCommerce emails.
+		$from_address = sanitize_email(get_option('woocommerce_email_from_address'));
+		if (is_email($from_address)) {
+			$from_name = wp_specialchars_decode(sanitize_text_field(get_option('woocommerce_email_from_name')), ENT_QUOTES);
+			$headers[] = 'From: ' . ($from_name ? $from_name . ' <' . $from_address . '>' : $from_address);
+		}
+
+		$mail_error = null;
+		$capture_error = function ($error) use (&$mail_error) {
+			$mail_error = $error->get_error_message();
+		};
+
+		add_action('wp_mail_failed', $capture_error);
+		$sent = wp_mail($to, wp_specialchars_decode($subject, ENT_QUOTES), $message, $headers);
+		remove_action('wp_mail_failed', $capture_error);
+
+		if (!$sent) {
+			ByteNFT_Payment_Gateway_Logger::error(
+				'Payment link email could not be sent',
+				[
+					'order_id' => $order_id,
+					'error'    => $mail_error,
+				]
+			);
+			return false;
+		}
+
+		$order->update_meta_data('_bytenft_payment_link_emailed_at', time());
+		$order->add_order_note(
+			sprintf(
+				/* translators: %s: customer email address */
+				__('ByteNFT payment link emailed to %s.', 'bytenft-payment-gateway'),
+				$to
+			)
+		);
+		$order->save();
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			'Payment link emailed to customer',
+			['order_id' => $order_id]
+		);
+
+		return true;
+	}
+
+	/**
+	 * Build the HTML body of the payment link email.
+	 *
+	 * Table layout with inline styles so it renders consistently in email clients.
+	 *
+	 * @param WC_Order $order        Order being paid.
+	 * @param string   $payment_link Hosted payment page URL.
+	 * @return string
+	 */
+	private function bytenft_get_payment_link_email_html($order, $payment_link) {
+		$site_name = wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES);
+		$sans      = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+		$serif     = "Georgia,'Times New Roman',serif";
+		$mono      = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
+		$accent    = '#8b5e1a';
+
+		$row = function ($label, $value) use ($mono) {
+			return '<tr>'
+				. '<td style="padding:8px 0;color:#1f2328;">' . esc_html($label) . '</td>'
+				. '<td align="right" style="padding:8px 0 8px 16px;color:#1f2328;font-family:' . esc_attr($mono) . ';white-space:nowrap;">' . wp_kses_post($value) . '</td>'
+				. '</tr>';
+		};
+
+		$rows = '';
+
+		foreach ($order->get_items() as $item) {
+			$name = $item->get_name();
+			if ($item->get_quantity() > 1) {
+				$name .= ' ×' . $item->get_quantity();
+			}
+			$rows .= $row($name, $order->get_formatted_line_subtotal($item));
+		}
+
+		// Discounts, shipping, fees and taxes. Subtotal repeats the items above and
+		// the total gets its own emphasised row.
+		foreach ($order->get_order_item_totals() as $key => $total) {
+			if (in_array($key, ['cart_subtotal', 'payment_method', 'order_total'], true)) {
+				continue;
+			}
+			$rows .= $row(rtrim(wp_strip_all_tags($total['label']), ': '), $total['value']);
+		}
+
+		$order_total = wc_price($order->get_total(), ['currency' => $order->get_currency()]);
+		$small       = 'margin:0 0 12px;font-size:13px;line-height:1.6;color:#6b7280;';
+
+		ob_start();
+		?>
+<!DOCTYPE html>
+<html lang="<?php echo esc_attr(get_bloginfo('language')); ?>">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><?php echo esc_html($site_name); ?></title>
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f4f6;">
+	<tr>
+		<td align="center" style="padding:32px 16px;">
+			<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background:#ffffff;border:1px solid #e5e7eb;border-radius:6px;">
+				<tr>
+					<td style="background:#1f2328;border-radius:6px 6px 0 0;padding:22px 26px;font-family:<?php echo esc_attr($serif); ?>;font-size:22px;color:#ffffff;">
+						<?php echo esc_html($site_name); ?>
+					</td>
+				</tr>
+				<tr>
+					<td style="padding:26px;font-family:<?php echo esc_attr($sans); ?>;color:#1f2328;">
+						<h1 style="margin:0 0 12px;font-family:<?php echo esc_attr($serif); ?>;font-size:24px;font-weight:normal;color:#1f2328;">
+							<?php esc_html_e('Complete your order', 'bytenft-payment-gateway'); ?>
+						</h1>
+						<p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#4b5563;">
+							<?php
+							printf(
+								/* translators: %s: order number */
+								esc_html__('Your order %s has been placed. Use the secure link below to pay and confirm it.', 'bytenft-payment-gateway'),
+								'<strong style="color:#1f2328;">#' . esc_html($order->get_order_number()) . '</strong>'
+							);
+							?>
+						</p>
+						<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;font-size:14px;">
+							<?php echo $rows; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped in $row. ?>
+							<tr>
+								<td style="padding:12px 0;font-weight:bold;color:#1f2328;">
+									<?php esc_html_e('Due on the payment page', 'bytenft-payment-gateway'); ?>
+								</td>
+								<td align="right" style="padding:12px 0 12px 16px;font-family:<?php echo esc_attr($mono); ?>;font-size:17px;font-weight:bold;color:<?php echo esc_attr($accent); ?>;white-space:nowrap;">
+									<?php echo wp_kses_post($order_total); ?>
+								</td>
+							</tr>
+						</table>
+						<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0;">
+							<tr>
+								<td align="center" style="background:<?php echo esc_attr($accent); ?>;border-radius:4px;">
+									<a href="<?php echo esc_url($payment_link); ?>" style="display:block;padding:14px 20px;font-family:<?php echo esc_attr($sans); ?>;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">
+										<?php esc_html_e('Open secure payment page', 'bytenft-payment-gateway'); ?>
+									</a>
+								</td>
+							</tr>
+						</table>
+						<p style="<?php echo esc_attr($small); ?>">
+							<?php esc_html_e('Payment is processed by ByteNFT on its secure hosted page. Your card details are never handled by our website.', 'bytenft-payment-gateway'); ?>
+						</p>
+						<p style="<?php echo esc_attr($small); ?>">
+							<?php esc_html_e('This link can only be used for this order. If you did not place this order, ignore this email — nothing has been charged.', 'bytenft-payment-gateway'); ?>
+						</p>
+						<p style="margin:0;font-size:12px;line-height:1.6;color:#9ca3af;">
+							<?php esc_html_e('Button not working? Copy this link into your browser:', 'bytenft-payment-gateway'); ?><br>
+							<a href="<?php echo esc_url($payment_link); ?>" style="color:<?php echo esc_attr($accent); ?>;word-break:break-all;"><?php echo esc_html($payment_link); ?></a>
+						</p>
+					</td>
+				</tr>
+			</table>
+		</td>
+	</tr>
+</table>
+</body>
+</html>
+		<?php
+		return ob_get_clean();
+	}
+
+	/**
+	 * Mask an email address for display, e.g. "harry@example.com" → "ha•••@example.com".
+	 *
+	 * @param string $email Email address.
+	 * @return string
+	 */
+	private function bytenft_mask_email($email) {
+		$at = strrpos((string) $email, '@');
+
+		if ($at === false) {
+			return '';
+		}
+
+		$local   = substr($email, 0, $at);
+		$visible = min(2, max(1, mb_strlen($local) - 1));
+
+		return mb_substr($local, 0, $visible) . "\u{2022}\u{2022}\u{2022}" . substr($email, $at);
+	}
+
+	/**
+	 * Remind the customer on the order-received page that payment happens via the emailed link.
+	 *
+	 * @param int $order_id Order ID.
+	 */
+	public function bytenft_thankyou_payment_link_notice($order_id) {
+		$order = wc_get_order($order_id);
+
+		if (!$order || !$order->has_status('pending') || !$order->get_meta('_bytenft_payment_link_emailed_at')) {
+			return;
+		}
+
+		printf(
+			'<p class="bytenft-thankyou-email-notice">%s</p>',
+			sprintf(
+				/* translators: %s: masked customer email address */
+				esc_html__('We have emailed a secure payment link to %s. Open it to pay; your order is confirmed once payment is received.', 'bytenft-payment-gateway'),
+				'<strong>' . esc_html($this->bytenft_mask_email($order->get_billing_email())) . '</strong>'
+			)
+		);
 	}
 
 	private function is_block_checkout_request() {
@@ -1721,8 +2003,9 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	public function bytenft_enqueue_styles_and_scripts() {
 		if (is_checkout()) {
 			$image_url = plugin_dir_url(dirname(__FILE__)) . 'assets/images/loader.gif';
-			wp_enqueue_style('bytenft-payment-loader-styles', plugins_url('../assets/css/frontend.css', __FILE__), [], '1.0', 'all');
-			wp_enqueue_script('bytenft-js', plugins_url('../assets/js/bytenft.js', __FILE__), ['jquery'], '1.0', true);
+			// filemtime versions so browsers and page caches drop the old popup script.
+			wp_enqueue_style('bytenft-payment-loader-styles', plugins_url('../assets/css/frontend.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . '../assets/css/frontend.css'), 'all');
+			wp_enqueue_script('bytenft-js', plugins_url('../assets/js/bytenft.js', __FILE__), ['jquery'], filemtime(plugin_dir_path(__FILE__) . '../assets/js/bytenft.js'), true);
 			wp_localize_script('bytenft-js', 'bytenft_params', [
 				'ajax_url'       => admin_url('admin-ajax.php'),
 				'checkout_url'   => wc_get_checkout_url(),

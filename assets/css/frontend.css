@@ -126,3 +126,131 @@
     font-size: 14px;
     line-height: 1.5;
 }
+
+/* "Check your email" screen shown after the payment link is emailed */
+.bytenft-email-sent {
+    max-width: 580px;
+    margin: 40px auto;
+    text-align: center;
+    color: #4b5563;
+}
+
+.bytenft-email-sent:focus {
+    outline: none;
+}
+
+.bytenft-email-sent__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    margin-bottom: 20px;
+    border-radius: 50%;
+    background: #f6ead8;
+    color: #8b5e1a;
+}
+
+.bytenft-email-sent__icon svg {
+    width: 26px;
+    height: 26px;
+}
+
+.bytenft-email-sent__icon--busy svg {
+    animation: bytenft-spin 0.9s linear infinite;
+}
+
+.bytenft-email-sent__icon--done {
+    background: #e3f1e6;
+    color: #2f7a45;
+}
+
+@keyframes bytenft-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .bytenft-email-sent__icon--busy svg {
+        animation-duration: 3s;
+    }
+}
+
+.bytenft-email-sent__title {
+    margin: 0 0 12px;
+    font-size: clamp(26px, 5vw, 36px);
+    line-height: 1.15;
+    color: #1f2328;
+}
+
+.bytenft-email-sent__lead {
+    margin: 0 0 24px;
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+.bytenft-email-sent__lead strong {
+    color: #1f2328;
+    overflow-wrap: anywhere;
+}
+
+.bytenft-email-sent__note {
+    margin: 0 0 20px;
+    padding: 16px 20px;
+    text-align: left;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    border-left: 3px solid #8b5e1a;
+    border-radius: 4px;
+}
+
+.bytenft-email-sent__note p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.bytenft-email-sent .bytenft-email-sent__note-title {
+    margin-bottom: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8b5e1a;
+}
+
+.bytenft-email-sent__small {
+    margin: 0 0 24px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #6b7280;
+}
+
+.bytenft-email-sent__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+}
+
+.bytenft-email-sent .bytenft-email-sent__pay {
+    background: #8b5e1a;
+    border-color: #8b5e1a;
+    color: #fff;
+}
+
+.bytenft-email-sent .bytenft-email-sent__pay:hover,
+.bytenft-email-sent .bytenft-email-sent__pay:focus {
+    background: #6f4b15;
+    border-color: #6f4b15;
+    color: #fff;
+}
+
+.bytenft-thankyou-email-notice {
+    padding: 14px 18px;
+    background: #f3f4f6;
+    border-left: 3px solid #8b5e1a;
+    border-radius: 4px;
+}
