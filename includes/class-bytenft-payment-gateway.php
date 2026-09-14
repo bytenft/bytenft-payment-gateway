@@ -1580,11 +1580,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 		$headers = ['Content-Type: text/html; charset=UTF-8'];
 
-		// Send from the same address as the store's other WooCommerce emails.
-		$from_address = sanitize_email(get_option('woocommerce_email_from_address'));
-		if (is_email($from_address)) {
-			$from_name = wp_specialchars_decode(sanitize_text_field(get_option('woocommerce_email_from_name')), ENT_QUOTES);
-			$headers[] = 'From: ' . ($from_name ? $from_name . ' <' . $from_address . '>' : $from_address);
+		// Leave the From address to wp_mail / the site's SMTP plugin: SMTP servers
+		// reject ("Data not accepted") senders the account isn't authorised for.
+		// Replies still reach the store's WooCommerce address.
+		$reply_to = sanitize_email(get_option('woocommerce_email_from_address'));
+		if (is_email($reply_to)) {
+			$headers[] = 'Reply-To: ' . $reply_to;
 		}
 
 		$mail_error = null;
