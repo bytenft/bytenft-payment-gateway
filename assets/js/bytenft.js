@@ -64,6 +64,8 @@
 
             this.bindInputSanitization();
 
+            this.showPaymentReturnNotice();
+
             console.log('[Bytenft] initialized');
         },
 
@@ -421,6 +423,55 @@
          * PAYMENT LINK EMAILED
          * ========================================================= */
 
+        /**
+         * After a failed payment the checkout is reloaded with
+         * ?bytenft_payment=<status>. Say what happened, then drop the
+         * parameter so a refresh doesn't repeat the message.
+         */
+        showPaymentReturnNotice: function () {
+
+            const self = this;
+
+            let url;
+
+            try {
+                url = new URL(window.location.href);
+            } catch (e) {
+                return;
+            }
+
+            const messages = {
+                failed: 'Your payment was not completed and nothing has been charged. Please try again.',
+                cancelled: 'Your payment was cancelled and nothing has been charged. Please try again.',
+                expired: 'Your payment link expired before the payment was completed. Please try again.'
+            };
+
+            const message = messages[url.searchParams.get('bytenft_payment')];
+
+            if (!message) {
+                return;
+            }
+
+            url.searchParams.delete('bytenft_payment');
+
+            window.history.replaceState(null, '', url.toString());
+
+            // Block checkout renders its form after page load; wait briefly for it.
+            let attempts = 0;
+
+            const show = function () {
+
+                if ($('.wc-block-checkout__form, form.checkout').length || attempts++ >= 20) {
+                    self.showCheckoutError(message);
+                    return;
+                }
+
+                setTimeout(show, 250);
+            };
+
+            show();
+        },
+
         showPaymentEmailSent: function (details) {
 
             const self = this;
@@ -586,9 +637,8 @@
 
         /**
          * Move the "check your email" panel on to "confirming", "confirmed" or "failed".
-         * retryUrl is where "Return to checkout" goes for a failed payment.
          */
-        setPanelState: function (panelState, retryUrl) {
+        setPanelState: function (panelState) {
 
             const $panel = this.state.panel;
 
@@ -631,7 +681,7 @@
                     lead: [
                         document.createTextNode('Your payment for order '),
                         orderNumber,
-                        document.createTextNode(' didn’t go through, and nothing has been charged. Return to checkout to try again. If you’re retrying in the payment tab, this page updates automatically.')
+                        document.createTextNode(' didn’t go through, and nothing has been charged. Taking you back to checkout to try again…')
                     ]
                 }
             };
@@ -653,31 +703,25 @@
 
             $panel.find('.bytenft-email-sent__lead').empty().append(view.lead);
 
-            // The email instructions no longer apply.
-            $panel.find('.bytenft-email-sent__note, .bytenft-email-sent__small').hide();
+            // The email instructions and buttons no longer apply.
+            $panel.find('.bytenft-email-sent__note, .bytenft-email-sent__small, .bytenft-email-sent__actions').hide();
+        },
 
-            const $actions = $panel.find('.bytenft-email-sent__actions');
+        /**
+         * Checkout URL to reload after a failed payment, tagged with the status
+         * so the reloaded page can say what happened.
+         */
+        buildCheckoutReturnUrl: function (redirectUrl, paymentStatus) {
 
-            if (panelState !== 'failed') {
-                $actions.hide();
-                return;
-            }
+            const base = /^https?:\/\//i.test(redirectUrl || '')
+                ? redirectUrl
+                : (bytenft_params.checkout_url || window.location.href);
 
-            const checkoutUrl = /^https?:\/\//i.test(retryUrl || '')
-                ? retryUrl
-                : window.location.href;
+            const url = new URL(base, window.location.href);
 
-            $actions.empty().append(
-                $('<a>', {
-                    'class': 'button bytenft-email-sent__primary',
-                    href: checkoutUrl
-                }).text('Return to checkout'),
+            url.searchParams.set('bytenft_payment', paymentStatus);
 
-                $('<a>', {
-                    'class': 'button bytenft-email-sent__back',
-                    href: this.state.panelDetails?.shop_url || '/'
-                }).text('Back to the shop')
-            ).show();
+            return url.toString();
         },
 
         closePaymentTab: function () {
@@ -774,13 +818,26 @@
                         return;
                     }
 
-                    // Declined, cancelled or expired. Keep polling: a retry in the
-                    // payment tab can still succeed and move the customer on.
-                    if (
-                        FAILED_STATES.indexOf(data.payment_status) > -1 ||
-                        FAILED_STATES.indexOf(data.status) > -1
-                    ) {
-                        self.setPanelState('failed', data.redirect_url);
+                    // Declined, cancelled or expired. Use the provider's status for
+                    // this attempt only: the stored order state can still read
+                    // "failed" from an earlier attempt on a reused order.
+                    const paymentStatus = data.payment_status === 'canceled'
+                        ? 'cancelled'
+                        : data.payment_status;
+
+                    if (FAILED_STATES.indexOf(paymentStatus) > -1) {
+
+                        self.state.redirecting = true;
+
+                        clearInterval(self.state.statusInterval);
+
+                        self.setPanelState('failed');
+
+                        self.closePaymentTab();
+
+                        window.location.replace(
+                            self.buildCheckoutReturnUrl(data.redirect_url, paymentStatus)
+                        );
                     }
                 },
                 'json'
