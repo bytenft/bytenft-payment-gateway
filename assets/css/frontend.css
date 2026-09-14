@@ -165,6 +165,11 @@
     color: #2f7a45;
 }
 
+.bytenft-email-sent__icon--failed {
+    background: #fde8e8;
+    color: #b42318;
+}
+
 @keyframes bytenft-spin {
     to {
         transform: rotate(360deg);
@@ -235,17 +240,43 @@
     gap: 12px;
 }
 
-.bytenft-email-sent .bytenft-email-sent__pay {
-    background: #8b5e1a;
+/* Self-contained so themes without WooCommerce .button styles still get buttons */
+.bytenft-email-sent .bytenft-email-sent__actions .button {
+    display: inline-block;
+    margin: 0;
+    padding: 12px 22px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    color: #1f2328;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.bytenft-email-sent .bytenft-email-sent__actions .button:hover {
+    border-color: #9ca3af;
+    background: #f9fafb;
+    color: #1f2328;
+}
+
+.bytenft-email-sent .bytenft-email-sent__actions .bytenft-email-sent__primary {
     border-color: #8b5e1a;
+    background: #8b5e1a;
     color: #fff;
 }
 
-.bytenft-email-sent .bytenft-email-sent__pay:hover,
-.bytenft-email-sent .bytenft-email-sent__pay:focus {
-    background: #6f4b15;
+.bytenft-email-sent .bytenft-email-sent__actions .bytenft-email-sent__primary:hover {
     border-color: #6f4b15;
+    background: #6f4b15;
     color: #fff;
+}
+
+.bytenft-email-sent .bytenft-email-sent__actions .button:focus-visible {
+    outline: 2px solid #8b5e1a;
+    outline-offset: 2px;
 }
 
 .bytenft-thankyou-email-notice {

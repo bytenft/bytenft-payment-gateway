@@ -23,6 +23,13 @@
         '<path d="M5 12.5l4.5 4.5L19 7.5"></path>' +
         '</svg>';
 
+    const CROSS_ICON =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">' +
+        '<path d="M7 7l10 10M17 7L7 17"></path>' +
+        '</svg>';
+
+    const FAILED_STATES = ['failed', 'cancelled', 'canceled', 'expired'];
+
     const BytenftCheckout = {
 
         PAYMENT_METHOD: bytenft_params.payment_method,
@@ -477,7 +484,7 @@
                 $('<div>', { 'class': 'bytenft-email-sent__actions' }).append(
                     paymentLink
                         ? $('<a>', {
-                            'class': 'button bytenft-email-sent__pay',
+                            'class': 'button bytenft-email-sent__pay bytenft-email-sent__primary',
                             href: paymentLink,
                             target: '_blank',
                             rel: 'noopener noreferrer'
@@ -578,9 +585,10 @@
         },
 
         /**
-         * Move the "check your email" panel on to "confirming" or "confirmed".
+         * Move the "check your email" panel on to "confirming", "confirmed" or "failed".
+         * retryUrl is where "Return to checkout" goes for a failed payment.
          */
-        setPanelState: function (panelState) {
+        setPanelState: function (panelState, retryUrl) {
 
             const $panel = this.state.panel;
 
@@ -615,6 +623,16 @@
                         orderNumber,
                         document.createTextNode(' is confirmed. Taking you to your order confirmation…')
                     ]
+                },
+                failed: {
+                    icon: CROSS_ICON,
+                    iconClass: 'bytenft-email-sent__icon--failed',
+                    title: 'Payment not completed',
+                    lead: [
+                        document.createTextNode('Your payment for order '),
+                        orderNumber,
+                        document.createTextNode(' didn’t go through, and nothing has been charged. Return to checkout to try again. If you’re retrying in the payment tab, this page updates automatically.')
+                    ]
                 }
             };
 
@@ -627,7 +645,7 @@
             $panel.attr('data-state', panelState);
 
             $panel.find('.bytenft-email-sent__icon')
-                .removeClass('bytenft-email-sent__icon--busy bytenft-email-sent__icon--done')
+                .removeClass('bytenft-email-sent__icon--busy bytenft-email-sent__icon--done bytenft-email-sent__icon--failed')
                 .addClass(view.iconClass)
                 .html(view.icon);
 
@@ -635,8 +653,31 @@
 
             $panel.find('.bytenft-email-sent__lead').empty().append(view.lead);
 
-            // Email instructions and the pay/shop buttons no longer apply.
-            $panel.find('.bytenft-email-sent__note, .bytenft-email-sent__small, .bytenft-email-sent__actions').hide();
+            // The email instructions no longer apply.
+            $panel.find('.bytenft-email-sent__note, .bytenft-email-sent__small').hide();
+
+            const $actions = $panel.find('.bytenft-email-sent__actions');
+
+            if (panelState !== 'failed') {
+                $actions.hide();
+                return;
+            }
+
+            const checkoutUrl = /^https?:\/\//i.test(retryUrl || '')
+                ? retryUrl
+                : window.location.href;
+
+            $actions.empty().append(
+                $('<a>', {
+                    'class': 'button bytenft-email-sent__primary',
+                    href: checkoutUrl
+                }).text('Return to checkout'),
+
+                $('<a>', {
+                    'class': 'button bytenft-email-sent__back',
+                    href: this.state.panelDetails?.shop_url || '/'
+                }).text('Back to the shop')
+            ).show();
         },
 
         closePaymentTab: function () {
@@ -726,9 +767,20 @@
                         return;
                     }
 
-                    // The provider is processing the customer's payment.
+                    // The provider is processing the customer's payment. Checked
+                    // before failure so a retry after a decline shows as confirming.
                     if (data.payment_status === 'processing') {
                         self.setPanelState('confirming');
+                        return;
+                    }
+
+                    // Declined, cancelled or expired. Keep polling: a retry in the
+                    // payment tab can still succeed and move the customer on.
+                    if (
+                        FAILED_STATES.indexOf(data.payment_status) > -1 ||
+                        FAILED_STATES.indexOf(data.status) > -1
+                    ) {
+                        self.setPanelState('failed', data.redirect_url);
                     }
                 },
                 'json'
