@@ -1154,24 +1154,33 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				]
 			);
 
+			global $wp_version;
+
+			$response_data = [
+				'payment_status' => 'pending',
+			];
+
+			if (version_compare($wp_version, '22', '<')) {
+				// WordPress < 22: Redirect to WooCommerce order received page.
+				$response_data['redirect'] = $order->get_checkout_order_received_url();
+			} else {
+				// WordPress >= 22: Show the voucher email UI and do not redirect.
+				$response_data['order_received'] = [
+					'order_number' => $order->get_order_number(),
+					'email'        => $order->get_billing_email(),
+					'items'        => $this->bytenft_get_summary_rows($order),
+					'amount_due'   => $this->bytenft_plain_price($order->get_total(), $order),
+					'site_name'    => wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES),
+					// Shown on the checkout exactly as ByteNFT worded it.
+					'message'      => $voucher['message'],
+					'reference'    => $voucher['data']['reference'] ?? '',
+				];
+			}
+
 			return $this->build_response(
 				'success',
 				$voucher['message'],
-				[
-					'payment_status' => 'pending',
-					'order_received' => [
-						'order_number' => $order->get_order_number(),
-						'email'        => $order->get_billing_email(),
-						'items'        => $this->bytenft_get_summary_rows($order),
-						'amount_due'   => $this->bytenft_plain_price($order->get_total(), $order),
-						'site_name'    => wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES),
-						// Shown on the checkout exactly as ByteNFT worded it.
-						'message'      => $voucher['message'],
-						'reference'    => $voucher['data']['reference'] ?? '',
-					],
-					// Followed by non-AJAX submissions such as the order-pay page.
-					'redirect'       => $order->get_checkout_order_received_url(),
-				],
+				$response_data,
 				200,
 				$order_id
 			);
