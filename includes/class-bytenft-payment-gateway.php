@@ -1116,6 +1116,141 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			}
 
 			// -------------------------------------------------
+			// 7. VOUCHER EMAIL (SENT BY BYTENFT)
+			// -------------------------------------------------
+			// Checkout creates no payment link. ByteNFT emails the customer a
+			// voucher, and the payment link behind its button is created when they
+			// open it. All this plugin does is ask for that email and repeat what
+			// ByteNFT says about it.
+			$order->update_status('pending', __('Awaiting voucher purchase.', 'bytenft-payment-gateway'));
+
+			$voucher = $this->bytenft_request_voucher_email($order);
+
+			if (!$voucher['success']) {
+
+				$voucher_error = $voucher['message'];
+
+				// Classic checkout only relays queued notices in its failure response.
+				if (!$this->is_block_checkout_request() && is_checkout()) {
+					wc_add_notice($voucher_error, 'error');
+				}
+
+				return $this->build_response(
+					'fail',
+					$voucher_error,
+					[],
+					502,
+					$order_id
+				);
+			}
+
+			$this->bytenft_record_voucher_sent($order, $voucher['data']);
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' Voucher email requested',
+				[
+					'order_id'  => $order_id,
+					'reference' => $voucher['data']['reference'] ?? null,
+				]
+			);
+
+			return $this->build_response(
+				'success',
+				$voucher['message'],
+				[
+					'payment_status' => 'pending',
+					'order_received' => [
+						'order_number' => $order->get_order_number(),
+						'email'        => $order->get_billing_email(),
+						'items'        => $this->bytenft_get_summary_rows($order),
+						'amount_due'   => $this->bytenft_plain_price($order->get_total(), $order),
+						'site_name'    => wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES),
+						// Shown on the checkout exactly as ByteNFT worded it.
+						'message'      => $voucher['message'],
+						'reference'    => $voucher['data']['reference'] ?? '',
+					],
+					// Followed by non-AJAX submissions such as the order-pay page.
+					'redirect'       => $order->get_checkout_order_received_url(),
+				],
+				200,
+				$order_id
+			);
+
+			} catch (\Exception $e) {
+
+				ByteNFT_Payment_Gateway_Logger::error(
+					"Payment processing exception: " . $e->getMessage(),
+					[
+						'order_id' => $order_id ?? null,
+						'file'     => $e->getFile(),
+						'line'     => $e->getLine(),
+						'trace'    => $e->getTraceAsString()
+					]
+				);
+
+				return $this->build_response('fail', 'An internal error occurred.', [], 500, $order_id);
+
+			} finally {
+
+				$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
+			}
+	}
+
+	/**
+	 * Create a ByteNFT payment link for an order.
+	 *
+	 * Vouchers are emailed by ByteNFT now, and the button in one is redeemed on
+	 * ByteNFT's side, so nothing in the current flow reaches this. It is kept
+	 * for the voucher links this plugin emailed before that change, which are
+	 * still sitting in customers' inboxes and still have to open.
+	 *
+	 * @param WC_Order $order         Order being paid.
+	 * @param array    $used_accounts Public keys already tried.
+	 * @return array build_response() payload; data['payment_link'] on success.
+	 */
+	public function bytenft_create_payment_link($order, $used_accounts = []) {
+
+		global $wpdb;
+
+		$order_id   = $order->get_id();
+		$log_prefix = "[Order #{$order_id}]";
+
+		$lock_name   = 'bytenft_order_' . $order_id;
+		$lock_result = $wpdb->get_var($wpdb->prepare("SELECT GET_LOCK(%s, 5)", $lock_name));
+
+		if ((string) $lock_result !== '1') {
+			return $this->build_response(
+				'fail',
+				'Payment already in progress. Please wait a few seconds and try again.',
+				[],
+				409,
+				$order_id
+			);
+		}
+
+		try {
+
+			// Clicking the emailed voucher twice must not create a second payment
+			// request; reuse the link already stored for an unpaid order.
+			$existing = $this->bytenft_get_stored_payment_link($order_id);
+
+			if (!empty($existing) && $order->has_status('pending')) {
+
+				ByteNFT_Payment_Gateway_Logger::info(
+					$log_prefix . ' Reusing stored payment link',
+					['order_id' => $order_id]
+				);
+
+				return $this->build_response(
+					'success',
+					'Payment link reused',
+					['payment_link' => $existing],
+					200,
+					$order_id
+				);
+			}
+
+			// -------------------------------------------------
 			// 7. PAYMENT ACCOUNT LOOP (UNCHANGED LOGIC)
 			// -------------------------------------------------
 
@@ -1458,71 +1593,141 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					]
 				);
 
-				// -------------------------------------------------
-				// 12. EMAIL PAYMENT LINK TO CUSTOMER
-				// -------------------------------------------------
-				// The customer pays from the link in their inbox; checkout
-				// never opens the payment page itself.
-				if (!$this->bytenft_send_payment_link_email($order, $payment_link)) {
+			return $this->build_response(
+				'success',
+				'Payment link created',
+				[
+					'payment_link' => esc_url_raw($payment_link),
+					'pay_id'       => $pay_id,
+				],
+				200,
+				$order_id
+			);
 
-					$email_error = __('We could not email your payment link. Please check your email address and try again.', 'bytenft-payment-gateway');
+		} catch (\Exception $e) {
 
-					// Classic checkout only relays queued notices in its failure response.
-					if (!$this->is_block_checkout_request() && is_checkout()) {
-						wc_add_notice($email_error, 'error');
-					}
+			ByteNFT_Payment_Gateway_Logger::error(
+				'Payment link creation exception: ' . $e->getMessage(),
+				[
+					'order_id' => $order_id,
+					'file'     => $e->getFile(),
+					'line'     => $e->getLine(),
+				]
+			);
 
-					return $this->build_response(
-						'fail',
-						$email_error,
-						[],
-						500,
-						$order_id
-					);
-				}
+			return $this->build_response('fail', 'An internal error occurred.', [], 500, $order_id);
 
-				return $this->build_response(
-					'success',
-					'Payment link emailed',
-					[
-						'payment_status' => $resp_data['data']['payment_status'] ?? 'pending',
-						'payment_email'  => [
-							'email'        => $this->bytenft_mask_email($order->get_billing_email()),
-							'order_number' => $order->get_order_number(),
-							'amount'       => html_entity_decode(
-								wp_strip_all_tags(wc_price($order->get_total(), ['currency' => $order->get_currency()])),
-								ENT_QUOTES,
-								'UTF-8'
-							),
-							'shop_url'     => wc_get_page_permalink('shop'),
-							// Fallback for customers who can't find the email.
-							'payment_link' => esc_url_raw($payment_link),
-						],
-						// Followed by non-AJAX submissions such as the order-pay page.
-						'redirect'       => $order->get_checkout_order_received_url(),
-					],
-					200,
-					$order_id
-				);
+		} finally {
 
-			} catch (\Exception $e) {
+			$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
+		}
+	}
 
-				ByteNFT_Payment_Gateway_Logger::error(
-					"Payment processing exception: " . $e->getMessage(),
-					[
-						'order_id' => $order_id ?? null,
-						'file'     => $e->getFile(),
-						'line'     => $e->getLine(),
-						'trace'    => $e->getTraceAsString()
-					]
-				);
+	/**
+	 * Payment link already stored for an order, if any.
+	 *
+	 * @param int $order_id Order ID.
+	 * @return string
+	 */
+	private function bytenft_get_stored_payment_link($order_id) {
 
-				return $this->build_response('fail', 'An internal error occurred.', [], 500, $order_id);
+		global $wpdb;
 
-			} finally {
+		$table = esc_sql($wpdb->prefix . 'order_payment_link');
 
-				$wpdb->query($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$link = $wpdb->get_var($wpdb->prepare("SELECT payment_link FROM {$table} WHERE order_id = %d LIMIT 1", $order_id));
+
+		return $link ? esc_url_raw($link) : '';
+	}
+
+	/**
+	 * URL that turns a voucher this plugin emailed into a payment page.
+	 *
+	 * No longer put in front of a customer: the voucher email is ByteNFT's, and
+	 * its button points at ByteNFT. Kept as the definition of the link shape
+	 * the loader still accepts for older emails.
+	 *
+	 * @param WC_Order $order Order being paid.
+	 * @return string
+	 */
+	public function bytenft_get_voucher_url($order) {
+
+		return add_query_arg(
+			[
+				'bytenft_voucher' => $order->get_id(),
+				'key'             => $order->get_order_key(),
+				'token'           => self::bytenft_voucher_token($order),
+			],
+			home_url('/')
+		);
+	}
+
+	/**
+	 * Signature tying a voucher link to one order.
+	 *
+	 * @param WC_Order $order Order being paid.
+	 * @return string
+	 */
+	public static function bytenft_voucher_token($order) {
+
+		return wp_hash('bytenft_voucher|' . $order->get_id() . '|' . $order->get_order_key());
+	}
+
+	/**
+	 * Price as plain text, e.g. "$90.00".
+	 *
+	 * @param float    $amount Amount.
+	 * @param WC_Order $order  Order supplying the currency.
+	 * @return string
+	 */
+	private function bytenft_plain_price($amount, $order) {
+
+		return html_entity_decode(
+			wp_strip_all_tags(wc_price($amount, ['currency' => $order->get_currency()])),
+			ENT_QUOTES,
+			'UTF-8'
+		);
+	}
+
+	/**
+	 * Order summary rows (items, then discounts/shipping/fees/tax) as plain text.
+	 *
+	 * @param WC_Order $order Order being paid.
+	 * @return array List of ['label' => string, 'value' => string].
+	 */
+	private function bytenft_get_summary_rows($order) {
+
+		$rows = [];
+
+		foreach ($order->get_items() as $item) {
+
+			$label = $item->get_name();
+
+			if ($item->get_quantity() > 1) {
+				$label .= ' ×' . $item->get_quantity();
 			}
+
+			$rows[] = [
+				'label' => $label,
+				'value' => $this->bytenft_plain_price($order->get_line_total($item, true), $order),
+			];
+		}
+
+		// The subtotal repeats the items above and the total gets its own row.
+		foreach ($order->get_order_item_totals() as $key => $total) {
+
+			if (in_array($key, ['cart_subtotal', 'payment_method', 'order_total'], true)) {
+				continue;
+			}
+
+			$rows[] = [
+				'label' => rtrim(wp_strip_all_tags($total['label']), ': '),
+				'value' => html_entity_decode(wp_strip_all_tags($total['value']), ENT_QUOTES, 'UTF-8'),
+			];
+		}
+
+		return $rows;
 	}
 
 	private function build_response(
@@ -1543,207 +1748,258 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	/**
-	 * Email the hosted payment link to the order's billing address.
+	 * Ask ByteNFT to email the customer their voucher.
 	 *
-	 * @param WC_Order $order        Order being paid.
-	 * @param string   $payment_link Hosted payment page URL.
-	 * @return bool Whether the email was handed off for delivery.
+	 * The email is ByteNFT's, not this plugin's: there is no template, no
+	 * wp_mail() call and no voucher link here. The order is posted to
+	 * /api/voucher/send and whatever comes back is handed to the checkout as it
+	 * is - including the wording of a refusal, which is already written for the
+	 * customer.
+	 *
+	 * The payment link is still created only when the customer opens the button
+	 * in that email; this call creates nothing but the voucher itself.
+	 *
+	 * @param WC_Order $order Order being paid.
+	 * @return array ['success' => bool, 'message' => string, 'data' => array]
 	 */
-	private function bytenft_send_payment_link_email($order, $payment_link) {
-		$order_id = $order->get_id();
-		$to       = $order->get_billing_email();
+	private function bytenft_request_voucher_email($order) {
 
-		if (!is_email($to)) {
+		$order_id   = $order->get_id();
+		$log_prefix = "[Order #{$order_id}]";
+
+		$accounts = $this->get_all_available_accounts();
+
+		if (empty($accounts)) {
+
 			ByteNFT_Payment_Gateway_Logger::error(
-				'Payment link email not sent: invalid billing email',
+				$log_prefix . ' Voucher not requested: no eligible account',
 				['order_id' => $order_id]
 			);
-			return false;
+
+			return [
+				'success' => false,
+				'message' => __('No eligible payment provider available.', 'bytenft-payment-gateway'),
+				'data'    => [],
+			];
 		}
 
-		$subject = apply_filters(
-			'bytenft_payment_link_email_subject',
-			sprintf(
-				/* translators: %s: order number */
-				__('Complete your payment for order #%s', 'bytenft-payment-gateway'),
-				$order->get_order_number()
-			),
-			$order
-		);
+		$api_url      = esc_url($this->base_url . '/api/voucher/send');
+		$last_message = '';
 
-		$message = apply_filters(
-			'bytenft_payment_link_email_message',
-			$this->bytenft_get_payment_link_email_html($order, $payment_link),
-			$order,
-			$payment_link
-		);
+		foreach ($accounts as $account) {
 
-		$headers = ['Content-Type: text/html; charset=UTF-8'];
+			$public_key = $this->sandbox
+				? $account['sandbox_public_key']
+				: $account['live_public_key'];
 
-		// Leave the From address to wp_mail / the site's SMTP plugin: SMTP servers
-		// reject ("Data not accepted") senders the account isn't authorised for.
-		// Replies still reach the store's WooCommerce address.
-		$reply_to = sanitize_email(get_option('woocommerce_email_from_address'));
-		if (is_email($reply_to)) {
-			$headers[] = 'Reply-To: ' . $reply_to;
-		}
+			$secret_key = $this->sandbox
+				? $account['sandbox_secret_key']
+				: $account['live_secret_key'];
 
-		$mail_error = null;
-		$capture_error = function ($error) use (&$mail_error) {
-			$mail_error = $error->get_error_message();
-		};
+			// The same payload request-payment is given, so the voucher is raised
+			// for exactly the order the payment will be for.
+			$data = $this->bytenft_prepare_payment_data($order, $public_key, $secret_key);
 
-		add_action('wp_mail_failed', $capture_error);
-		$sent = wp_mail($to, wp_specialchars_decode($subject, ENT_QUOTES), $message, $headers);
-		remove_action('wp_mail_failed', $capture_error);
+			if (is_array($data) && ($data['result'] ?? '') === 'fail') {
 
-		if (!$sent) {
-			ByteNFT_Payment_Gateway_Logger::error(
-				'Payment link email could not be sent',
+				$last_message = sanitize_text_field($data['error'] ?? '');
+				continue;
+			}
+
+			// What the customer actually bought, so the redemption page can show
+			// it back to them. Carried by the voucher only - request-payment
+			// neither wants nor keeps it.
+			$data['items'] = $this->bytenft_get_voucher_items($order);
+
+			$response = wp_remote_post($api_url, [
+				'method'    => 'POST',
+				'timeout'   => 30,
+				'body'      => $data,
+				'headers'   => [
+					'Content-Type'  => 'application/x-www-form-urlencoded',
+					'Authorization' => 'Bearer ' . sanitize_text_field($public_key),
+				],
+				'sslverify' => true,
+			]);
+
+			if (is_wp_error($response)) {
+
+				ByteNFT_Payment_Gateway_Logger::error(
+					$log_prefix . ' Voucher request failed to reach the API',
+					[
+						'order_id'      => $order_id,
+						'account_title' => $account['title'] ?? null,
+						'error'         => $response->get_error_message(),
+					]
+				);
+
+				$last_message = __('We could not reach the voucher service. Please try again in a moment.', 'bytenft-payment-gateway');
+				continue;
+			}
+
+			$code = (int) wp_remote_retrieve_response_code($response);
+			$body = json_decode(wp_remote_retrieve_body($response), true);
+			$body = is_array($body) ? $body : [];
+
+			$message = isset($body['message']) ? sanitize_text_field($body['message']) : '';
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' Voucher API response received',
 				[
-					'order_id' => $order_id,
-					'error'    => $mail_error,
+					'order_id'   => $order_id,
+					'http_code'  => $code,
+					'status'     => $body['status'] ?? null,
+					'voucher_id' => $body['data']['voucher_id'] ?? null,
+					'reference'  => $body['data']['reference'] ?? null,
 				]
 			);
-			return false;
+
+			if (($body['status'] ?? '') === 'success') {
+
+				return [
+					'success' => true,
+					'message' => $message,
+					'data'    => isset($body['data']) && is_array($body['data']) ? $body['data'] : [],
+				];
+			}
+
+			$last_message = $message ?: $last_message;
+
+			/*
+			 * What one account is refused - a key that is not accepted, a service
+			 * that is down - the next may be granted. A refusal of the order
+			 * itself would only be repeated, so it is handed back as it is.
+			 */
+			if (!in_array($code, [401, 403, 500, 502, 503, 504], true)) {
+				break;
+			}
 		}
 
-		$order->update_meta_data('_bytenft_payment_link_emailed_at', time());
-		$order->add_order_note(
-			sprintf(
-				/* translators: %s: customer email address */
-				__('ByteNFT payment link emailed to %s.', 'bytenft-payment-gateway'),
-				$to
-			)
-		);
-		$order->save();
-
-		ByteNFT_Payment_Gateway_Logger::info(
-			'Payment link emailed to customer',
-			['order_id' => $order_id]
-		);
-
-		return true;
+		return [
+			'success' => false,
+			'message' => $last_message ?: __('We could not email your voucher. Please try again in a moment.', 'bytenft-payment-gateway'),
+			'data'    => [],
+		];
 	}
 
 	/**
-	 * Build the HTML body of the payment link email.
+	 * The ordered products, as this store lists them.
 	 *
-	 * Table layout with inline styles so it renders consistently in email clients.
+	 * Line items only - shipping, tax and discounts are the order's totals, not
+	 * what the customer picked. Prices are formatted here rather than sent raw
+	 * so the redemption page shows the same strings the customer saw at
+	 * checkout, in this store's currency and format, and each line carries its
+	 * product picture so the page shows what they were looking at.
 	 *
-	 * @param WC_Order $order        Order being paid.
-	 * @param string   $payment_link Hosted payment page URL.
-	 * @return string
+	 * @param WC_Order $order Order being paid.
+	 * @return array List of ['name' => string, 'quantity' => int, 'total' => string, 'image' => string].
 	 */
-	private function bytenft_get_payment_link_email_html($order, $payment_link) {
-		$site_name = wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES);
-		$sans      = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-		$serif     = "Georgia,'Times New Roman',serif";
-		$mono      = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
-		$accent    = '#8b5e1a';
+	private function bytenft_get_voucher_items($order) {
 
-		$row = function ($label, $value) use ($mono) {
-			return '<tr>'
-				. '<td style="padding:8px 0;color:#1f2328;">' . esc_html($label) . '</td>'
-				. '<td align="right" style="padding:8px 0 8px 16px;color:#1f2328;font-family:' . esc_attr($mono) . ';white-space:nowrap;">' . wp_kses_post($value) . '</td>'
-				. '</tr>';
-		};
-
-		$rows = '';
+		$items = [];
 
 		foreach ($order->get_items() as $item) {
-			$name = $item->get_name();
-			if ($item->get_quantity() > 1) {
-				$name .= ' ×' . $item->get_quantity();
-			}
-			$rows .= $row($name, $order->get_formatted_line_subtotal($item));
-		}
 
-		// Discounts, shipping, fees and taxes. Subtotal repeats the items above and
-		// the total gets its own emphasised row.
-		foreach ($order->get_order_item_totals() as $key => $total) {
-			if (in_array($key, ['cart_subtotal', 'payment_method', 'order_total'], true)) {
+			$name = sanitize_text_field($item->get_name());
+
+			if ($name === '') {
 				continue;
 			}
-			$rows .= $row(rtrim(wp_strip_all_tags($total['label']), ': '), $total['value']);
+
+			$items[] = [
+				'name'     => $name,
+				'quantity' => max(1, (int) $item->get_quantity()),
+				// Line total including tax, matching the order-received summary.
+				'total'    => $this->bytenft_plain_price($order->get_line_total($item, true), $order),
+				'image'    => $this->bytenft_get_item_image_url($item),
+			];
 		}
 
-		$order_total = wc_price($order->get_total(), ['currency' => $order->get_currency()]);
-		$small       = 'margin:0 0 12px;font-size:13px;line-height:1.6;color:#6b7280;';
+		return $items;
+	}
 
-		ob_start();
-		?>
-<!DOCTYPE html>
-<html lang="<?php echo esc_attr(get_bloginfo('language')); ?>">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?php echo esc_html($site_name); ?></title>
-</head>
-<body style="margin:0;padding:0;background:#f3f4f6;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f4f6;">
-	<tr>
-		<td align="center" style="padding:32px 16px;">
-			<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background:#ffffff;border:1px solid #e5e7eb;border-radius:6px;">
-				<tr>
-					<td style="background:#1f2328;border-radius:6px 6px 0 0;padding:22px 26px;font-family:<?php echo esc_attr($serif); ?>;font-size:22px;color:#ffffff;">
-						<?php echo esc_html($site_name); ?>
-					</td>
-				</tr>
-				<tr>
-					<td style="padding:26px;font-family:<?php echo esc_attr($sans); ?>;color:#1f2328;">
-						<h1 style="margin:0 0 12px;font-family:<?php echo esc_attr($serif); ?>;font-size:24px;font-weight:normal;color:#1f2328;">
-							<?php esc_html_e('Complete your order', 'bytenft-payment-gateway'); ?>
-						</h1>
-						<p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#4b5563;">
-							<?php
-							printf(
-								/* translators: %s: order number */
-								esc_html__('Your order %s has been placed. Use the secure link below to pay and confirm it.', 'bytenft-payment-gateway'),
-								'<strong style="color:#1f2328;">#' . esc_html($order->get_order_number()) . '</strong>'
-							);
-							?>
-						</p>
-						<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;font-size:14px;">
-							<?php echo $rows; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped in $row. ?>
-							<tr>
-								<td style="padding:12px 0;font-weight:bold;color:#1f2328;">
-									<?php esc_html_e('Due on the payment page', 'bytenft-payment-gateway'); ?>
-								</td>
-								<td align="right" style="padding:12px 0 12px 16px;font-family:<?php echo esc_attr($mono); ?>;font-size:17px;font-weight:bold;color:<?php echo esc_attr($accent); ?>;white-space:nowrap;">
-									<?php echo wp_kses_post($order_total); ?>
-								</td>
-							</tr>
-						</table>
-						<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0;">
-							<tr>
-								<td align="center" style="background:<?php echo esc_attr($accent); ?>;border-radius:4px;">
-									<a href="<?php echo esc_url($payment_link); ?>" style="display:block;padding:14px 20px;font-family:<?php echo esc_attr($sans); ?>;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">
-										<?php esc_html_e('Open secure payment page', 'bytenft-payment-gateway'); ?>
-									</a>
-								</td>
-							</tr>
-						</table>
-						<p style="<?php echo esc_attr($small); ?>">
-							<?php esc_html_e('Payment is processed by ByteNFT on its secure hosted page. Your card details are never handled by our website.', 'bytenft-payment-gateway'); ?>
-						</p>
-						<p style="<?php echo esc_attr($small); ?>">
-							<?php esc_html_e('This link can only be used for this order. If you did not place this order, ignore this email — nothing has been charged.', 'bytenft-payment-gateway'); ?>
-						</p>
-						<p style="margin:0;font-size:12px;line-height:1.6;color:#9ca3af;">
-							<?php esc_html_e('Button not working? Copy this link into your browser:', 'bytenft-payment-gateway'); ?><br>
-							<a href="<?php echo esc_url($payment_link); ?>" style="color:<?php echo esc_attr($accent); ?>;word-break:break-all;"><?php echo esc_html($payment_link); ?></a>
-						</p>
-					</td>
-				</tr>
-			</table>
-		</td>
-	</tr>
-</table>
-</body>
-</html>
-		<?php
-		return ob_get_clean();
+	/**
+	 * Product picture for an order line.
+	 *
+	 * A variation often has no image of its own, in which case the parent
+	 * product's is the one the customer was shown on the product page. The
+	 * thumbnail size is used: this ends up in a 36px box, and the full-size
+	 * upload would be a slow way to fill it.
+	 *
+	 * @param WC_Order_Item $item Order line item.
+	 * @return string Absolute URL, or '' when the product has no image.
+	 */
+	private function bytenft_get_item_image_url($item) {
+
+		if (!method_exists($item, 'get_product')) {
+			return '';
+		}
+
+		$product = $item->get_product();
+
+		if (!$product) {
+			return '';
+		}
+
+		$image_id = $product->get_image_id();
+
+		if (!$image_id && $product->get_parent_id()) {
+
+			$parent = wc_get_product($product->get_parent_id());
+
+			if ($parent) {
+				$image_id = $parent->get_image_id();
+			}
+		}
+
+		if (!$image_id) {
+			return '';
+		}
+
+		$url = wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail');
+
+		return $url ? esc_url_raw($url) : '';
+	}
+
+	/**
+	 * Note on the order that ByteNFT has the voucher in hand.
+	 *
+	 * @param WC_Order $order   Order being paid.
+	 * @param array    $voucher data block from /api/voucher/send.
+	 * @return void
+	 */
+	private function bytenft_record_voucher_sent($order, $voucher) {
+
+		$reference = isset($voucher['reference']) ? sanitize_text_field($voucher['reference']) : '';
+		$to        = sanitize_email($voucher['customer_email'] ?? $order->get_billing_email());
+
+		// Read by the order-received notice to say payment is still to come.
+		$order->update_meta_data('_bytenft_voucher_emailed_at', time());
+
+		if (!empty($voucher['voucher_id'])) {
+			$order->update_meta_data('_bytenft_voucher_id', sanitize_text_field($voucher['voucher_id']));
+		}
+
+		if ($reference !== '') {
+			$order->update_meta_data('_bytenft_voucher_reference', $reference);
+		}
+
+		$order->add_order_note(
+			$reference !== ''
+				? sprintf(
+					/* translators: 1: customer email address, 2: voucher reference */
+					__('ByteNFT voucher emailed to %1$s (reference %2$s).', 'bytenft-payment-gateway'),
+					$to,
+					$reference
+				)
+				: sprintf(
+					/* translators: %s: customer email address */
+					__('ByteNFT voucher emailed to %s.', 'bytenft-payment-gateway'),
+					$to
+				)
+		);
+
+		$order->save();
 	}
 
 	/**
@@ -1766,14 +2022,14 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 	}
 
 	/**
-	 * Remind the customer on the order-received page that payment happens via the emailed link.
+	 * Remind the customer on the order-received page that payment happens via the emailed voucher.
 	 *
 	 * @param int $order_id Order ID.
 	 */
 	public function bytenft_thankyou_payment_link_notice($order_id) {
 		$order = wc_get_order($order_id);
 
-		if (!$order || !$order->has_status('pending') || !$order->get_meta('_bytenft_payment_link_emailed_at')) {
+		if (!$order || !$order->has_status('pending') || !$order->get_meta('_bytenft_voucher_emailed_at')) {
 			return;
 		}
 
@@ -1781,7 +2037,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'<p class="bytenft-thankyou-email-notice">%s</p>',
 			sprintf(
 				/* translators: %s: masked customer email address */
-				esc_html__('We have emailed a secure payment link to %s. Open it to pay; your order is confirmed once payment is received.', 'bytenft-payment-gateway'),
+				esc_html__('We have emailed your voucher to %s. Purchase the voucher to complete this order.', 'bytenft-payment-gateway'),
 				'<strong>' . esc_html($this->bytenft_mask_email($order->get_billing_email())) . '</strong>'
 			)
 		);

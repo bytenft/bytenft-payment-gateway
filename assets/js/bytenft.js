@@ -7,46 +7,22 @@
 
     window.BytenftCheckoutInitialized = true;
 
-    const ENVELOPE_ICON =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-        '<rect x="3" y="5" width="18" height="14" rx="2"></rect>' +
-        '<path d="M3 7l9 6 9-6"></path>' +
-        '</svg>';
-
-    const SPINNER_ICON =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
-        '<path d="M12 3a9 9 0 1 1-9 9"></path>' +
-        '</svg>';
-
     const CHECK_ICON =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M5 12.5l4.5 4.5L19 7.5"></path>' +
         '</svg>';
 
-    const CROSS_ICON =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">' +
-        '<path d="M7 7l10 10M17 7L7 17"></path>' +
+    const SHIELD_ICON =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M12 3l7 3v6c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6l7-3z"></path>' +
         '</svg>';
-
-    const FAILED_STATES = ['failed', 'cancelled', 'canceled', 'expired'];
 
     const BytenftCheckout = {
 
         PAYMENT_METHOD: bytenft_params.payment_method,
 
-        // How often, and for how long, the "check your email" screen asks
-        // whether the customer has paid from the emailed link.
-        STATUS_POLL_INTERVAL: 5000,
-        STATUS_POLL_TIMEOUT: 30 * 60 * 1000,
-
         state: {
             submitting: false,
-            statusInterval: null,
-            statusRequest: null,
-            redirecting: false,
-            paymentWindow: null,
-            panel: null,
-            panelDetails: null,
             orderId: null,
             button: null,
             buttonText: ''
@@ -63,8 +39,6 @@
             this.bindBlockCheckout();
 
             this.bindInputSanitization();
-
-            this.showPaymentReturnNotice();
 
             console.log('[Bytenft] initialized');
         },
@@ -196,7 +170,6 @@
 
                     self.clearCheckoutErrors();
 
-                    // Start block flow
                     self.handleBlockCheckout($form);
 
                 },
@@ -295,13 +268,13 @@
          * RESPONSE HANDLER
          * ========================================================= */
 
-       handleResponse: function (response) {
+        handleResponse: function (response) {
 
-        const self = this;
+            const self = this;
 
-        try {
+            try {
 
-            if (typeof response === 'string') {
+                if (typeof response === 'string') {
 
                     try {
                         response = JSON.parse(response);
@@ -309,9 +282,7 @@
 
                         console.log('[Bytenft] invalid json');
 
-                        self.showCheckoutError(
-                            'Invalid server response.'
-                        );
+                        self.showCheckoutError('Invalid server response.');
 
                         self.reset();
 
@@ -323,18 +294,11 @@
 
                 const success =
                     response?.result === 'success' ||
-                    response?.success === true ||
-                    response?.data?.payment_status === 'success' ||
-                    response?.data?.payment_status === 'paid';
+                    response?.success === true;
 
                 const redirect =
                     response.redirect ||
                     response.data?.redirect ||
-                    null;
-
-                const orderId =
-                    response.order_id ||
-                    response.data?.order_id ||
                     null;
 
                 const errorMessage =
@@ -344,23 +308,23 @@
                     response?.data?.messages ||
                     response?.data?.error ||
                     response?.error ||
-                    'Your payment could not be completed. Please try again.';
+                    'Your order could not be placed. Please try again.';
 
-                self.state.orderId = orderId;
+                self.state.orderId =
+                    response.order_id ||
+                    response.data?.order_id ||
+                    null;
 
                 // =====================================================
-                // ❌ FAILURE (FIXED - ERROR DISPLAY STABLE)
+                // FAILURE
                 // =====================================================
                 if (!success) {
 
-                    const msg = errorMessage || 'Your payment could not be completed. Please try again.';
+                    console.log('[Bytenft] showing failed message:', errorMessage);
 
-                    console.log('[Bytenft] showing failed message:', msg);
-
-                    // 🔥 IMPORTANT
                     setTimeout(function () {
 
-                        self.showCheckoutError(msg);
+                        self.showCheckoutError(errorMessage);
 
                         // force scroll after Woo rerender
                         const $notice = $('.woocommerce-notices-wrapper');
@@ -373,7 +337,6 @@
 
                     }, 50);
 
-                    // 🔥 IMPORTANT
                     setTimeout(function () {
                         self.reset();
                     }, 400);
@@ -382,15 +345,13 @@
                 }
 
                 // =====================================================
-                // ✅ SUCCESS — payment link was emailed to the customer
+                // SUCCESS — the voucher email is on its way
                 // =====================================================
-                const paymentEmail = response.data?.payment_email;
+                const orderReceived = response.data?.order_received;
 
-                if (paymentEmail) {
+                if (orderReceived) {
 
-                    self.showPaymentEmailSent(paymentEmail);
-
-                    self.watchPaymentStatus();
+                    self.showOrderReceived(orderReceived);
 
                     self.reset();
 
@@ -402,10 +363,11 @@
                     window.location.href = redirect;
 
                     self.reset(true);
+
                     return;
                 }
 
-                self.showCheckoutError('Missing redirect URL.');
+                self.showCheckoutError('Your order could not be placed. Please try again.');
 
                 self.reset();
 
@@ -420,143 +382,92 @@
         },
 
         /* =========================================================
-         * PAYMENT LINK EMAILED
+         * ORDER RECEIVED
          * ========================================================= */
 
-        /**
-         * After a failed payment the checkout is reloaded with
-         * ?bytenft_payment=<status>. Say what happened, then drop the
-         * parameter so a refresh doesn't repeat the message.
-         */
-        showPaymentReturnNotice: function () {
-
-            const self = this;
-
-            let url;
-
-            try {
-                url = new URL(window.location.href);
-            } catch (e) {
-                return;
-            }
-
-            const messages = {
-                failed: 'Your payment was not completed and nothing has been charged. Please try again.',
-                cancelled: 'Your payment was cancelled and nothing has been charged. Please try again.',
-                expired: 'Your payment link expired before the payment was completed. Please try again.'
-            };
-
-            const message = messages[url.searchParams.get('bytenft_payment')];
-
-            if (!message) {
-                return;
-            }
-
-            url.searchParams.delete('bytenft_payment');
-
-            window.history.replaceState(null, '', url.toString());
-
-            // Block checkout renders its form after page load; wait briefly for it.
-            let attempts = 0;
-
-            const show = function () {
-
-                if ($('.wc-block-checkout__form, form.checkout').length || attempts++ >= 20) {
-                    self.showCheckoutError(message);
-                    return;
-                }
-
-                setTimeout(show, 250);
-            };
-
-            show();
-        },
-
-        showPaymentEmailSent: function (details) {
-
-            const self = this;
+        showOrderReceived: function (details) {
 
             const text = function (value) {
                 return document.createTextNode(value);
             };
 
-            // Only ever link to an http(s) URL.
-            const paymentLink = /^https?:\/\//i.test(details.payment_link || '')
-                ? details.payment_link
-                : '';
+            const siteName = details.site_name || window.location.hostname;
 
-            // Customer-supplied values are only ever inserted as text.
-            const strong = function (value) {
-                return $('<strong>').text(value || '');
+            const $summary = $('<div>', { 'class': 'bytenft-order-received__summary' });
+
+            const row = function (label, value, modifier) {
+                return $('<div>', {
+                    'class': 'bytenft-order-received__row' + (modifier ? ' ' + modifier : '')
+                }).append(
+                    $('<span>').text(label),
+                    $('<span>').text(value)
+                );
             };
 
+            // Customer-supplied values are only ever inserted as text.
+            $summary.append(row('Order', '#' + (details.order_number || '')));
+
+            // The reference the voucher email prints under the amount. Skipped
+            // when it is just the order number again, which is the row above.
+            if (details.reference && String(details.reference) !== String(details.order_number || '')) {
+                $summary.append(row('Voucher reference', details.reference));
+            }
+
+            (details.items || []).forEach(function (item) {
+                $summary.append(row(item.label, item.value));
+            });
+
+            $summary.append(
+                row('Amount due', details.amount_due || '', 'bytenft-order-received__row--total')
+            );
+
             const $panel = $('<div>', {
-                'class': 'bytenft-email-sent',
+                'class': 'bytenft-order-received',
                 role: 'status',
-                tabindex: '-1',
-                'data-state': 'waiting'
+                tabindex: '-1'
             }).append(
+
                 $('<div>', {
-                    'class': 'bytenft-email-sent__icon',
+                    'class': 'bytenft-order-received__icon',
                     'aria-hidden': 'true'
-                }).html(ENVELOPE_ICON),
+                }).html(CHECK_ICON),
 
-                $('<h2>', { 'class': 'bytenft-email-sent__title' })
-                    .text('Check your email to continue'),
+                $('<h2>', { 'class': 'bytenft-order-received__title' })
+                    .text('Order received'),
 
-                $('<p>', { 'class': 'bytenft-email-sent__lead' }).append(
-                    text('We’ve sent a secure payment link to '),
-                    strong(details.email),
-                    text(' for order '),
-                    strong('#' + details.order_number),
-                    text('. Open it and follow the link to pay '),
-                    strong(details.amount),
-                    text(' and confirm your order.')
+                // What the voucher service said, shown as it came back.
+                details.message
+                    ? $('<p>', { 'class': 'bytenft-order-received__status' }).text(details.message)
+                    : '',
+
+                $('<p>', { 'class': 'bytenft-order-received__lead' }).text(
+                    'As part of our secure checkout process, next you’ll receive your digital redemption voucher along with an NFT confirmation. This voucher can be used to redeem your order. You’ll get an email shortly, on your own time, to purchase the voucher and complete this transaction.'
                 ),
 
-                $('<div>', { 'class': 'bytenft-email-sent__note' }).append(
-                    $('<p>', { 'class': 'bytenft-email-sent__note-title' })
-                        .text('Who takes the payment'),
-                    $('<p>').text(
-                        'The link opens a secure payment page hosted by ByteNFT, so your card details are never handled by this website.'
+                $summary,
+
+                $('<div>', { 'class': 'bytenft-order-received__note' }).append(
+                    $('<div>', {
+                        'class': 'bytenft-order-received__note-icon',
+                        'aria-hidden': 'true'
+                    }).html(SHIELD_ICON),
+                    $('<div>').append(
+                        $('<p>', { 'class': 'bytenft-order-received__note-title' })
+                            .text('Independent voucher & payment partner'),
+                        $('<p>').append(
+                            text('Your voucher and payment are completed through a separate, independent partner. That partner is never hosted on, embedded in, or otherwise associated with '),
+                            $('<span>').text(siteName),
+                            text('.')
+                        )
                     )
                 ),
 
-                $('<p>', { 'class': 'bytenft-email-sent__small' }).text(
-                    'Nothing has been charged yet, and this page updates once your payment is confirmed.'
-                ),
-
-                $('<p>', { 'class': 'bytenft-email-sent__small' }).text(
-                    paymentLink
-                        ? 'Can’t find the email? Check your spam folder, or click below to open your payment link.'
-                        : 'Didn’t get the email? Check your spam folder.'
-                ),
-
-                $('<div>', { 'class': 'bytenft-email-sent__actions' }).append(
-                    paymentLink
-                        ? $('<a>', {
-                            'class': 'button bytenft-email-sent__pay bytenft-email-sent__primary',
-                            href: paymentLink,
-                            target: '_blank',
-                            rel: 'noopener noreferrer'
-                        }).text('Open payment page').on('click', function (e) {
-                            // Keep a handle on the tab so it can be closed once paid;
-                            // if the browser blocks it, the plain link opens instead.
-                            if (self.openPaymentTab(paymentLink)) {
-                                e.preventDefault();
-                            }
-                        })
-                        : null,
-
-                    $('<a>', {
-                        'class': 'button bytenft-email-sent__back',
-                        href: details.shop_url || '/'
-                    }).text('Back to the shop')
+                $('<p>', { 'class': 'bytenft-order-received__foot' }).append(
+                    text('No further action is needed here — check the inbox for '),
+                    $('<strong>').text(details.email || ''),
+                    text(' whenever you’re ready.')
                 )
             );
-
-            this.state.panel = $panel;
-            this.state.panelDetails = details;
 
             // Replace the checkout with the panel. Hide rather than remove so
             // the block checkout's React tree stays intact.
@@ -568,7 +479,7 @@
 
             this.clearCheckoutErrors();
 
-            $('.bytenft-email-sent').remove();
+            $('.bytenft-order-received').remove();
 
             $('.woocommerce-form-coupon-toggle, .woocommerce-form-login-toggle, form.checkout_coupon, form.woocommerce-form-login').hide();
 
@@ -584,270 +495,6 @@
             }, 300);
 
             $panel[0].focus({ preventScroll: true });
-        },
-
-        /**
-         * Open the payment link in a new tab this page keeps a reference to.
-         * Returns false when the browser blocks the tab.
-         */
-        openPaymentTab: function (url) {
-
-            const current = this.state.paymentWindow;
-
-            if (current && !current.closed) {
-                current.focus();
-                return true;
-            }
-
-            const tab = window.open('', '_blank');
-
-            if (!tab) {
-                return false;
-            }
-
-            const safeUrl = String(url)
-                .replace(/&/g, '&amp;')
-                .replace(/"/g, '&quot;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;');
-
-            try {
-
-                // Redirect from a no-referrer page so the payment page never
-                // receives the checkout URL as Referer.
-                tab.document.open();
-                tab.document.write(
-                    '<!DOCTYPE html><html><head><title>Secure Payment</title>' +
-                    '<meta name="referrer" content="no-referrer">' +
-                    '<meta http-equiv="refresh" content="0;url=' + safeUrl + '">' +
-                    '</head><body style="margin:0;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;">' +
-                    '<p>Connecting to secure payment...</p></body></html>'
-                );
-                tab.document.close();
-
-            } catch (err) {
-
-                tab.location.href = url;
-            }
-
-            this.state.paymentWindow = tab;
-
-            return true;
-        },
-
-        /**
-         * Move the "check your email" panel on to "confirming", "confirmed" or "failed".
-         */
-        setPanelState: function (panelState) {
-
-            const $panel = this.state.panel;
-
-            if (!$panel || $panel.attr('data-state') === panelState) {
-                return;
-            }
-
-            // Never step back from confirmed to confirming.
-            if ($panel.attr('data-state') === 'confirmed') {
-                return;
-            }
-
-            const orderNumber = $('<strong>').text('#' + (this.state.panelDetails?.order_number || ''));
-
-            const views = {
-                confirming: {
-                    icon: SPINNER_ICON,
-                    iconClass: 'bytenft-email-sent__icon--busy',
-                    title: 'Confirming your payment',
-                    lead: [
-                        document.createTextNode('Your payment for order '),
-                        orderNumber,
-                        document.createTextNode(' is being processed. This can take a minute — keep this page open and you’ll be taken to your order confirmation automatically.')
-                    ]
-                },
-                confirmed: {
-                    icon: CHECK_ICON,
-                    iconClass: 'bytenft-email-sent__icon--done',
-                    title: 'Payment confirmed',
-                    lead: [
-                        document.createTextNode('Payment for order '),
-                        orderNumber,
-                        document.createTextNode(' is confirmed. Taking you to your order confirmation…')
-                    ]
-                },
-                failed: {
-                    icon: CROSS_ICON,
-                    iconClass: 'bytenft-email-sent__icon--failed',
-                    title: 'Payment not completed',
-                    lead: [
-                        document.createTextNode('Your payment for order '),
-                        orderNumber,
-                        document.createTextNode(' didn’t go through, and nothing has been charged. Taking you back to checkout to try again…')
-                    ]
-                }
-            };
-
-            const view = views[panelState];
-
-            if (!view) {
-                return;
-            }
-
-            $panel.attr('data-state', panelState);
-
-            $panel.find('.bytenft-email-sent__icon')
-                .removeClass('bytenft-email-sent__icon--busy bytenft-email-sent__icon--done bytenft-email-sent__icon--failed')
-                .addClass(view.iconClass)
-                .html(view.icon);
-
-            $panel.find('.bytenft-email-sent__title').text(view.title);
-
-            $panel.find('.bytenft-email-sent__lead').empty().append(view.lead);
-
-            // The email instructions and buttons no longer apply.
-            $panel.find('.bytenft-email-sent__note, .bytenft-email-sent__small, .bytenft-email-sent__actions').hide();
-        },
-
-        /**
-         * Checkout URL to reload after a failed payment, tagged with the status
-         * so the reloaded page can say what happened.
-         */
-        buildCheckoutReturnUrl: function (redirectUrl, paymentStatus) {
-
-            const base = /^https?:\/\//i.test(redirectUrl || '')
-                ? redirectUrl
-                : (bytenft_params.checkout_url || window.location.href);
-
-            const url = new URL(base, window.location.href);
-
-            url.searchParams.set('bytenft_payment', paymentStatus);
-
-            return url.toString();
-        },
-
-        closePaymentTab: function () {
-
-            const tab = this.state.paymentWindow;
-
-            this.state.paymentWindow = null;
-
-            if (tab && !tab.closed) {
-                try {
-                    tab.close();
-                } catch (err) {}
-            }
-        },
-
-        watchPaymentStatus: function () {
-
-            const self = this;
-
-            const startedAt = Date.now();
-
-            clearInterval(self.state.statusInterval);
-
-            if (!self.state.orderId) {
-                return;
-            }
-
-            const check = function () {
-
-                if (Date.now() - startedAt > self.STATUS_POLL_TIMEOUT) {
-                    clearInterval(self.state.statusInterval);
-                    return;
-                }
-
-                self.checkPaymentStatus();
-            };
-
-            self.state.statusInterval = setInterval(check, self.STATUS_POLL_INTERVAL);
-
-            // Check straight away when the customer returns from the payment tab.
-            $(document)
-                .off('visibilitychange.bytenft')
-                .on('visibilitychange.bytenft', function () {
-                    if (document.visibilityState === 'visible') {
-                        check();
-                    }
-                });
-        },
-
-        checkPaymentStatus: function () {
-
-            const self = this;
-
-            if (self.state.statusRequest || self.state.redirecting) {
-                return;
-            }
-
-            const request = $.post(
-                bytenft_params.ajax_url,
-                {
-                    action: 'bytenft_check_payment_status',
-                    order_id: self.state.orderId,
-                    security: bytenft_params.bytenft_nonce
-                },
-                function (response) {
-
-                    console.log('[Bytenft] payment status response', response);
-
-                    const data = response?.data || {};
-
-                    // Only a confirmed payment moves the customer on; they
-                    // may not have opened the email yet.
-                    if (data.status === 'success' && data.redirect_url) {
-
-                        self.state.redirecting = true;
-
-                        clearInterval(self.state.statusInterval);
-
-                        self.setPanelState('confirmed');
-
-                        // The hosted page never returns the customer, so
-                        // finish here: close its tab, show the thank-you page.
-                        self.closePaymentTab();
-
-                        window.location.replace(data.redirect_url);
-
-                        return;
-                    }
-
-                    // The provider is processing the customer's payment. Checked
-                    // before failure so a retry after a decline shows as confirming.
-                    if (data.payment_status === 'processing') {
-                        self.setPanelState('confirming');
-                        return;
-                    }
-
-                    // Declined, cancelled or expired. Use the provider's status for
-                    // this attempt only: the stored order state can still read
-                    // "failed" from an earlier attempt on a reused order.
-                    const paymentStatus = data.payment_status === 'canceled'
-                        ? 'cancelled'
-                        : data.payment_status;
-
-                    if (FAILED_STATES.indexOf(paymentStatus) > -1) {
-
-                        self.state.redirecting = true;
-
-                        clearInterval(self.state.statusInterval);
-
-                        self.setPanelState('failed');
-
-                        self.closePaymentTab();
-
-                        window.location.replace(
-                            self.buildCheckoutReturnUrl(data.redirect_url, paymentStatus)
-                        );
-                    }
-                },
-                'json'
-            );
-
-            self.state.statusRequest = request;
-
-            request.always(function () {
-                self.state.statusRequest = null;
-            });
         },
 
         /* =========================================================
@@ -1013,7 +660,6 @@
                     }, 0);
                 }
             );
-
 
             $('#billing_address_1')
                 .on('input', function () {

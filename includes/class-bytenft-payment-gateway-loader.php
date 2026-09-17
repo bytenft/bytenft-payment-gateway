@@ -82,6 +82,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			}
 		});
 
+		add_action('template_redirect', [$this, 'bytenft_handle_voucher_link']);
+
 		add_action('woocommerce_before_checkout_form', [$this, 'bytenft_show_checkout_error']);
 
 		// Prevent order reuse on standard checkout for this gateway if identity changes
@@ -669,6 +671,109 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				], $context)
 			);
 		}
+	}
+
+	/**
+	 * Turn a voucher link this plugin emailed into a payment page.
+	 *
+	 * Vouchers are emailed by ByteNFT now and redeemed there, so nothing points
+	 * here any more. It stays for the emails sent before that change: their
+	 * links are in customers' inboxes and still have to open. Creates (or
+	 * reuses) the payment link and forwards to the hosted payment page.
+	 */
+	public function bytenft_handle_voucher_link()
+	{
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- link is signed with its own token.
+		if (empty($_GET['bytenft_voucher'])) {
+			return;
+		}
+
+		$order_id = absint(wp_unslash($_GET['bytenft_voucher']));
+		$key      = isset($_GET['key']) ? sanitize_text_field(wp_unslash($_GET['key'])) : '';
+		$token    = isset($_GET['token']) ? sanitize_text_field(wp_unslash($_GET['token'])) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		$order = $order_id ? wc_get_order($order_id) : false;
+
+		if (
+			!$order
+			|| !hash_equals($order->get_order_key(), $key)
+			|| !hash_equals(BYTENFT_PAYMENT_GATEWAY::bytenft_voucher_token($order), $token)
+		) {
+			ByteNFT_Payment_Gateway_Logger::warning(
+				'Voucher link rejected',
+				['order_id' => $order_id]
+			);
+
+			$this->bytenft_voucher_error(
+				__('This voucher link is not valid. Please contact us if you need a new one.', 'bytenft-payment-gateway')
+			);
+		}
+
+		// Already paid: nothing left to buy.
+		if ($order->has_status(['processing', 'completed'])) {
+			wp_safe_redirect($order->get_checkout_order_received_url());
+			exit;
+		}
+
+		if ($order->has_status(['cancelled', 'refunded'])) {
+			$this->bytenft_voucher_error(
+				__('This order is no longer available for payment. Please place a new order.', 'bytenft-payment-gateway')
+			);
+		}
+
+		$gateways = WC()->payment_gateways()->payment_gateways();
+		$gateway  = $gateways['bytenft'] ?? null;
+
+		if (!$gateway) {
+			$gateway = new BYTENFT_PAYMENT_GATEWAY();
+			$gateway->init_settings();
+			$gateway->load_gateway_settings();
+		}
+
+		$result = $gateway->bytenft_create_payment_link($order);
+
+		$payment_link = $result['data']['payment_link'] ?? '';
+
+		if (($result['result'] ?? '') !== 'success' || empty($payment_link)) {
+
+			ByteNFT_Payment_Gateway_Logger::error(
+				'Voucher link could not create a payment link',
+				[
+					'order_id' => $order_id,
+					'message'  => $result['message'] ?? null,
+				]
+			);
+
+			$this->bytenft_voucher_error(
+				$result['message'] ?: __('We could not open your payment page. Please try again in a moment.', 'bytenft-payment-gateway')
+			);
+		}
+
+		ByteNFT_Payment_Gateway_Logger::info(
+			"[Order #{$order_id}] Voucher link opened; redirecting to payment page"
+		);
+
+		// External payment host, so wp_safe_redirect() cannot be used here.
+		wp_redirect($payment_link); // phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect
+		exit;
+	}
+
+	/**
+	 * Stop on the voucher link with a readable message.
+	 *
+	 * @param string $message What went wrong.
+	 */
+	private function bytenft_voucher_error($message)
+	{
+		wp_die(
+			esc_html($message),
+			esc_html__('Voucher unavailable', 'bytenft-payment-gateway'),
+			[
+				'response'  => 200,
+				'back_link' => true,
+			]
+		);
 	}
 
 	public function handle_popup_close()
