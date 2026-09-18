@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) {
 	exit;
 }
 
-class ByteNFT_Payment_Gateway_Logger {
+class Voucher_Payment_Gateway_Logger {
 
 	private static function get_logger()
 	{
@@ -18,7 +18,7 @@ class ByteNFT_Payment_Gateway_Logger {
 	private static function format_context($context)
 	{
 		$entry = [
-			'source' => 'bytenft-payment-gateway'
+			'source' => 'voucher-payment-gateway'
 		];
 
 		if (!is_array($context)) {

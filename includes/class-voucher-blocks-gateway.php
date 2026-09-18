@@ -3,10 +3,10 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 
 use Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType;
 
-class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
+class VOUCHER_Blocks_Gateway extends AbstractPaymentMethodType {
 
-	protected $name = 'bytenft';
-	protected $id   = 'bytenft';
+	protected $name = 'voucher';
+	protected $id   = 'voucher';
 
 	public function initialize() {
 		$this->settings = get_option('woocommerce_' . $this->name . '_settings', []);
@@ -21,17 +21,17 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 
 	public function get_payment_method_script_handles() {
 		wp_register_script(
-			'bytenft-blocks-js',
-			plugin_dir_url(BYTENFT_PAYMENT_GATEWAY_FILE) . 'assets/js/bytenft-blocks.js',
+			'voucher-blocks-js',
+			plugin_dir_url(VOUCHER_PAYMENT_GATEWAY_FILE) . 'assets/js/voucher-blocks.js',
 			['wc-blocks-registry', 'wc-settings', 'wp-element'],
 			'1.0.0',
 			true
 		);
-		return ['bytenft-blocks-js'];
+		return ['voucher-blocks-js'];
 	}
 
 	public function get_payment_method_data() {
-         $title       = $this->settings['title'] ?? 'ByteNFT';
+         $title       = $this->settings['title'] ?? 'Voucher';
         $description = $this->settings['description'] ?? '';
 
 		if (WC()->cart) {
@@ -41,7 +41,7 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 				$amount = (float) ($totals['total'] ?? 0);
 			}
 			$gateways = WC()->payment_gateways ? WC()->payment_gateways->payment_gateways() : [];
-			$gateway  = $gateways['bytenft'] ?? null;
+			$gateway  = $gateways['voucher'] ?? null;
 			if ($gateway && method_exists($gateway, 'get_checkout_info_for_amount')) {
 				$info = $gateway->get_checkout_info_for_amount($amount);
 				if (!empty($info['title']))    $title       = $info['title'];
@@ -60,7 +60,7 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
 			'accounts'    => $this->settings['accounts'] ?? '',
 		];
 
-		error_log('ByteNFT Blocks Data: ' . print_r($data, true));
+		error_log('Voucher Blocks Data: ' . print_r($data, true));
 	}
 }
 
@@ -69,7 +69,7 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
  * ─────────────────────────────────────────────────────────────────────────────
  * AJAX handler for Block Checkout payment processing.
  *
- * KEY FIX: Instead of `new BYTENFT_PAYMENT_GATEWAY()` (which creates a fresh,
+ * KEY FIX: Instead of `new VOUCHER_PAYMENT_GATEWAY()` (which creates a fresh,
  * partially-initialised instance), we pull the already-booted gateway instance
  * from WooCommerce's payment gateway registry.  That instance has had
  * init_settings() called by WooCommerce during the normal boot cycle, so
@@ -77,13 +77,13 @@ class BYTENFT_Blocks_Gateway extends AbstractPaymentMethodType {
  * populated when process_payment() runs.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-function bytenft_register_block_ajax_handlers() {
-	add_action('wp_ajax_bytenft_block_gateway_process',        'handle_bytenft_gateway_ajax');
-	add_action('wp_ajax_nopriv_bytenft_block_gateway_process', 'handle_bytenft_gateway_ajax');
+function voucher_register_block_ajax_handlers() {
+	add_action('wp_ajax_voucher_block_gateway_process',        'handle_voucher_gateway_ajax');
+	add_action('wp_ajax_nopriv_voucher_block_gateway_process', 'handle_voucher_gateway_ajax');
 }
-add_action('init', 'bytenft_register_block_ajax_handlers');
+add_action('init', 'voucher_register_block_ajax_handlers');
 
-function handle_bytenft_gateway_ajax() {
+function handle_voucher_gateway_ajax() {
 
 	// ─────────────────────────────────────────────
 	// CONTEXT + LOG PREFIX (ADDED FOR DEBUGGING)
@@ -100,10 +100,10 @@ function handle_bytenft_gateway_ajax() {
 		? sanitize_text_field(wp_unslash($_POST['nonce']))
 		: '';
 
-	if (empty($nonce) || !wp_verify_nonce($nonce, 'bytenft_payment')) {
+	if (empty($nonce) || !wp_verify_nonce($nonce, 'voucher_payment')) {
 
 
-		ByteNFT_Payment_Gateway_Logger::info($log_prefix . ' AJAX | Invalid nonce');
+		Voucher_Payment_Gateway_Logger::info($log_prefix . ' AJAX | Invalid nonce');
 
 		wp_send_json([
 			'success' => false,
@@ -121,15 +121,15 @@ function handle_bytenft_gateway_ajax() {
 	// GET GATEWAY INSTANCE (UNCHANGED LOGIC)
 	// ─────────────────────────────────────────────
 	$gateways       = WC()->payment_gateways()->payment_gateways();
-	$bytenftPayment = $gateways['bytenft'] ?? null;
+	$voucherPayment = $gateways['voucher'] ?? null;
 
-	if (!$bytenftPayment) {
+	if (!$voucherPayment) {
 
-		$bytenftPayment = new BYTENFT_PAYMENT_GATEWAY();
-		$bytenftPayment->init_settings();
-		$bytenftPayment->load_gateway_settings();
+		$voucherPayment = new VOUCHER_PAYMENT_GATEWAY();
+		$voucherPayment->init_settings();
+		$voucherPayment->load_gateway_settings();
 
-		ByteNFT_Payment_Gateway_Logger::warning(
+		Voucher_Payment_Gateway_Logger::warning(
 			$log_prefix . ' AJAX | Gateway fallback used (not found in registry)',
 			['event' => 'gateway_fallback']
 		);
@@ -140,7 +140,7 @@ function handle_bytenft_gateway_ajax() {
 	// ─────────────────────────────────────────────
 	if (!$orderID) {
 
-		ByteNFT_Payment_Gateway_Logger::error(
+		Voucher_Payment_Gateway_Logger::error(
 			$log_prefix . ' AJAX | Missing order ID from session',
 		);
 
@@ -158,13 +158,13 @@ function handle_bytenft_gateway_ajax() {
 	// ─────────────────────────────────────────────
 	// PAYMENT PROCESS FLOW (UNCHANGED LOGIC)
 	// ─────────────────────────────────────────────
-	$status = $bytenftPayment->process_payment($orderID);
+	$status = $voucherPayment->process_payment($orderID);
 
 	// ─────────────────────────────────────────────
 	// LOG PROCESS RESULT
 	// ─────────────────────────────────────────────
 	
-	ByteNFT_Payment_Gateway_Logger::info(
+	Voucher_Payment_Gateway_Logger::info(
 		$log_prefix . ' AJAX | process_payment executed',
 		['status' => $status]
 	);
@@ -193,7 +193,7 @@ function handle_bytenft_gateway_ajax() {
 	// ─────────────────────────────────────────────
 	// FINAL RESPONSE LOG
 	// ─────────────────────────────────────────────
-	ByteNFT_Payment_Gateway_Logger::info(
+	Voucher_Payment_Gateway_Logger::info(
 		$log_prefix . ' AJAX | Final response prepared',
 		[
 			'success'  => $is_success,

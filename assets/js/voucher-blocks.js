@@ -1,4 +1,4 @@
-console.log('bytenft-blocks.js loaded at', new Date().toISOString());
+console.log('voucher-blocks.js loaded at', new Date().toISOString());
 (function () {
     const { registerPaymentMethod } = window.wc?.wcBlocksRegistry || {};
     const { createElement, RawHTML } = window.wp?.element || {};
@@ -8,25 +8,25 @@ console.log('bytenft-blocks.js loaded at', new Date().toISOString());
     }
 
     const settings =
-        window.wc?.wcSettings?.getPaymentMethodData?.('bytenft') || {};
+        window.wc?.wcSettings?.getPaymentMethodData?.('voucher') || {};
 
-    const label = settings.title || 'ByteNFT';
+    const label = settings.title || 'Voucher';
     const description = settings.description || '';
 
     const methodConfig = {
-        name: settings.id || 'bytenft',
+        name: settings.id || 'voucher',
         label,
         ariaLabel: label,
 
         content: createElement(
             'div',
-            { className: 'bytenft-description' },
+            { className: 'voucher-description' },
             createElement(RawHTML, {}, description)
         ),
 
         edit: createElement(
             'div',
-            { className: 'bytenft-edit' },
+            { className: 'voucher-edit' },
             label
         ),
 

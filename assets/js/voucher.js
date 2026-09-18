@@ -1,11 +1,11 @@
 (function ($, window, document) {
     'use strict';
 
-    if (window.BytenftCheckoutInitialized) {
+    if (window.VoucherCheckoutInitialized) {
         return;
     }
 
-    window.BytenftCheckoutInitialized = true;
+    window.VoucherCheckoutInitialized = true;
 
     const CHECK_ICON =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -17,9 +17,9 @@
         '<path d="M12 3l7 3v6c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6l7-3z"></path>' +
         '</svg>';
 
-    const BytenftCheckout = {
+    const VoucherCheckout = {
 
-        PAYMENT_METHOD: bytenft_params.payment_method,
+        PAYMENT_METHOD: voucher_params.payment_method,
 
         state: {
             submitting: false,
@@ -40,7 +40,7 @@
 
             this.bindInputSanitization();
 
-            console.log('[Bytenft] initialized');
+            console.log('[Voucher] initialized');
         },
 
         /* =========================================================
@@ -57,7 +57,7 @@
                     'checkout_place_order_' + self.PAYMENT_METHOD,
                     function () {
 
-                        console.log('[Bytenft] classic checkout');
+                        console.log('[Voucher] classic checkout');
 
                         const $form = $(this);
 
@@ -104,14 +104,14 @@
 
                 success: function (response) {
 
-                    console.log('[Bytenft] classic response', response);
+                    console.log('[Voucher] classic response', response);
 
                     self.handleResponse(response);
                 },
 
                 error: function (xhr, status, error) {
 
-                    console.log('[Bytenft] classic ajax error');
+                    console.log('[Voucher] classic ajax error');
                     console.log(xhr.responseText);
 
                     self.showCheckoutError(
@@ -159,7 +159,7 @@
                         return;
                     }
 
-                    console.log('[Bytenft] block checkout');
+                    console.log('[Voucher] block checkout');
 
                     e.preventDefault();
                     e.stopImmediatePropagation();
@@ -232,27 +232,27 @@
                 data += '&billing_phone=' + encodeURIComponent(phoneField.value);
             }
 
-            data += '&action=bytenft_block_gateway_process';
-            data += '&nonce=' + encodeURIComponent(bytenft_params.bytenft_nonce);
+            data += '&action=voucher_block_gateway_process';
+            data += '&nonce=' + encodeURIComponent(voucher_params.voucher_nonce);
 
             $.ajax({
 
                 type: 'POST',
 
-                url: bytenft_params.ajax_url,
+                url: voucher_params.ajax_url,
 
                 data: data,
 
                 success: function (response) {
 
-                    console.log('[Bytenft] block response', response);
+                    console.log('[Voucher] block response', response);
 
                     self.handleResponse(response);
                 },
 
                 error: function (xhr, status, error) {
 
-                    console.log('[Bytenft] block ajax error');
+                    console.log('[Voucher] block ajax error');
                     console.log(xhr.responseText);
 
                     self.showCheckoutError(
@@ -280,7 +280,7 @@
                         response = JSON.parse(response);
                     } catch (e) {
 
-                        console.log('[Bytenft] invalid json');
+                        console.log('[Voucher] invalid json');
 
                         self.showCheckoutError('Invalid server response.');
 
@@ -290,7 +290,7 @@
                     }
                 }
 
-                console.log('[Bytenft] parsed response', response);
+                console.log('[Voucher] parsed response', response);
 
                 const success =
                     response?.result === 'success' ||
@@ -320,7 +320,7 @@
                 // =====================================================
                 if (!success) {
 
-                    console.log('[Bytenft] showing failed message:', errorMessage);
+                    console.log('[Voucher] showing failed message:', errorMessage);
 
                     setTimeout(function () {
 
@@ -373,7 +373,7 @@
 
             } catch (e) {
 
-                console.log('[Bytenft] handleResponse exception', e);
+                console.log('[Voucher] handleResponse exception', e);
 
                 self.showCheckoutError('Unexpected checkout error.');
 
@@ -393,11 +393,11 @@
 
             const siteName = details.site_name || window.location.hostname;
 
-            const $summary = $('<div>', { 'class': 'bytenft-order-received__summary' });
+            const $summary = $('<div>', { 'class': 'voucher-order-received__summary' });
 
             const row = function (label, value, modifier) {
                 return $('<div>', {
-                    'class': 'bytenft-order-received__row' + (modifier ? ' ' + modifier : '')
+                    'class': 'voucher-order-received__row' + (modifier ? ' ' + modifier : '')
                 }).append(
                     $('<span>').text(label),
                     $('<span>').text(value)
@@ -418,41 +418,41 @@
             });
 
             $summary.append(
-                row('Amount due', details.amount_due || '', 'bytenft-order-received__row--total')
+                row('Amount due', details.amount_due || '', 'voucher-order-received__row--total')
             );
 
             const $panel = $('<div>', {
-                'class': 'bytenft-order-received',
+                'class': 'voucher-order-received',
                 role: 'status',
                 tabindex: '-1'
             }).append(
 
                 $('<div>', {
-                    'class': 'bytenft-order-received__icon',
+                    'class': 'voucher-order-received__icon',
                     'aria-hidden': 'true'
                 }).html(CHECK_ICON),
 
-                $('<h2>', { 'class': 'bytenft-order-received__title' })
+                $('<h2>', { 'class': 'voucher-order-received__title' })
                     .text('Order received'),
 
                 // What the voucher service said, shown as it came back.
                 details.message
-                    ? $('<p>', { 'class': 'bytenft-order-received__status' }).text(details.message)
+                    ? $('<p>', { 'class': 'voucher-order-received__status' }).text(details.message)
                     : '',
 
-                $('<p>', { 'class': 'bytenft-order-received__lead' }).text(
+                $('<p>', { 'class': 'voucher-order-received__lead' }).text(
                     'As part of our secure checkout process, next you’ll receive your digital redemption voucher along with an NFT confirmation. This voucher can be used to redeem your order. You’ll get an email shortly, on your own time, to purchase the voucher and complete this transaction.'
                 ),
 
                 $summary,
 
-                $('<div>', { 'class': 'bytenft-order-received__note' }).append(
+                $('<div>', { 'class': 'voucher-order-received__note' }).append(
                     $('<div>', {
-                        'class': 'bytenft-order-received__note-icon',
+                        'class': 'voucher-order-received__note-icon',
                         'aria-hidden': 'true'
                     }).html(SHIELD_ICON),
                     $('<div>').append(
-                        $('<p>', { 'class': 'bytenft-order-received__note-title' })
+                        $('<p>', { 'class': 'voucher-order-received__note-title' })
                             .text('Independent voucher & payment partner'),
                         $('<p>').append(
                             text('Your voucher and payment are completed through a separate, independent partner. That partner is never hosted on, embedded in, or otherwise associated with '),
@@ -462,7 +462,7 @@
                     )
                 ),
 
-                $('<p>', { 'class': 'bytenft-order-received__foot' }).append(
+                $('<p>', { 'class': 'voucher-order-received__foot' }).append(
                     text('No further action is needed here — check the inbox for '),
                     $('<strong>').text(details.email || ''),
                     text(' whenever you’re ready.')
@@ -479,7 +479,7 @@
 
             this.clearCheckoutErrors();
 
-            $('.bytenft-order-received').remove();
+            $('.voucher-order-received').remove();
 
             $('.woocommerce-form-coupon-toggle, .woocommerce-form-login-toggle, form.checkout_coupon, form.woocommerce-form-login').hide();
 
@@ -512,18 +512,18 @@
             if (fields.length) {
 
                 fieldsHtml = `
-                    <ul class="bytenft-error-fields">
+                    <ul class="voucher-error-fields">
                         ${fields.map(field => `<li>${field}</li>`).join('')}
                     </ul>
                 `;
             }
 
             const html = `
-                <div class="woocommerce-notices-wrapper bytenft-error-wrap">
+                <div class="woocommerce-notices-wrapper voucher-error-wrap">
 
-                    <div class="woocommerce-error bytenft-error-box" role="alert">
+                    <div class="woocommerce-error voucher-error-box" role="alert">
 
-                        <div class="bytenft-error-header">
+                        <div class="voucher-error-header">
                             <strong>${message}</strong>
                         </div>
 
@@ -674,7 +674,7 @@
 
     $(document).ready(function () {
 
-        BytenftCheckout.init();
+        VoucherCheckout.init();
     });
 
 })(jQuery, window, document);

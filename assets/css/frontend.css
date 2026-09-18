@@ -1,4 +1,4 @@
-.bytenft-loader {
+.voucher-loader {
   position: fixed;
   display: none;
   left: 0;
@@ -9,7 +9,7 @@
   z-index: 9999;
 }
 
-.bytenft-loader img {
+.voucher-loader img {
   margin: auto;
   position: absolute;
   top: 0;
@@ -20,7 +20,7 @@
   border-radius: 100%;
 }
 
-.bytenft-loader-background {
+.voucher-loader-background {
   display: none;
   position: fixed;
   top: 0;
@@ -47,7 +47,7 @@
   margin: 0 10px;
 }
 
-.bytenft-main-error {
+.voucher-main-error {
     background: #fff;
     border: 1px solid #df1b41;
     border-radius: 12px;
@@ -55,22 +55,22 @@
     margin-bottom: 20px;
 }
 
-.bytenft-error-header {
+.voucher-error-header {
     font-size: 16px;
     margin-bottom: 8px;
 }
 
-.bytenft-error-message {
+.voucher-error-message {
     margin-bottom: 10px;
     color: #444;
 }
 
-.bytenft-error-fields {
+.voucher-error-fields {
     margin: 0;
     padding-left: 18px;
 }
 
-.bytenft-error-fields li {
+.voucher-error-fields li {
     margin-bottom: 4px;
     color: #111;
     font-size:16px;
@@ -83,11 +83,11 @@
     box-shadow: 0 0 0 1px #df1b41 !important;
 }
 
-#bytenft-checkout-errors {
+#voucher-checkout-errors {
     margin-bottom: 16px;
 }
 
-#bytenft-checkout-errors .wc-block-components-notice-banner {
+#voucher-checkout-errors .wc-block-components-notice-banner {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -96,19 +96,19 @@
     margin-bottom: 16px;
 }
 
-#bytenft-checkout-errors .wc-block-components-notice-banner.is-error {
+#voucher-checkout-errors .wc-block-components-notice-banner.is-error {
     background-color: #fff5f5;
     border: 1px solid #cc1818;
     color: #cc1818;
 }
 
-#bytenft-checkout-errors 
+#voucher-checkout-errors 
 .wc-block-components-notice-banner__content {
     font-size: 14px;
     line-height: 1.5;
 }
 
-#bytenft-checkout-errors .wc-block-components-notice-banner__icon {
+#voucher-checkout-errors .wc-block-components-notice-banner__icon {
     width: 20px !important;
     height: 20px !important;
     min-width: 20px !important;
@@ -116,19 +116,19 @@
     flex-shrink: 0;
 }
 
-#bytenft-checkout-errors .wc-block-components-notice-banner__icon svg {
+#voucher-checkout-errors .wc-block-components-notice-banner__icon svg {
     width: 20px;
     height: 20px;
 }
 
-#bytenft-checkout-errors .wc-block-components-notice-banner__content {
+#voucher-checkout-errors .wc-block-components-notice-banner__content {
     flex: 1;
     font-size: 14px;
     line-height: 1.5;
 }
 
 /* "Order received" card shown after Place Order */
-.bytenft-order-received {
+.voucher-order-received {
     box-sizing: border-box;
     max-width: 560px;
     margin: 40px auto;
@@ -140,15 +140,15 @@
     color: #475569;
 }
 
-.bytenft-order-received:focus {
+.voucher-order-received:focus {
     outline: none;
 }
 
-.bytenft-order-received * {
+.voucher-order-received * {
     box-sizing: border-box;
 }
 
-.bytenft-order-received__icon {
+.voucher-order-received__icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -160,12 +160,12 @@
     color: #2563eb;
 }
 
-.bytenft-order-received__icon svg {
+.voucher-order-received__icon svg {
     width: 20px;
     height: 20px;
 }
 
-.bytenft-order-received__title {
+.voucher-order-received__title {
     margin: 0 0 14px;
     font-size: 22px;
     font-weight: 700;
@@ -173,7 +173,7 @@
     color: #1e293b;
 }
 
-.bytenft-order-received__status {
+.voucher-order-received__status {
     margin: 0 0 12px;
     font-size: 14px;
     font-weight: 600;
@@ -181,13 +181,13 @@
     color: #15803d;
 }
 
-.bytenft-order-received__lead {
+.voucher-order-received__lead {
     margin: 0 0 24px;
     font-size: 14px;
     line-height: 1.7;
 }
 
-.bytenft-order-received__summary {
+.voucher-order-received__summary {
     padding: 18px 20px;
     margin-bottom: 18px;
     background: #f5f8fc;
@@ -195,7 +195,7 @@
     text-align: left;
 }
 
-.bytenft-order-received__row {
+.voucher-order-received__row {
     display: flex;
     justify-content: space-between;
     gap: 16px;
@@ -204,13 +204,13 @@
     color: #475569;
 }
 
-.bytenft-order-received__row span:last-child {
+.voucher-order-received__row span:last-child {
     color: #1e293b;
     text-align: right;
     overflow-wrap: anywhere;
 }
 
-.bytenft-order-received__row--total {
+.voucher-order-received__row--total {
     margin-top: 6px;
     padding-top: 14px;
     border-top: 1px solid #e3e8f0;
@@ -219,7 +219,7 @@
     color: #1e293b;
 }
 
-.bytenft-order-received__note {
+.voucher-order-received__note {
     display: flex;
     gap: 12px;
     padding: 16px 18px;
@@ -229,42 +229,42 @@
     text-align: left;
 }
 
-.bytenft-order-received__note-icon {
+.voucher-order-received__note-icon {
     flex: 0 0 auto;
     color: #2563eb;
 }
 
-.bytenft-order-received__note-icon svg {
+.voucher-order-received__note-icon svg {
     width: 16px;
     height: 16px;
 }
 
-.bytenft-order-received__note p {
+.voucher-order-received__note p {
     margin: 0;
     font-size: 12.5px;
     line-height: 1.6;
 }
 
-.bytenft-order-received .bytenft-order-received__note-title {
+.voucher-order-received .voucher-order-received__note-title {
     margin-bottom: 4px;
     font-size: 13px;
     font-weight: 700;
     color: #1e293b;
 }
 
-.bytenft-order-received__foot {
+.voucher-order-received__foot {
     margin: 0;
     font-size: 12.5px;
     line-height: 1.7;
     color: #94a3b8;
 }
 
-.bytenft-order-received__foot strong {
+.voucher-order-received__foot strong {
     color: #64748b;
     overflow-wrap: anywhere;
 }
 
-.bytenft-thankyou-email-notice {
+.voucher-thankyou-email-notice {
     padding: 14px 18px;
     background: #f5f8fc;
     border-left: 3px solid #2563eb;

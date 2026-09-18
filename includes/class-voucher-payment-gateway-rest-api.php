@@ -3,9 +3,9 @@ if (!defined('ABSPATH')) {
 	exit; // Exit if accessed directly.
 }
 
-require_once plugin_dir_path(__FILE__) . 'class-bytenft-payment-state-engine.php';
+require_once plugin_dir_path(__FILE__) . 'class-voucher-payment-state-engine.php';
 
-class BYTENFT_PAYMENT_GATEWAY_REST_API
+class VOUCHER_PAYMENT_GATEWAY_REST_API
 {
 	private $logger;
 	private static $instance = null;
@@ -31,7 +31,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			// Add custom CORS headers
 			add_filter('rest_pre_serve_request', function ($value) {
 
-			    header('Access-Control-Allow-Origin: '.BYTENFT_BASE_URL);
+			    header('Access-Control-Allow-Origin: '.VOUCHER_BASE_URL);
 			    header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
 			    header('Access-Control-Allow-Headers: Authorization, Content-Type, X-WP-Nonce, User-Agent, Accept');
 			    header('Access-Control-Allow-Credentials: true');
@@ -51,28 +51,34 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		    });
 	}
 
-	public function bytenft_register_routes()
+	public function voucher_register_routes()
 	{
 		// Log incoming request with sanitized parameters
 		add_action('rest_api_init', function () {
-			register_rest_route('bytenft/v1', '/data', array(
+			register_rest_route('voucher/v1', '/data', array(
 				'methods' => ['GET', 'POST'],
-				'callback' => array($this, 'bytenft_handle_api_request'),
+				'callback' => array($this, 'voucher_handle_api_request'),
 				'permission_callback' => '__return_true',
 			));
 		});
 	}
 
-	private function bytenft_verify_api_key($api_key)
+	private function voucher_verify_api_key($api_key)
 	{
 	    $api_key = sanitize_text_field($api_key);
 
 	    // Retrieve plugin options
-	    $accounts_data = get_option('woocommerce_bytenft_payment_gateway_accounts');
-	    $general_settings = get_option('woocommerce_bytenft_settings');
+	    $accounts_data = get_option('woocommerce_voucher_payment_gateway_accounts');
+	    if (empty($accounts_data)) {
+	        $accounts_data = get_option('woocommerce_bytenft_payment_gateway_accounts');
+	    }
+	    $general_settings = get_option('woocommerce_voucher_settings');
+	    if (empty($general_settings)) {
+	        $general_settings = get_option('woocommerce_bytenft_settings');
+	    }
 
 	    if (empty($accounts_data)) {
-	        ByteNFT_Payment_Gateway_Logger::warning('No account data found', ['source' => 'bytenft-payment-gateway']);
+	        Voucher_Payment_Gateway_Logger::warning('No account data found', ['source' => 'voucher-payment-gateway']);
 	        return false;
 	    }
 
@@ -86,8 +92,8 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	    foreach ($accounts_data as $account_id => $account) {
 	        // Ensure valid array
 	        if (!is_array($account)) {
-	            ByteNFT_Payment_Gateway_Logger::warning('Skipping invalid account entry', [
-	                'source' => 'bytenft-payment-gateway',
+	            Voucher_Payment_Gateway_Logger::warning('Skipping invalid account entry', [
+	                'source' => 'voucher-payment-gateway',
 	                'account_id' => $account_id,
 	                'account_value' => $account
 	            ]);
@@ -98,14 +104,14 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	            ? sanitize_text_field($account['sandbox_public_key'] ?? '')
 	            : sanitize_text_field($account['live_public_key'] ?? '');
 
-	        ByteNFT_Payment_Gateway_Logger::info('Checking public key :: ' . $public_key, [
-	            'source' => 'bytenft-payment-gateway',
+	        Voucher_Payment_Gateway_Logger::info('Checking public key :: ' . $public_key, [
+	            'source' => 'voucher-payment-gateway',
 	            'sandbox' => $sandbox,
 	        ]);
 
 	        if (!empty($public_key) && hash_equals($public_key, $api_key)) {
-	            ByteNFT_Payment_Gateway_Logger::info('Keys matched successfully', [
-	                'source' => 'bytenft-payment-gateway',
+	            Voucher_Payment_Gateway_Logger::info('Keys matched successfully', [
+	                'source' => 'voucher-payment-gateway',
 	                'account_id' => $account_id,
 	            ]);
 	            return true;
@@ -116,16 +122,16 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	}
 
 	/**
-	 * Handles incoming ByteNFT API requests to update order status.
+	 * Handles incoming Voucher API requests to update order status.
 	 *
 	 * @param WP_REST_Request $request The REST API request object.
 	 * @return WP_REST_Response The response object.
 	 */
-	public function bytenft_handle_api_request(WP_REST_Request $request)
+	public function voucher_handle_api_request(WP_REST_Request $request)
 	{
 		$method      = $request->get_method();
 		$params      = $request->get_params();
-		$log_context = ['source' => 'bytenft-payment-gateway'];
+		$log_context = ['source' => 'voucher-payment-gateway'];
 
 		$data = isset($params['api_data']) ? $params['api_data'] : $params;
 
@@ -134,8 +140,8 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		$pay_id           = sanitize_text_field($data['pay_id'] ?? '');
 		$api_key_raw      = $data['nonce'] ?? '';
 
-		ByteNFT_Payment_Gateway_Logger::info(
-			"ByteNFT API HIT | Order #{$order_id} | Status: {$api_order_status} | Pay ID: {$pay_id}",
+		Voucher_Payment_Gateway_Logger::info(
+			"Voucher API HIT | Order #{$order_id} | Status: {$api_order_status} | Pay ID: {$pay_id}",
 			$log_context
 		);
 
@@ -167,7 +173,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 
 			if (
 				empty($api_key_raw) ||
-				!$this->bytenft_verify_api_key($decoded_nonce)
+				!$this->voucher_verify_api_key($decoded_nonce)
 			) {
 				return new WP_REST_Response([
 					'success'    => false,
@@ -192,7 +198,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		// -------------------------
 		if (!empty($api_order_status)) {
 
-			$result = BYTENFT_PAYMENT_ENGINE::handle_event(
+			$result = Voucher_Payment_State_Engine::handle_event(
 				$order_id,
 				$event_type,
 				[
@@ -202,8 +208,8 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 				]
 			);
 
-			ByteNFT_Payment_Gateway_Logger::info(
-				"ByteNFT ENGINE RESULT | Order #{$order_id} | " . json_encode($result),
+			Voucher_Payment_Gateway_Logger::info(
+				"Voucher ENGINE RESULT | Order #{$order_id} | " . json_encode($result),
 				$log_context
 			);
 		}
@@ -218,7 +224,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		 * Always resolve from ENGINE + WC state,
 		 * not raw API response.
 		 */
-		$state = BYTENFT_PAYMENT_ENGINE::resolve_final_state(
+		$state = Voucher_Payment_State_Engine::resolve_final_state(
 			$order,
 			$api_order_status
 		);
@@ -272,15 +278,15 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 			$redirect = wc_get_checkout_url();
 		}
 
-		ByteNFT_Payment_Gateway_Logger::info(
-			"ByteNFT FINAL RESPONSE | Order #{$order_id} | State: {$state} | WC: {$wc_status} | Redirect: {$redirect}",
+		Voucher_Payment_Gateway_Logger::info(
+			"Voucher FINAL RESPONSE | Order #{$order_id} | State: {$state} | WC: {$wc_status} | Redirect: {$redirect}",
 			$log_context
 		);
 
 		// -------------------------
 		// 9. RESPONSE
 		// -------------------------
-		return $this->bytenft_finalize_response(
+		return $this->voucher_finalize_response(
 			$method,
 			$order,
 			$is_success,
@@ -293,7 +299,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	/**
 	 * HELPER: Handles API responses and Safari-safe redirects
 	 */
-	private function bytenft_finalize_response($method, $order, $success, $message, $target_status = '', $redirect_url = '') 
+	private function voucher_finalize_response($method, $order, $success, $message, $target_status = '', $redirect_url = '') 
 	{
 		// If it's a server-to-server Webhook, just return JSON
 		if ($method === 'POST') {
@@ -320,7 +326,7 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 	/**
 	 * HELPER: Simple Status Mapping
 	 */
-	private function bytenft_map_status($api_status, $success_target) 
+	private function voucher_map_status($api_status, $success_target) 
 	{
 		switch ($api_status) {
 			case 'completed': return $success_target;
