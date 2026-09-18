@@ -1,17 +1,17 @@
-=== ByteNFT Payment Gateway ===
-Contributors: ByteNFT
-Tags: woocommerce, payment gateway, fiat, ByteNFT
+=== Voucher Payment Gateway ===
+Contributors: Voucher
+Tags: woocommerce, payment gateway, fiat, Voucher
 Requires at least: 5.0
 Tested up to: 7.1
-Stable tag: 1.0.21
+Stable tag: 1.0.22
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
-The ByteNFT Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fiat payments to sell products on your WooCommerce store.
+The Voucher Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fiat payments to sell products on your WooCommerce store.
 
 == Description ==
 
-This plugin integrates ByteNFT Payment Gateway with WooCommerce, enabling you to accept fiat payments. 
+This plugin integrates Voucher Payment Gateway with WooCommerce, enabling you to accept fiat payments. 
 
 == Installation ==
 
@@ -26,6 +26,9 @@ This plugin integrates ByteNFT Payment Gateway with WooCommerce, enabling you to
 Visit the DFin website and log in to your account. Navigate to Developer Settings to generate or retrieve API keys.
 
 == Changelog ==
+
+= 1.0.22 =
+* Updated version number and configuration settings.
 
 = 1.0.21 =
 * Updated the checkout flow to open the payment link directly without requiring the customer confirmation popup.
@@ -48,7 +51,7 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 * Fixed an issue where the payment gateway remained visible when no eligible merchant account was available by automatically hiding the gateway.
 
 = 1.0.17 =
-* Enables merchants using multiple ByteNFT accounts to track sales separately.
+* Enables merchants using multiple Voucher accounts to track sales separately.
 * Fix FunnelKit Compatibility Issue Causing Shipping Address Override
 
 = 1.0.16 =
@@ -135,7 +138,7 @@ Visit the DFin website and log in to your account. Navigate to Developer Setting
 This update improves checkout stability by fixing invalid order handling and ensuring the payment gateway is automatically hidden when no eligible merchant account is available.
 
 = 1.0.17 =
-* Restores account-specific payment titles on checkout, allowing sales and reporting tools to distinguish transactions by ByteNFT account. Update recommended for merchants using multiple accounts.
+* Restores account-specific payment titles on checkout, allowing sales and reporting tools to distinguish transactions by Voucher account. Update recommended for merchants using multiple accounts.
 * Fix FunnelKit Compatibility Issue Causing Shipping Address Override
 
 = 1.0.16 =
@@ -195,4 +198,4 @@ Initial release.
 
 == Support ==
 
-For support, visit: [https://pay.bytenft.xyz/contact-us](https://pay.bytenft.xyz/contact-us)
+For support, visit: [https://pay.voucher.xyz/contact-us](https://pay.voucher.xyz/contact-us)

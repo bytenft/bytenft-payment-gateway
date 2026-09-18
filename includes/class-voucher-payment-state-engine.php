@@ -1,7 +1,7 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
-class BYTENFT_PAYMENT_ENGINE
+class Voucher_Payment_State_Engine
 {
     const LOCK_TTL  = 12;
     const EVENT_TTL = 86400;
@@ -22,7 +22,7 @@ class BYTENFT_PAYMENT_ENGINE
 
         self::mark_event($order_id, $event_id);
 
-        $lock_key = "bytenft_lock_{$order_id}";
+        $lock_key = "voucher_lock_{$order_id}";
         if (get_transient($lock_key)) {
             return self::safe_response($order, 'locked_skip');
         }
@@ -144,7 +144,7 @@ class BYTENFT_PAYMENT_ENGINE
             'payment_token' => $payload['payment_token'] ?? null,
         ];
 
-        $order->update_meta_data('_bytenft_timeline', $timeline);
+        $order->update_meta_data('_voucher_timeline', $timeline);
         $order->save();
     }
 
@@ -163,13 +163,13 @@ class BYTENFT_PAYMENT_ENGINE
         // stable idempotency key (VERY IMPORTANT)
         $state_lock_key = md5($order_id . '|' . $state . '|' . $payment_token);
 
-        $last_lock = $order->get_meta('_bytenft_state_lock');
+        $last_lock = $order->get_meta('_voucher_state_lock');
 
         if ($last_lock === $state_lock_key) {
             return;
         }
 
-        $order->update_meta_data('_bytenft_state_lock', $state_lock_key);
+        $order->update_meta_data('_voucher_state_lock', $state_lock_key);
 
         $wc_status = match ($state) {
             'success'    => self::get_success_wc_status(),
@@ -183,16 +183,16 @@ class BYTENFT_PAYMENT_ENGINE
 
         $order->update_status($wc_status, '');
 
-        $order->update_meta_data('_bytenft_state', $state);
-        $order->update_meta_data('_bytenft_last_event', $event_type);
-        $order->update_meta_data('_bytenft_last_event_time', current_time('mysql'));
+        $order->update_meta_data('_voucher_state', $state);
+        $order->update_meta_data('_voucher_last_event', $event_type);
+        $order->update_meta_data('_voucher_last_event_time', current_time('mysql'));
 
         if (!empty($payment_token)) {
-            $order->update_meta_data('_bytenft_pay_id', $payment_token);
+            $order->update_meta_data('_voucher_pay_id', $payment_token);
         }
 
         if ($state === 'success') {
-            $order->update_meta_data('_bytenft_payment_success', 'yes');
+            $order->update_meta_data('_voucher_payment_success', 'yes');
         }
 
         $order->save();
@@ -200,7 +200,10 @@ class BYTENFT_PAYMENT_ENGINE
 
     private static function get_timeline($order)
     {
-        $data = $order->get_meta('_bytenft_timeline', true);
+        $data = $order->get_meta('_voucher_timeline', true);
+        if (empty($data)) {
+            $data = $order->get_meta('_bytenft_timeline', true);
+        }
 
         if (empty($data)) {
             return [];
@@ -280,7 +283,7 @@ class BYTENFT_PAYMENT_ENGINE
         /**
          * FAILED NOTES
          */
-        $already_synced = (int) $order->get_meta('_bytenft_failed_note_count');
+        $already_synced = (int) ($order->get_meta('_voucher_failed_note_count') ?: $order->get_meta('_bytenft_failed_note_count'));
 
         $actual_failed_count = count($failed_events);
 
@@ -302,7 +305,7 @@ class BYTENFT_PAYMENT_ENGINE
             }
 
             $order->update_meta_data(
-                '_bytenft_failed_note_count',
+                '_voucher_failed_note_count',
                 $actual_failed_count
             );
         }
@@ -312,6 +315,7 @@ class BYTENFT_PAYMENT_ENGINE
          */
         if (
             $success_event &&
+            !$order->get_meta('_voucher_success_note_added') &&
             !$order->get_meta('_bytenft_success_note_added')
         ) {
 
@@ -324,7 +328,7 @@ class BYTENFT_PAYMENT_ENGINE
             );
 
             $order->update_meta_data(
-                '_bytenft_success_note_added',
+                '_voucher_success_note_added',
                 'yes'
             );
         }
@@ -334,6 +338,7 @@ class BYTENFT_PAYMENT_ENGINE
          */
         if (
             $cancel_event &&
+            !$order->get_meta('_voucher_cancel_note_added') &&
             !$order->get_meta('_bytenft_cancel_note_added')
         ) {
 
@@ -346,7 +351,7 @@ class BYTENFT_PAYMENT_ENGINE
             );
 
             $order->update_meta_data(
-                '_bytenft_cancel_note_added',
+                '_voucher_cancel_note_added',
                 'yes'
             );
         }
@@ -375,7 +380,7 @@ class BYTENFT_PAYMENT_ENGINE
         }
 
         return sprintf(
-            '<strong>ByteNFT Gateway</strong><br><br>
+            '<strong>Voucher Gateway</strong><br><br>
             <strong>%s</strong><br><br>
             <strong>Payment ID:</strong> %s<br>
             <strong>Updated Via:</strong> %s<br>
@@ -443,7 +448,7 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function get_state($order)
     {
-        return $order->get_meta('_bytenft_state') ?: 'pending';
+        return $order->get_meta('_voucher_state') ?: $order->get_meta('_bytenft_state') ?: 'pending';
     }
 
     /* =========================================================
@@ -451,7 +456,10 @@ class BYTENFT_PAYMENT_ENGINE
      * ========================================================= */
     private static function get_success_wc_status()
     {
-        $settings = get_option('woocommerce_bytenft_settings', []);
+        $settings = get_option('woocommerce_voucher_settings', []);
+        if (empty($settings)) {
+            $settings = get_option('woocommerce_bytenft_settings', []);
+        }
         $status = $settings['order_status'] ?? 'processing';
 
         return in_array($status, ['processing','completed'], true)
@@ -473,12 +481,12 @@ class BYTENFT_PAYMENT_ENGINE
 
     private static function is_duplicate_event($order_id, $event_id)
     {
-        return get_transient("bytenft_event_{$order_id}_{$event_id}") !== false;
+        return get_transient("voucher_event_{$order_id}_{$event_id}") !== false;
     }
 
     private static function mark_event($order_id, $event_id)
     {
-        set_transient("bytenft_event_{$order_id}_{$event_id}", 1, self::EVENT_TTL);
+        set_transient("voucher_event_{$order_id}_{$event_id}", 1, self::EVENT_TTL);
     }
 
     /* =========================================================
@@ -497,7 +505,7 @@ class BYTENFT_PAYMENT_ENGINE
     public static function resolve_final_state($order, $api_status = null)
     {
         // 1. PRIMARY: engine state (validated)
-        $state = $order->get_meta('_bytenft_state');
+        $state = self::get_state($order);
 
         if (!empty($state) && in_array($state, ['pending','processing','success','failed','cancelled','expired'], true)) {
             return $state;

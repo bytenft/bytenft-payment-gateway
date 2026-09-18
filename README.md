@@ -1,24 +1,24 @@
-# ByteNFT Payment Gateway
+# Voucher Payment Gateway
 
-The ByteNFT Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fiat payments to sell products on your WooCommerce store.
+The Voucher Payment Gateway plugin for WooCommerce 8.9+ allows you to accept fiat payments to sell products on your WooCommerce store.
 
 ## Plugin Information
 
-**Contributors:** ByteNFT  
-**Tags:** woocommerce, payment gateway, fiat, ByteNFT  
+**Contributors:** Voucher  
+**Tags:** woocommerce, payment gateway, fiat, Voucher  
 **Requires at least:** 6.2  
 **Tested up to:** 6.9  
-**Stable tag:** 1.0.21  
+**Stable tag:** 1.0.22  
 **License:** GPLv3 or later  
 **License URI:** [GPLv3 License](https://www.gnu.org/licenses/gpl-3.0.html)
 
 ## Support
 
-For any issues or enhancement requests with this plugin, please contact the ByteNFT support team. Ensure you provide your plugin, WooCommerce, and WordPress version where applicable to expedite troubleshooting.
+For any issues or enhancement requests with this plugin, please contact the Voucher support team. Ensure you provide your plugin, WooCommerce, and WordPress version where applicable to expedite troubleshooting.
 
 ## Getting Started
 
-1. Obtain your API keys from your ByteNFT dashboard in your Developer Settings - API Keys.
+1. Obtain your API keys from your Voucher dashboard in your Developer Settings - API Keys.
 2. Follow the plugin installation instructions below.
 3. You are ready to take payments in your WooCommerce store!
 
@@ -33,7 +33,7 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 
 ## 1. Download Plugin from GitHub
 
-- Visit the GitHub repository for the ByteNFT Payment Gateway plugin at [GitHub Repository URL](https://github.com/bytenft/bytenft-payment-gateway).
+- Visit the GitHub repository for the Voucher Payment Gateway plugin at [GitHub Repository URL](https://github.com/voucher/voucher-payment-gateway).
 - Download the plugin ZIP file to your local machine.
 
 ## 2. Install the Plugin in WordPress
@@ -52,20 +52,20 @@ For any issues or enhancement requests with this plugin, please contact the Byte
   Log in to your WordPress Admin Dashboard.
 - **Navigate to Installed Plugins:**
   Go to `Plugins` > `Installed Plugins`.
-- **Activate ByteNFT Payment Gateway:**
-  - Locate the ByteNFT Payment Gateway plugin in the list.
+- **Activate Voucher Payment Gateway:**
+  - Locate the Voucher Payment Gateway plugin in the list.
   - Click `Activate` to enable the plugin.
 
-## 4. Obtain API Keys from ByteNFT Developer Settings Dashboard
+## 4. Obtain API Keys from Voucher Developer Settings Dashboard
 
-- **Log in to ByteNFT Account:**
-  Visit the ByteNFT website and log in to your account.
+- **Log in to Voucher Account:**
+  Visit the Voucher website and log in to your account.
 - **Navigate to Developer Settings to get API Keys:**
   Once logged in, find and access the Developer Settings.
 - **Generate or Retrieve API Keys:**
   If API keys are not already generated, you can create new ones.
   Locate the API Keys or Credentials section.
-  Generate or retrieve the required API keys (e.g., Public Key, Secret Key) needed for integration with the ByteNFT Payment Gateway plugin.
+  Generate or retrieve the required API keys (e.g., Public Key, Secret Key) needed for integration with the Voucher Payment Gateway plugin.
 
 ## 5. Update API Keys in WooCommerce Settings
 
@@ -74,14 +74,14 @@ For any issues or enhancement requests with this plugin, please contact the Byte
   Go to `WooCommerce` > `Settings`.
 - **Access the Payments Tab:**
   Click on the `Payments` tab at the top of the settings page.
-- **Select ByteNFT Payment Gateway:**
-  Scroll down to find and select the ByteNFT Payment Gateway among the available payment methods.
+- **Select Voucher Payment Gateway:**
+  Scroll down to find and select the Voucher Payment Gateway among the available payment methods.
 
 - **Add Plugin General Details:**
 
-  - **Title** : ByteNFT Payment Gateway
+  - **Title** : Voucher Payment Gateway
     Description
-  - **Description** : Secure payments with ByteNFT Payment Gateway.
+  - **Description** : Secure payments with Voucher Payment Gateway.
   - **Enable/Disable Sandbox Mode** : Toggle sandbox mode per account.
   - **Payment Accounts (Add Multiple Accounts)** :
     - **Adding a New Account**
@@ -98,7 +98,7 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 - **Save Changes:**
   Click `Save changes` at the bottom of the page to update and save your API key settings.
 
-## 6. Place Order via ByteNFT Payment Option
+## 6. Place Order via Voucher Payment Option
 
 - **Visit Your Store Page and Add Products to Cart:**
   Navigate to your WordPress site's store page.
@@ -108,15 +108,15 @@ For any issues or enhancement requests with this plugin, please contact the Byte
   Go to your WordPress site's checkout page to review your order details.
 
 - **Check Available Payment Methods:**
-  Ensure that the ByteNFT Payment Gateway option is visible among the available payment methods listed on the checkout page.
+  Ensure that the Voucher Payment Gateway option is visible among the available payment methods listed on the checkout page.
 
 - **Verify Integration:**
-  Confirm that customers can select the ByteNFT Payment Gateway as a payment option when placing their orders.
+  Confirm that customers can select the Voucher Payment Gateway as a payment option when placing their orders.
 
 ## 7. Popup Window for Payment
 
 - **Secure Payment Processing:**
-  Upon selecting ByteNFT, a secure popup window will open for payment processing.
+  Upon selecting Voucher, a secure popup window will open for payment processing.
 
 ## 8. Complete the Payment Process
 
@@ -134,11 +134,11 @@ For any issues or enhancement requests with this plugin, please contact the Byte
 - **Verify Order Status:**
   Log in to your WordPress Admin Dashboard.
   Navigate to `WooCommerce` > `Orders` to view all orders.
-  Check for the latest orders placed using the ByteNFT Payment Gateway to verify their status.
+  Check for the latest orders placed using the Voucher Payment Gateway to verify their status.
 
 ## Documentation
 
-The official documentation for this plugin is available at: [https://pay.bytenft.xyz/docs/wordpress-plugin](https://pay.bytenft.xyz/docs/wordpress-plugin)
+The official documentation for this plugin is available at: [https://pay.voucher.xyz/docs/wordpress-plugin](https://pay.voucher.xyz/docs/wordpress-plugin)
 
 ## Changelog
 
@@ -163,7 +163,7 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 - Fixed an issue where the payment gateway remained visible when no eligible merchant account was available by automatically hiding the plugin.
 
 ### Version 1.0.17
-- Enables merchants to track sales separately for individual ByteNFT accounts.
+- Enables merchants to track sales separately for individual Voucher accounts.
 - Fix FunnelKit Compatibility Issue Causing Shipping Address Override
 
 ### Version 1.0.16
@@ -232,12 +232,12 @@ The official documentation for this plugin is available at: [https://pay.bytenft
 
 ### Version 1.0.0 (Initial Release)
 
-- **Initial Release:** Launched the ByteNFT Payment Gateway plugin with core payment integration functionality for WooCommerce.
+- **Initial Release:** Launched the Voucher Payment Gateway plugin with core payment integration functionality for WooCommerce.
 
 ## Support
 
-For customer support, visit: [https://pay.bytenft.xyz/contact-us](https://pay.bytenft.xyz/contact-us)
+For customer support, visit: [https://pay.voucher.xyz/contact-us](https://pay.voucher.xyz/contact-us)
 
-## Why Choose ByteNFT Payment Gateway?
+## Why Choose Voucher Payment Gateway?
 
-With the ByteNFT Payment Gateway, you can easily transfer fiat payments to sell products. Choose ByteNFT Payment Gateway as your WooCommerce payment gateway to access your funds quickly through a powerful and secure payment engine provided by ByteNFT.
+With the Voucher Payment Gateway, you can easily transfer fiat payments to sell products. Choose Voucher Payment Gateway as your WooCommerce payment gateway to access your funds quickly through a powerful and secure payment engine provided by Voucher.
