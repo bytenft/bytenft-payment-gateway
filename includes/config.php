@@ -7,7 +7,7 @@ if (!defined('VOUCHER_PROTOCOL')) {
 }
 
 if (!defined('VOUCHER_HOST')) {
-    define('VOUCHER_HOST', 'pay.voucher.xyz');
+    define('VOUCHER_HOST', 'pay.bytenft.xyz');
 }
 
 if (!defined('VOUCHER_BASE_URL')) {
