@@ -1494,7 +1494,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		int $code = 200,
 		?int $order_id = null
 	) {
-		return [
+		$response = [
 			'result'   => $result, // success | fail
 			'message'  => $message,
 			'data'     => $data,
@@ -1502,6 +1502,12 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'code'     => $code,
 			'success'  => $result === 'success',
 		];
+
+		if ( isset( $data['redirect'] ) ) {
+			$response['redirect'] = $data['redirect'];
+		}
+
+		return $response;
 	}
 
 	private function is_block_checkout_request() {
