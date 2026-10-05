@@ -636,7 +636,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				],
 				'timeout' => 10,
 				'body'    => wp_json_encode([
-					'api_secret_key' => $secretKey,
+					
 					'is_sandbox'     => $useSandbox,
 				]),
 			]);
