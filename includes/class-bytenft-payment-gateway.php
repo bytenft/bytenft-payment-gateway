@@ -1975,13 +1975,22 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 		$group_id       = get_option('bytenft_group_id');
 		$cache_base     = 'bytenft_daily_limit_' . md5($public_key . $amount);
 
+		$safe_accounts = array_map(function ($account) {
+			unset(
+				$account['live_secret_key'],
+				$account['sandbox_secret_key'],
+				$account['secret_key']
+			);
+
+			return $account;
+		}, is_array($accounts) ? $accounts : []);
+
 		$plugin_logs_data = [
-		    'valid_accounts'         => $accounts,
+			'valid_accounts'         => $safe_accounts,
 			'gateway_loaded'         => $gateway_loaded,
 			'plugin_status'          => $gateway_loaded,
 			'plugin_version'         => $plugin_version,
 			'api_public_key'         => $public_key,
-			'api_secret_key'         => $secret_key,
 			'is_sandbox'             => $this->sandbox,
 			'group_id'               => $group_id ? $group_id : $this->bytenft_get_group_id(),
 			'domain_name'            => parse_url(home_url(), PHP_URL_HOST),
