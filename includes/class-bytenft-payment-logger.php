@@ -15,6 +15,27 @@ class ByteNFT_Payment_Gateway_Logger {
 		return wc_get_logger();
 	}
 
+	private static function mask_secrets($data) {
+		if (is_string($data)) {
+			// Mask if it looks like a JSON string that contains secret keys? No, better just handle arrays.
+			return $data;
+		}
+
+		if (is_array($data) || is_object($data)) {
+			$array_data = (array) $data;
+			foreach ($array_data as $key => $value) {
+				if (is_string($key) && preg_match('/secret_key|api_secret/i', $key)) {
+					$array_data[$key] = '*** MASKED ***';
+				} else if (is_array($value) || is_object($value)) {
+					$array_data[$key] = self::mask_secrets($value);
+				}
+			}
+			return is_object($data) ? (object) $array_data : $array_data;
+		}
+
+		return $data;
+	}
+
 	private static function format_context($context)
 	{
 		$entry = [
@@ -25,7 +46,9 @@ class ByteNFT_Payment_Gateway_Logger {
 			return $entry;
 		}
 
-		foreach ($context as $key => $value) {
+		$masked_context = self::mask_secrets($context);
+
+		foreach ($masked_context as $key => $value) {
 			$entry[$key] = is_scalar($value)
 				? $value
 				: wp_json_encode($value);
