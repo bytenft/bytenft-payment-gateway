@@ -1166,7 +1166,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					[
 						'account_title' => $account['title'] ?? null,
 						'public_key'    => $public_key,
-						'data'          => $data,
 					]
 				);
 
