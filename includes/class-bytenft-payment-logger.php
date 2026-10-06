@@ -15,6 +15,35 @@ class ByteNFT_Payment_Gateway_Logger {
 		return wc_get_logger();
 	}
 
+	private static function sanitize_context($data)
+	{
+		if (!is_array($data)) {
+			return $data;
+		}
+
+		$clean = [];
+		foreach ($data as $key => $value) {
+			$normalized_key = strtolower(str_replace(['_', '-'], '', (string) $key));
+			if (in_array($normalized_key, [
+				'publickey',
+				'livepublickey',
+				'sandboxpublickey',
+				'apipublickey',
+				'secretkey',
+				'livesecretkey',
+				'sandboxsecretkey',
+				'apisecretkey',
+				'apisecret',
+			], true)) {
+				continue;
+			}
+
+			$clean[$key] = is_array($value) ? self::sanitize_context($value) : $value;
+		}
+
+		return $clean;
+	}
+
 	private static function format_context($context)
 	{
 		$entry = [
@@ -25,7 +54,9 @@ class ByteNFT_Payment_Gateway_Logger {
 			return $entry;
 		}
 
-		foreach ($context as $key => $value) {
+		$sanitized = self::sanitize_context($context);
+
+		foreach ($sanitized as $key => $value) {
 			$entry[$key] = is_scalar($value)
 				? $value
 				: wp_json_encode($value);
