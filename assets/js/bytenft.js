@@ -15,6 +15,9 @@
             submitting: false,
             popup: null,
             popupInterval: null,
+            pollTimer: null,      // NEW
+            pollSession: 0,       // NEW
+            nonce: null,          // NEW
             orderId: null,
             button: null,
             buttonText: ''
@@ -326,6 +329,11 @@
 
                 self.state.orderId = orderId;
 
+                const freshNonce = response?.nonce || response?.data?.nonce;
+                if (freshNonce) {
+                    self.state.nonce = freshNonce;
+                }
+
                 // =====================================================
                 // ❌ FAILURE (FIXED - ERROR DISPLAY STABLE)
                 // =====================================================
@@ -573,116 +581,175 @@
             this.state.popup = null;
         },
 
+        getNonce: function () {
+            return this.state.nonce || bytenft_params.bytenft_nonce;
+        },
+
+        stopPolling: function () {
+            clearInterval(this.state.popupInterval);
+            clearTimeout(this.state.pollTimer);
+            this.state.popupInterval = null;
+            this.state.pollTimer = null;
+            this.state.pollSession++;
+        },
+
         trackPopupClose: function () {
 
             const self = this;
 
-            let redirected = false;
+            self.stopPolling(); // only ONE poller ever
 
-            clearInterval(self.state.popupInterval);
+            const session = self.state.pollSession;
+            const startedAt = Date.now();
 
-            self.state.popupInterval = setInterval(function () {
+            const POLL_MAX_MS = 30 * 60 * 1000; // stop after 30 min
+            const BACKOFF_MAX = 30000;
 
-                // Prevent duplicate execution
-                if (redirected) {
+            let inFlight = false;      // never overlap two requests
+            let failures = 0;          // consecutive failed polls
+            let nonceRetried = false;  // refresh + retry nonce once
+
+            const alive = () => session === self.state.pollSession;
+
+            const baseDelay = function () {
+                const age = Date.now() - startedAt;
+                if (age < 120000) return 1500;
+                if (age < 600000) return 3000;
+                return 5000;
+            };
+
+            const schedule = function (delay) {
+                clearTimeout(self.state.pollTimer);
+                self.state.pollTimer = setTimeout(poll, delay);
+            };
+
+            const nextDelay = function () {
+                return Math.min(baseDelay() * Math.pow(2, failures), BACKOFF_MAX);
+            };
+
+            const finishWithError = function (message) {
+                self.stopPolling();
+                self.cleanupPopup();
+                self.showCheckoutError(message);
+                self.reset();
+            };
+
+            const poll = function () {
+
+                if (!alive() || inFlight) {
                     return;
                 }
 
-                const popupExists =
-                    self.state.popup &&
-                    !self.state.popup.closed;
+                if (Date.now() - startedAt > POLL_MAX_MS) {
+                    self.stopPolling();
+                    self.reset();
+                    return;
+                }
 
-                // =========================================
-                // SAFARI + CHROME PAYMENT CHECK
-                // =========================================
-                $.post(
-                    bytenft_params.ajax_url,
-                    {
+                const popupExists = self.state.popup && !self.state.popup.closed;
+
+                inFlight = true;
+
+                $.ajax({
+                    type: 'POST',
+                    url: bytenft_params.ajax_url,
+                    dataType: 'json',
+                    data: {
                         action: 'bytenft_popup_closed_event',
                         order_id: self.state.orderId,
-                        security: bytenft_params.bytenft_nonce
-                    },
-                    function (response) {
+                        security: self.getNonce()
+                    }
+                })
+                .done(function (response) {
 
-                        if (redirected) {
+                    inFlight = false;
+                    if (!alive()) return;
+
+                    console.log('[Bytenft] popup status response', response);
+
+                    // Stale nonce: take the fresh one, retry ONCE
+                    if (response?.data?.nonce_invalid) {
+
+                        if (response.data.nonce) {
+                            self.state.nonce = response.data.nonce;
+                        }
+
+                        if (!nonceRetried) {
+                            nonceRetried = true;
+                            schedule(300);
                             return;
                         }
 
-                        console.log(
-                            '[Bytenft] popup status response',
-                            response
-                        );
+                        failures++;
 
-                        const paymentSuccess =
-                            response?.success === true ||
-                            response?.data?.payment_status === 'success' ||
-                            response?.data?.payment_status === 'paid';
-
-                        const redirectUrl =
-                            response?.data?.redirect ||
-                            response?.redirect;
-
-                        // =========================================
-                        // PAYMENT SUCCESS
-                        // =========================================
-                        if (paymentSuccess && redirectUrl) {
-
-                            redirected = true;
-
-                            clearInterval(self.state.popupInterval);
-
-                            try {
-
-                                if (
-                                    self.state.popup &&
-                                    !self.state.popup.closed
-                                ) {
-                                    self.state.popup.close();
-                                }
-
-                            } catch (e) {
-                                console.log(
-                                    '[Bytenft] popup close blocked'
-                                );
-                            }
-
-                            self.state.popup = null;
-
-                            console.log(
-                                '[Bytenft] redirect success page'
-                            );
-
-                            window.location.replace(redirectUrl);
-
-                            return;
-                        }
-
-                        // =========================================
-                        // USER MANUALLY CLOSED POPUP
-                        // =========================================
                         if (!popupExists) {
-
-                            redirected = true;
-
-                            clearInterval(self.state.popupInterval);
-
-                            const failedMessage =
-                                response?.message ||
-                                response?.data?.message ||
-                                'Your payment could not be completed. Please try again.';
-
-                            self.cleanupPopup();
-
-                            self.showCheckoutError(failedMessage);
-
-                            self.reset();
+                            finishWithError('Your payment could not be completed. Please try again.');
+                            return;
                         }
 
-                    },
-                    'json'
-                );
+                        schedule(nextDelay());
+                        return;
+                    }
 
-            }, 1500);
+                    nonceRetried = false;
+                    failures = 0;
+
+                    if (response?.data?.nonce) {
+                        self.state.nonce = response.data.nonce;
+                    }
+
+                    const paymentSuccess =
+                        response?.success === true ||
+                        response?.data?.payment_status === 'success' ||
+                        response?.data?.payment_status === 'paid';
+
+                    const redirectUrl = response?.data?.redirect || response?.redirect;
+
+                    if (paymentSuccess && redirectUrl) {
+
+                        self.stopPolling();
+
+                        try {
+                            if (self.state.popup && !self.state.popup.closed) {
+                                self.state.popup.close();
+                            }
+                        } catch (e) {
+                            console.log('[Bytenft] popup close blocked');
+                        }
+
+                        self.state.popup = null;
+                        window.location.replace(redirectUrl);
+                        return;
+                    }
+
+                    if (!popupExists) {
+                        finishWithError(
+                            response?.message ||
+                            response?.data?.message ||
+                            'Your payment could not be completed. Please try again.'
+                        );
+                        return;
+                    }
+
+                    schedule(baseDelay());
+                })
+                .fail(function () {
+
+                    inFlight = false;
+                    if (!alive()) return;
+
+                    failures++;
+
+                    if (!popupExists && failures >= 3) {
+                        finishWithError('Your payment could not be completed. Please try again.');
+                        return;
+                    }
+
+                    schedule(nextDelay());
+                });
+            };
+
+            schedule(baseDelay());
         },
 
         /* =========================================================

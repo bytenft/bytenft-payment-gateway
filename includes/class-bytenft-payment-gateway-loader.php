@@ -52,6 +52,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('wp_ajax_bytenft_popup_closed_event', array($this, 'handle_popup_close'));
 		add_action('wp_ajax_nopriv_bytenft_popup_closed_event', array($this, 'handle_popup_close'));
 
+		add_filter('woocommerce_payment_successful_result', function ($result, $order_id) {
+			$order = wc_get_order($order_id);
+			if (is_array($result) && $order && $order->get_payment_method() === 'bytenft') {
+				$result['nonce'] = wp_create_nonce('bytenft_payment');
+			}
+			return $result;
+		}, 10, 2);
+
 		add_action('wp_ajax_bytenft_manual_sync', [$this, 'bytenft_manual_sync_callback']);
 		add_filter('cron_schedules', [$this, 'bytenft_add_cron_interval']);
 		add_action('bytenft_cron_event', [$this, 'handle_cron_event']);
@@ -194,6 +202,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$status = ['result' => 'fail','error' => 'Invalid order.'];
 		}
 		
+		if (is_array($status)) {
+			$status['nonce'] = wp_create_nonce('bytenft_payment');
+		}
+
 		wp_send_json($status);
 		die;
 	}
@@ -693,7 +705,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			);
 
 			wp_send_json_error([
-				'reload' => true
+				'reload'        => true,
+				'nonce_invalid' => true,
+				'nonce'         => wp_create_nonce('bytenft_payment'),
 			]);
 
 			wp_die();
@@ -714,6 +728,15 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'reload' => true
 			]);
 
+			wp_die();
+		}
+
+		// Duplicate-poll guard: same order polled within 2s -> answer from cache
+		$cache_key = 'bytenft_pc_' . (int) $order_id;
+		$cached    = get_transient($cache_key);
+		if (is_array($cached)) {
+			$cached['data']['nonce'] = wp_create_nonce('bytenft_payment');
+			wp_send_json($cached);
 			wp_die();
 		}
 
@@ -874,7 +897,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		// RESPONSE
 		// -------------------------
-		wp_send_json([
+		$payload = [
 			'success' => $is_success,
 			'message' => $message,
 			'data' => [
@@ -884,7 +907,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'redirect'       => $redirect,
 				'order_id'       => $order_id,
 			]
-		]);
+		];
+
+		set_transient($cache_key, $payload, 2);
+
+		// keep browser nonce fresh on every poll
+		$payload['data']['nonce'] = wp_create_nonce('bytenft_payment');
+
+		wp_send_json($payload);
 
 		wp_die();
 	}
