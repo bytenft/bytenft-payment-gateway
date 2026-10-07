@@ -625,7 +625,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 
 			ByteNFT_Payment_Gateway_Logger::info("Checking merchant status for account '{$account['title']}'", [
 				'useSandbox' => $useSandbox,
-				'publicKey'  => $publicKey,
 			]);
 
 			$checkStatusUrl = $this->get_api_url('/api/check-merchant-status');
@@ -1149,7 +1148,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$log_prefix . ' Account skipped (already used)',
 					[
 						'account_title' => $account['title'] ?? null,
-						'public_key'    => $public_key,
 					]
 				);
 
@@ -1165,8 +1163,7 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 					$log_prefix . ' Account preparation failed',
 					[
 						'account_title' => $account['title'] ?? null,
-						'public_key'    => $public_key,
-						'data'          => $data,
+						'error'         => $data['error'] ?? ($data['message'] ?? null),
 					]
 				);
 
@@ -1239,7 +1236,6 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 				$log_prefix . ' Account selected',
 				[
 					'account_title' => $account['title'] ?? null,
-					'public_key'    => $public_key,
 				]
 			);
 
@@ -2178,17 +2174,17 @@ class BYTENFT_PAYMENT_GATEWAY extends WC_Payment_Gateway_CC
 			'sslverify' => true,
 		]);
 		if (is_wp_error($response)) {
-			wc_get_logger()->error('Failed to send switch email: ' . $response->get_error_message(), ['source' => 'bytenft-payment-gateway']);
+			ByteNFT_Payment_Gateway_Logger::error('Failed to send switch email: ' . $response->get_error_message(), ['source' => 'bytenft-payment-gateway']);
 			return false;
 		}
 		$response_code = wp_remote_retrieve_response_code($response);
 		$response_data = json_decode(wp_remote_retrieve_body($response), true);
 		if ($response_code == 401 || $response_code == 403 || (!empty($response_data['error']) && strpos($response_data['error'], 'invalid credentials') !== false)) {
-			wc_get_logger()->error('Email Sending Failed: Authentication failed', ['source' => 'bytenft-payment-gateway']);
+			ByteNFT_Payment_Gateway_Logger::error('Email Sending Failed: Authentication failed', ['source' => 'bytenft-payment-gateway']);
 			return false;
 		}
 		if (!empty($response_data['error'])) {
-			wc_get_logger()->error('byteNFT API Error: ' . json_encode($response_data), ['source' => 'bytenft-payment-gateway']);
+			ByteNFT_Payment_Gateway_Logger::error('byteNFT API Error: ' . json_encode($response_data), ['source' => 'bytenft-payment-gateway']);
 			return false;
 		}
 		return true;
