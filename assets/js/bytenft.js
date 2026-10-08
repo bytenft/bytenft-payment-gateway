@@ -15,8 +15,10 @@
             submitting: false,
             popup: null,
             popupInterval: null,
+            pollTimer: null,      // NEW
+            pollSession: 0,       // NEW
+            nonce: null,          // NEW
             orderId: null,
-            orderKey: null,
             button: null,
             buttonText: ''
         },
@@ -316,16 +318,6 @@
                     response.data?.order_id ||
                     null;
 
-                const orderKey =
-                    response.order_key ||
-                    response.data?.order_key ||
-                    null;
-
-                const refreshedNonce =
-                    response.bytenft_nonce ||
-                    response.data?.bytenft_nonce ||
-                    null;
-
                 const errorMessage =
                     response?.message ||
                     response?.messages ||
@@ -336,10 +328,10 @@
                     'Your payment could not be completed. Please try again.';
 
                 self.state.orderId = orderId;
-                self.state.orderKey = orderKey;
 
-                if (refreshedNonce && typeof bytenft_params !== 'undefined') {
-                    bytenft_params.bytenft_nonce = refreshedNonce;
+                const freshNonce = response?.nonce || response?.data?.nonce;
+                if (freshNonce) {
+                    self.state.nonce = freshNonce;
                 }
 
                 // =====================================================
@@ -589,150 +581,175 @@
             this.state.popup = null;
         },
 
+        getNonce: function () {
+            return this.state.nonce || bytenft_params.bytenft_nonce;
+        },
+
+        stopPolling: function () {
+            clearInterval(this.state.popupInterval);
+            clearTimeout(this.state.pollTimer);
+            this.state.popupInterval = null;
+            this.state.pollTimer = null;
+            this.state.pollSession++;
+        },
+
         trackPopupClose: function () {
 
             const self = this;
 
-            let redirected = false;
-            let pollAttempts = 0;
-            const maxAttempts = 120; // 3 minutes maximum polling (120 * 1.5s)
+            self.stopPolling(); // only ONE poller ever
 
-            clearInterval(self.state.popupInterval);
+            const session = self.state.pollSession;
+            const startedAt = Date.now();
 
-            self.state.popupInterval = setInterval(function () {
+            const POLL_MAX_MS = 30 * 60 * 1000; // stop after 30 min
+            const BACKOFF_MAX = 30000;
 
-                // Prevent duplicate execution
-                if (redirected) {
-                    clearInterval(self.state.popupInterval);
+            let inFlight = false;      // never overlap two requests
+            let failures = 0;          // consecutive failed polls
+            let nonceRetried = false;  // refresh + retry nonce once
+
+            const alive = () => session === self.state.pollSession;
+
+            const baseDelay = function () {
+                const age = Date.now() - startedAt;
+                if (age < 120000) return 1500;
+                if (age < 600000) return 3000;
+                return 5000;
+            };
+
+            const schedule = function (delay) {
+                clearTimeout(self.state.pollTimer);
+                self.state.pollTimer = setTimeout(poll, delay);
+            };
+
+            const nextDelay = function () {
+                return Math.min(baseDelay() * Math.pow(2, failures), BACKOFF_MAX);
+            };
+
+            const finishWithError = function (message) {
+                self.stopPolling();
+                self.cleanupPopup();
+                self.showCheckoutError(message);
+                self.reset();
+            };
+
+            const poll = function () {
+
+                if (!alive() || inFlight) {
                     return;
                 }
 
-                pollAttempts++;
-                if (pollAttempts > maxAttempts) {
-                    console.log('[Bytenft] Max polling attempts reached.');
-                    clearInterval(self.state.popupInterval);
+                if (Date.now() - startedAt > POLL_MAX_MS) {
+                    self.stopPolling();
+                    self.reset();
                     return;
                 }
 
-                const popupExists =
-                    self.state.popup &&
-                    !self.state.popup.closed;
+                const popupExists = self.state.popup && !self.state.popup.closed;
 
-                // =========================================
-                // SAFARI + CHROME PAYMENT CHECK
-                // =========================================
-                $.post(
-                    bytenft_params.ajax_url,
-                    {
+                inFlight = true;
+
+                $.ajax({
+                    type: 'POST',
+                    url: bytenft_params.ajax_url,
+                    dataType: 'json',
+                    data: {
                         action: 'bytenft_popup_closed_event',
                         order_id: self.state.orderId,
-                        order_key: self.state.orderKey,
-                        security: bytenft_params.bytenft_nonce
-                    },
-                    function (response) {
-
-                        if (redirected) {
-                            clearInterval(self.state.popupInterval);
-                            return;
-                        }
-
-                        console.log(
-                            '[Bytenft] popup status response',
-                            response
-                        );
-
-                        // Stop polling if server explicitly indicates stop_polling (e.g. fatal auth / order not found)
-                        if (response?.data?.stop_polling || response?.stop_polling) {
-                            clearInterval(self.state.popupInterval);
-                            if (!popupExists) {
-                                redirected = true;
-                                self.cleanupPopup();
-                                self.showCheckoutError(
-                                    response?.message ||
-                                    response?.data?.message ||
-                                    'Payment verification failed. Please try again.'
-                                );
-                                self.reset();
-                            }
-                            return;
-                        }
-
-                        const paymentSuccess =
-                            response?.success === true ||
-                            response?.data?.payment_status === 'success' ||
-                            response?.data?.payment_status === 'paid';
-
-                        const redirectUrl =
-                            response?.data?.redirect ||
-                            response?.redirect;
-
-                        // =========================================
-                        // PAYMENT SUCCESS
-                        // =========================================
-                        if (paymentSuccess && redirectUrl) {
-
-                            redirected = true;
-
-                            clearInterval(self.state.popupInterval);
-
-                            try {
-
-                                if (
-                                    self.state.popup &&
-                                    !self.state.popup.closed
-                                ) {
-                                    self.state.popup.close();
-                                }
-
-                            } catch (e) {
-                                console.log(
-                                    '[Bytenft] popup close blocked'
-                                );
-                            }
-
-                            self.state.popup = null;
-
-                            console.log(
-                                '[Bytenft] redirect success page'
-                            );
-
-                            window.location.replace(redirectUrl);
-
-                            return;
-                        }
-
-                        // =========================================
-                        // USER MANUALLY CLOSED POPUP
-                        // =========================================
-                        if (!popupExists) {
-
-                            redirected = true;
-
-                            clearInterval(self.state.popupInterval);
-
-                            const failedMessage =
-                                response?.message ||
-                                response?.data?.message ||
-                                'Your payment could not be completed. Please try again.';
-
-                            self.cleanupPopup();
-
-                            self.showCheckoutError(failedMessage);
-
-                            self.reset();
-                        }
-
-                    },
-                    'json'
-                ).fail(function (xhr, status, error) {
-                    console.log('[Bytenft] popup status check network error', status, error);
-                    // Stop polling if forbidden or bad request
-                    if (xhr.status === 403 || xhr.status === 400) {
-                        clearInterval(self.state.popupInterval);
+                        security: self.getNonce()
                     }
-                });
+                })
+                .done(function (response) {
 
-            }, 1500);
+                    inFlight = false;
+                    if (!alive()) return;
+
+                    console.log('[Bytenft] popup status response', response);
+
+                    // Stale nonce: take the fresh one, retry ONCE
+                    if (response?.data?.nonce_invalid) {
+
+                        if (response.data.nonce) {
+                            self.state.nonce = response.data.nonce;
+                        }
+
+                        if (!nonceRetried) {
+                            nonceRetried = true;
+                            schedule(300);
+                            return;
+                        }
+
+                        failures++;
+
+                        if (!popupExists) {
+                            finishWithError('Your payment could not be completed. Please try again.');
+                            return;
+                        }
+
+                        schedule(nextDelay());
+                        return;
+                    }
+
+                    nonceRetried = false;
+                    failures = 0;
+
+                    if (response?.data?.nonce) {
+                        self.state.nonce = response.data.nonce;
+                    }
+
+                    const paymentSuccess =
+                        response?.success === true ||
+                        response?.data?.payment_status === 'success' ||
+                        response?.data?.payment_status === 'paid';
+
+                    const redirectUrl = response?.data?.redirect || response?.redirect;
+
+                    if (paymentSuccess && redirectUrl) {
+
+                        self.stopPolling();
+
+                        try {
+                            if (self.state.popup && !self.state.popup.closed) {
+                                self.state.popup.close();
+                            }
+                        } catch (e) {
+                            console.log('[Bytenft] popup close blocked');
+                        }
+
+                        self.state.popup = null;
+                        window.location.replace(redirectUrl);
+                        return;
+                    }
+
+                    if (!popupExists) {
+                        finishWithError(
+                            response?.message ||
+                            response?.data?.message ||
+                            'Your payment could not be completed. Please try again.'
+                        );
+                        return;
+                    }
+
+                    schedule(baseDelay());
+                })
+                .fail(function () {
+
+                    inFlight = false;
+                    if (!alive()) return;
+
+                    failures++;
+
+                    if (!popupExists && failures >= 3) {
+                        finishWithError('Your payment could not be completed. Please try again.');
+                        return;
+                    }
+
+                    schedule(nextDelay());
+                });
+            };
+
+            schedule(baseDelay());
         },
 
         /* =========================================================

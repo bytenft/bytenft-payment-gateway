@@ -52,6 +52,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('wp_ajax_bytenft_popup_closed_event', array($this, 'handle_popup_close'));
 		add_action('wp_ajax_nopriv_bytenft_popup_closed_event', array($this, 'handle_popup_close'));
 
+		add_filter('woocommerce_payment_successful_result', function ($result, $order_id) {
+			$order = wc_get_order($order_id);
+			if (is_array($result) && $order && $order->get_payment_method() === 'bytenft') {
+				$result['nonce'] = wp_create_nonce('bytenft_payment');
+			}
+			return $result;
+		}, 10, 2);
+
 		add_action('wp_ajax_bytenft_manual_sync', [$this, 'bytenft_manual_sync_callback']);
 		add_filter('cron_schedules', [$this, 'bytenft_add_cron_interval']);
 		add_action('bytenft_cron_event', [$this, 'handle_cron_event']);
@@ -59,18 +67,18 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('wp_ajax_nopriv_bytenft_block_gateway_process', [$this,'handle_bytenft_gateway_ajax']); 
 		add_action('wp', function () {
 		    // Allow notices ONLY on checkout page
-		    if ( function_exists('is_checkout') && ! is_checkout() ) {
+		    if ( ! is_checkout() ) {
 			remove_action(
 			    'woocommerce_before_checkout_form',
 			    'woocommerce_output_all_notices',
 			    10
 			);
 			// Clear queued notices (errors, success, info)
-			if ( function_exists( 'wc_clear_notices' ) && isset( WC()->session ) ) {
+			if ( function_exists( 'wc_clear_notices' ) ) {
 				wc_clear_notices();
 			}
 		    }
-			
+
 		});
 
 		add_action('woocommerce_checkout_create_order', function($order){
@@ -194,6 +202,10 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			$status = ['result' => 'fail','error' => 'Invalid order.'];
 		}
 		
+		if (is_array($status)) {
+			$status['nonce'] = wp_create_nonce('bytenft_payment');
+		}
+
 		wp_send_json($status);
 		die;
 	}
@@ -399,7 +411,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	
 	public function register_blocks_assets() {
 		
-		if ( function_exists('is_checkout') && is_checkout() ) {
+		if (is_checkout()) {
 			$image_url = plugin_dir_url( dirname( __FILE__ ) ) . 'assets/images/loader.gif';
 			wp_register_script(
 				'bytenft-blocks-js',
@@ -511,10 +523,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			], 404);
 		}
 
-		$order_key = isset($_POST['order_key'])
-			? sanitize_text_field(wp_unslash($_POST['order_key']))
-			: '';
-
 		$security = isset($_POST['security'])
 			? sanitize_text_field(wp_unslash($_POST['security']))
 			: '';
@@ -522,20 +530,16 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		$log_prefix = "[Order #{$order_id}]";
 
 		// -------------------------
-		// SECURITY CHECK (NONCE OR ORDER KEY)
+		// NONCE CHECK
 		// -------------------------
-		$is_nonce_valid = !empty($security) && wp_verify_nonce($security, 'bytenft_payment');
-		$is_key_valid   = !empty($order_key) && hash_equals($order->get_order_key(), $order_key);
-
-		if (!$is_nonce_valid && !$is_key_valid) {
+		if (empty($security) || !wp_verify_nonce($security, 'bytenft_payment')) {
 
 			ByteNFT_Payment_Gateway_Logger::info(
-				$log_prefix . ' CheckStatus | Invalid security token / order key'
+				$log_prefix . ' CheckStatus | Invalid nonce'
 			);
 
 			wp_send_json_error([
-				'message'      => 'Security check failed.',
-				'stop_polling' => true
+				'message' => 'Nonce verification failed.'
 			]);
 
 			wp_die();
@@ -545,17 +549,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// API CALL
 		// -------------------------
 		$payment_token = $order->get_meta('_bytenft_pay_id');
-
-		$public_key = $order->get_meta('_bytenft_public_key');
-		if (empty($public_key)) {
-			$settings = get_option('woocommerce_bytenft_settings', []);
-			$accounts = isset($settings['accounts']) ? maybe_unserialize($settings['accounts']) : [];
-			if (!empty($accounts) && is_array($accounts)) {
-				$first_account = reset($accounts);
-				$is_sandbox = ($settings['sandbox'] ?? 'no') === 'yes';
-				$public_key = $is_sandbox ? ($first_account['sandbox_public_key'] ?? '') : ($first_account['live_public_key'] ?? '');
-			}
-		}
 
 		$response = wp_remote_post(
 			$this->get_api_url('/api/update-txn-status'),
@@ -567,7 +560,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				]),
 				'headers' => [
 					'Content-Type'  => 'application/json',
-					'Authorization' => 'Bearer ' . sanitize_text_field($public_key),
+					'Authorization' => 'Bearer ' . $security,
 				],
 				'timeout' => 15,
 			]
@@ -696,15 +689,29 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			? sanitize_text_field(wp_unslash($_POST['order_id']))
 			: 'unknown';
 
-		$order_key = isset($_POST['order_key'])
-			? sanitize_text_field(wp_unslash($_POST['order_key']))
-			: '';
-
 		$security = isset($_POST['security'])
 			? sanitize_text_field(wp_unslash($_POST['security']))
 			: '';
 
 		$log_prefix = "[Order #{$order_id}]";
+
+		// -------------------------
+		// NONCE CHECK
+		// -------------------------
+		if (empty($security) || !wp_verify_nonce($security, 'bytenft_payment')) {
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' PopupClose | Invalid nonce'
+			);
+
+			wp_send_json_error([
+				'reload'        => true,
+				'nonce_invalid' => true,
+				'nonce'         => wp_create_nonce('bytenft_payment'),
+			]);
+
+			wp_die();
+		}
 
 		// -------------------------
 		// ORDER CHECK
@@ -718,32 +725,22 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			);
 
 			wp_send_json_error([
-				'reload'       => false,
-				'stop_polling' => true,
-				'message'      => 'Order not found.'
+				'reload'        => true,
+				'nonce_invalid' => true,
+				'nonce'         => wp_create_nonce('bytenft_payment'),
 			]);
 
 			wp_die();
 		}
 
 		// -------------------------
-		// SECURITY CHECK (NONCE OR ORDER KEY)
+		// Duplicate-poll guard: same order polled within 2s -> answer from cache
 		// -------------------------
-		$is_nonce_valid = !empty($security) && wp_verify_nonce($security, 'bytenft_payment');
-		$is_key_valid   = !empty($order_key) && hash_equals($order->get_order_key(), $order_key);
-
-		if (!$is_nonce_valid && !$is_key_valid) {
-
-			ByteNFT_Payment_Gateway_Logger::info(
-				$log_prefix . ' PopupClose | Invalid security token / order key'
-			);
-
-			wp_send_json_error([
-				'reload'       => false,
-				'stop_polling' => true,
-				'message'      => 'Security verification failed.'
-			]);
-
+		$cache_key = 'bytenft_pc_' . (int) $order_id;
+		$cached    = get_transient($cache_key);
+		if (is_array($cached)) {
+			$cached['data']['nonce'] = wp_create_nonce('bytenft_payment');
+			wp_send_json($cached);
 			wp_die();
 		}
 
@@ -751,17 +748,6 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// API CALL
 		// -------------------------
 		$payment_token = $order->get_meta('_bytenft_pay_id');
-
-		$public_key = $order->get_meta('_bytenft_public_key');
-		if (empty($public_key)) {
-			$settings = get_option('woocommerce_bytenft_settings', []);
-			$accounts = isset($settings['accounts']) ? maybe_unserialize($settings['accounts']) : [];
-			if (!empty($accounts) && is_array($accounts)) {
-				$first_account = reset($accounts);
-				$is_sandbox = ($settings['sandbox'] ?? 'no') === 'yes';
-				$public_key = $is_sandbox ? ($first_account['sandbox_public_key'] ?? '') : ($first_account['live_public_key'] ?? '');
-			}
-		}
 
 		$response = wp_remote_post(
 			$this->get_api_url('/api/update-txn-status'),
@@ -773,7 +759,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				]),
 				'headers' => [
 					'Content-Type'  => 'application/json',
-					'Authorization' => 'Bearer ' . sanitize_text_field($public_key),
+					'Authorization' => 'Bearer ' . $security,
 				],
 				'timeout' => 15,
 			]
@@ -786,7 +772,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			);
 
 			wp_send_json_error([
-				'reload' => true
+				'reload'        => true,
+				'nonce_invalid' => true,
+				'nonce'         => wp_create_nonce('bytenft_payment'),
 			]);
 
 			wp_die();
@@ -804,7 +792,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			);
 
 			wp_send_json_error([
-				'reload' => true
+				'reload'        => true,
+				'nonce_invalid' => true,
+				'nonce'         => wp_create_nonce('bytenft_payment'),
 			]);
 
 			wp_die();
@@ -915,7 +905,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		// -------------------------
 		// RESPONSE
 		// -------------------------
-		wp_send_json([
+		$payload = [
 			'success' => $is_success,
 			'message' => $message,
 			'data' => [
@@ -925,7 +915,14 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'redirect'       => $redirect,
 				'order_id'       => $order_id,
 			]
-		]);
+		];
+
+		set_transient($cache_key, $payload, 2);
+
+		// keep browser nonce fresh on every poll
+		$payload['data']['nonce'] = wp_create_nonce('bytenft_payment');
+
+		wp_send_json($payload);
 
 		wp_die();
 	}
@@ -1176,13 +1173,17 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			return;
 		}
 
+		global $wp_version;
+
 		$body = [
 			'valid_accounts'         => $accounts,
 			'plugin_status'          => (int) $plugin_status,
 			'gateway_loaded'         => (int) $gateway_loaded,
 			'plugin_version'         => BYTENFT_PLUGIN_VERSION,
-			'wordpress_version'      => get_bloginfo('version'),
-			'woocommerce_version'    => get_option('woocommerce_version') ?: '',
+			'wordpress_version'      => $wp_version,
+			'woocommerce_version'    => class_exists('WooCommerce') && function_exists('WC')
+				? WC()->version
+				: '',
 			'woocommerce_db_version' => get_option('woocommerce_db_version'),
 			'group_id'               => get_option('bytenft_group_id'),
 			'domain_name'            => wp_parse_url(home_url(), PHP_URL_HOST),
@@ -1195,10 +1196,9 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 				'timeout'   => 30,
 				'sslverify' => true,
 				'headers'   => [
-					'Content-Type'  => 'application/json',
 					'Authorization' => 'Bearer ' . sanitize_text_field($public_key),
 				],
-				'body'      => wp_json_encode($body),
+				'body'      => $body,
 			]
 		);
 
