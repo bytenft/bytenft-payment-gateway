@@ -59,7 +59,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		add_action('wp_ajax_nopriv_bytenft_block_gateway_process', [$this,'handle_bytenft_gateway_ajax']); 
 		add_action('wp', function () {
 		    // Allow notices ONLY on checkout page
-		    if ( ! is_checkout() ) {
+		    if ( function_exists('is_checkout') && ! is_checkout() ) {
 			remove_action(
 			    'woocommerce_before_checkout_form',
 			    'woocommerce_output_all_notices',
@@ -399,7 +399,7 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	
 	public function register_blocks_assets() {
 		
-		if (is_checkout()) {
+		if ( function_exists('is_checkout') && is_checkout() ) {
 			$image_url = plugin_dir_url( dirname( __FILE__ ) ) . 'assets/images/loader.gif';
 			wp_register_script(
 				'bytenft-blocks-js',
