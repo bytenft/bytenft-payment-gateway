@@ -6,7 +6,7 @@
     }
 
     window.BytenftCheckoutInitialized = true;
-
+    
     const BytenftCheckout = {
 
         PAYMENT_METHOD: bytenft_params.payment_method,
@@ -71,6 +71,69 @@
                 );
         },
 
+        getSerializedCheckoutData: function ($form) {
+
+            const data = $form.serializeArray();
+
+            // -------------------------------------------------
+            // Preserve shipping checkbox state
+            // -------------------------------------------------
+
+            const shipCheckbox = $form.find(
+                '#ship-to-different-address-checkbox, input[name="ship_to_different_address"]'
+            );
+
+            if (shipCheckbox.length) {
+
+                const checked = shipCheckbox.is(':checked');
+
+                // Remove existing duplicate field first
+                for (let i = data.length - 1; i >= 0; i--) {
+
+                    if (data[i].name === 'ship_to_different_address') {
+                        data.splice(i, 1);
+                    }
+                }
+
+                // IMPORTANT:
+                // WooCommerce expects 1 when checked
+                if (checked) {
+
+                    data.push({
+                        name: 'ship_to_different_address',
+                        value: '1'
+                    });
+                }
+            }
+
+            // -------------------------------------------------
+            // FunnelKit compatibility
+            // -------------------------------------------------
+
+            const funnelkitField = $form.find(
+                'input[name="wfacp_billing_same_as_shipping"]'
+            );
+
+            if (funnelkitField.length) {
+
+                const checked = shipCheckbox.is(':checked');
+
+                for (let i = data.length - 1; i >= 0; i--) {
+
+                    if (data[i].name === 'wfacp_billing_same_as_shipping') {
+                        data.splice(i, 1);
+                    }
+                }
+
+                data.push({
+                    name: 'wfacp_billing_same_as_shipping',
+                    value: checked ? '0' : '1'
+                });
+            }
+
+            return $.param(data);
+        },
+
         handleClassicCheckout: function ($form) {
 
             const self = this;
@@ -93,7 +156,7 @@
 
                 url: wc_checkout_params.checkout_url,
 
-                data: $form.serialize(),
+                data: self.getSerializedCheckoutData($form),
 
                 dataType: 'json',
 
@@ -221,7 +284,7 @@
                 .addClass('loading')
                 .text('Processing...');
 
-            let data = $form.serialize();
+            let data = self.getSerializedCheckoutData($form);
 
             // Extract email and phone directly to avoid Store API sync race conditions
             let emailField = document.querySelector('input[type="email"], #email');
@@ -867,3 +930,14 @@
     });
 
 })(jQuery, window, document);
+
+$(document.body).on('updated_checkout', function () {
+
+    const shippingVisible = $('#ship-to-different-address').is(':visible');
+
+    if (shippingVisible) {
+
+        $('#ship-to-different-address-checkbox')
+            .prop('checked', true);
+    }
+});
