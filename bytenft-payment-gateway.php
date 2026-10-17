@@ -2,7 +2,7 @@
 
 /**
  * Plugin Name: ByteNFT Payment Gateway
- * Description: Use a Credit Card, Debit Card or Google Pay, Apple Pay to complete your purchase via USDC. The transaction will appear on your bank or card statement as *ByteNFT.
+ * Description: Bank Statement Information. On your bank or card statement, this transaction will appear as from Wert*ByteNFT.
  * Author: ByteNFT
  * Author URI: https://pay.bytenft.xyz/
  * Text Domain: bytenft-payment-gateway
