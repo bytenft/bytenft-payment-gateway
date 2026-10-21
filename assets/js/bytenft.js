@@ -578,31 +578,43 @@
             const self = this;
 
             let redirected = false;
+            const pollDelay = 1500;
 
+            clearTimeout(self.state.popupInterval);
             clearInterval(self.state.popupInterval);
 
-            self.state.popupInterval = setInterval(function () {
+            function stopPolling() {
+                clearTimeout(self.state.popupInterval);
+                clearInterval(self.state.popupInterval);
+                self.state.popupInterval = null;
+            }
 
-                // Prevent duplicate execution
+            function schedulePoll(delay) {
                 if (redirected) {
                     return;
                 }
 
-                const popupExists =
-                    self.state.popup &&
-                    !self.state.popup.closed;
+                self.state.popupInterval = setTimeout(poll, delay);
+            }
 
-                // =========================================
-                // SAFARI + CHROME PAYMENT CHECK
-                // =========================================
-                $.post(
-                    bytenft_params.ajax_url,
-                    {
+            function poll() {
+                if (redirected) {
+                    return;
+                }
+
+                self.state.popupInterval = null;
+
+                $.ajax({
+                    type: 'POST',
+                    url: bytenft_params.ajax_url,
+                    data: {
                         action: 'bytenft_popup_closed_event',
                         order_id: self.state.orderId,
                         security: bytenft_params.bytenft_nonce
                     },
-                    function (response) {
+                    dataType: 'json',
+                    timeout: 20000,
+                    success: function (response) {
 
                         if (redirected) {
                             return;
@@ -612,6 +624,10 @@
                             '[Bytenft] popup status response',
                             response
                         );
+
+                        const popupExists =
+                            self.state.popup &&
+                            !self.state.popup.closed;
 
                         const paymentSuccess =
                             response?.success === true ||
@@ -628,8 +644,7 @@
                         if (paymentSuccess && redirectUrl) {
 
                             redirected = true;
-
-                            clearInterval(self.state.popupInterval);
+                            stopPolling();
 
                             try {
 
@@ -663,8 +678,7 @@
                         if (!popupExists) {
 
                             redirected = true;
-
-                            clearInterval(self.state.popupInterval);
+                            stopPolling();
 
                             const failedMessage =
                                 response?.message ||
@@ -676,13 +690,26 @@
                             self.showCheckoutError(failedMessage);
 
                             self.reset();
+                            return;
                         }
 
+                        schedulePoll(pollDelay);
                     },
-                    'json'
-                );
+                    error: function () {
+                        if (redirected) {
+                            return;
+                        }
 
-            }, 1500);
+                        const popupExists =
+                            self.state.popup &&
+                            !self.state.popup.closed;
+
+                        schedulePoll(popupExists ? pollDelay : 5000);
+                    }
+                });
+            }
+
+            schedulePoll(pollDelay);
         },
 
         /* =========================================================

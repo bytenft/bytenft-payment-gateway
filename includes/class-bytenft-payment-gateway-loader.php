@@ -717,6 +717,26 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 			wp_die();
 		}
 
+		// A webhook may already have completed the order; do not query the API again.
+		if (
+			$order->has_status(['processing', 'completed'])
+			|| $order->get_meta('_bytenft_state') === 'success'
+		) {
+			wp_send_json([
+				'success' => true,
+				'message' => 'Your payment was completed successfully.',
+				'data' => [
+					'payment_status' => 'success',
+					'order_status'   => $order->get_status(),
+					'state'          => 'success',
+					'redirect'       => $order->get_checkout_order_received_url(),
+					'order_id'       => $order_id,
+				]
+			]);
+
+			wp_die();
+		}
+
 		// -------------------------
 		// API CALL
 		// -------------------------
