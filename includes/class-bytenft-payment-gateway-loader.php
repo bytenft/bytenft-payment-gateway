@@ -13,6 +13,12 @@ require_once plugin_dir_path(__FILE__) . 'class-bytenft-payment-logger.php';
  */
 class BYTENFT_PAYMENT_GATEWAY_Loader
 {
+	/**
+	 * How long a ByteNFT payment session stays answerable after the pay id
+	 * was issued. Past this, a customer-return request is stale.
+	 */
+	const PAYMENT_SESSION_TTL = DAY_IN_SECONDS;
+
 	private static $instance = null;
 	private $admin_notices;
 
@@ -534,6 +540,40 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		}
 
 		// -------------------------
+		// ELIGIBILITY CHECK
+		// -------------------------
+		$refusal = $this->bytenft_status_request_refusal($order);
+
+		if ($refusal !== true) {
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' CheckStatus | Refused (' . $refusal . ')'
+			);
+
+			if ($refusal === 'not_a_bytenft_order') {
+
+				wp_send_json_error([
+					'message' => 'Invalid order.'
+				]);
+
+				wp_die();
+			}
+
+			$is_paid = ($refusal === 'order_already_paid');
+
+			wp_send_json_success([
+				'status'         => $is_paid ? 'success' : 'abandoned',
+				'payment_status' => $is_paid ? 'success' : null,
+				'order_status'   => $order->get_status(),
+				'redirect_url'   => $is_paid
+					? $order->get_checkout_order_received_url()
+					: null,
+			]);
+
+			wp_die();
+		}
+
+		// -------------------------
 		// API CALL
 		// -------------------------
 		$payment_token = $order->get_meta('_bytenft_pay_id');
@@ -659,6 +699,46 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 		wp_die();
 	}
 
+	/**
+	 * Guard for the two customer-facing status endpoints.
+	 *
+	 * Both take the order id from the request body and both authenticate with
+	 * a site-wide nonce that is not bound to any order, so an arbitrary order
+	 * number can be submitted. Refuse anything that is not a live ByteNFT
+	 * payment attempt before any API call or state write happens.
+	 *
+	 * @param WC_Order $order
+	 * @return string|true true when the order may be queried, else the reason.
+	 */
+	private function bytenft_status_request_refusal($order)
+	{
+		// Literal rather than BYTENFT_PAYMENT_GATEWAY::ID: reading the constant
+		// would autoload a WC_Payment_Gateway subclass just for a string.
+		if ($order->get_payment_method() !== 'bytenft') {
+			return 'not_a_bytenft_order';
+		}
+
+		if (
+			$order->is_paid()
+			|| $order->has_status(['completed', 'refunded'])
+			|| $order->get_meta('_bytenft_state') === 'success'
+		) {
+			return 'order_already_paid';
+		}
+
+		if (empty($order->get_meta('_bytenft_pay_id'))) {
+			return 'no_payment_token';
+		}
+
+		$issued_at = (int) $order->get_meta('_bytenft_pay_id_updated_at');
+
+		if ($issued_at > 0 && (time() - $issued_at) > self::PAYMENT_SESSION_TTL) {
+			return 'payment_token_expired';
+		}
+
+		return true;
+	}
+
 	private function bytenft_log($message, $context = [])
 	{
 		if (function_exists('wc_get_logger')) {
@@ -674,8 +754,8 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 	public function handle_popup_close()
 	{
 		$order_id = isset($_POST['order_id'])
-			? sanitize_text_field(wp_unslash($_POST['order_id']))
-			: 'unknown';
+			? absint(sanitize_text_field(wp_unslash($_POST['order_id'])))
+			: 0;
 
 		$security = isset($_POST['security'])
 			? sanitize_text_field(wp_unslash($_POST['security']))
@@ -712,6 +792,49 @@ class BYTENFT_PAYMENT_GATEWAY_Loader
 
 			wp_send_json_error([
 				'reload' => true
+			]);
+
+			wp_die();
+		}
+
+		// -------------------------
+		// ELIGIBILITY CHECK
+		// -------------------------
+		$refusal = $this->bytenft_status_request_refusal($order);
+
+		if ($refusal !== true) {
+
+			ByteNFT_Payment_Gateway_Logger::info(
+				$log_prefix . ' PopupClose | Refused (' . $refusal . ')'
+			);
+
+			// Never hand back another gateway's order-received URL: it carries
+			// the order key.
+			if ($refusal === 'not_a_bytenft_order') {
+
+				wp_send_json_error([
+					'reload' => true
+				]);
+
+				wp_die();
+			}
+
+			$is_paid = ($refusal === 'order_already_paid');
+
+			wp_send_json([
+				'success' => $is_paid,
+				'message' => $is_paid
+					? 'Your payment was completed successfully.'
+					: 'Payment was not completed.',
+				'data' => [
+					'payment_status' => $is_paid ? 'success' : 'abandoned',
+					'order_status'   => $order->get_status(),
+					'state'          => $is_paid ? 'success' : 'abandoned',
+					'redirect'       => $is_paid
+						? $order->get_checkout_order_received_url()
+						: null,
+					'order_id'       => $order_id,
+				]
 			]);
 
 			wp_die();

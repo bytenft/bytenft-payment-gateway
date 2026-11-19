@@ -14,6 +14,18 @@ class BYTENFT_PAYMENT_ENGINE
         $order = wc_get_order($order_id);
         if (!$order) return false;
 
+        /**
+         * Finality is judged on the order, never on our own meta.
+         *
+         * get_state() falls back to 'pending' whenever _bytenft_state is
+         * absent, so an order paid through another gateway - or completed by
+         * hand - reads as a brand new unpaid order and a stray event can
+         * drive it to success. Refuse those outright.
+         */
+        if (!self::order_is_claimable($order)) {
+            return self::safe_response($order, 'order_not_claimable');
+        }
+
         $event_id = self::generate_event_id($event_type, $payload);
 
         if ($event_type === 'api_update' && self::is_duplicate_event($order_id, $event_id)) {
@@ -436,6 +448,31 @@ class BYTENFT_PAYMENT_ENGINE
         ];
 
         return in_array($to, $map[$from] ?? [], true);
+    }
+
+    /* =========================================================
+     * OWNERSHIP / FINALITY
+     * ========================================================= */
+
+    /**
+     * Whether this engine is allowed to write to the order at all.
+     *
+     * Covers the two cases get_state() cannot see: orders that belong to
+     * another payment method, and orders that are already paid or refunded.
+     * Pending, failed, cancelled and expired ByteNFT orders stay claimable so
+     * late success recovery keeps working.
+     */
+    private static function order_is_claimable($order)
+    {
+        if ($order->get_payment_method() !== 'bytenft') {
+            return false;
+        }
+
+        if ($order->is_paid() || $order->has_status(['completed', 'refunded'])) {
+            return false;
+        }
+
+        return true;
     }
 
     /* =========================================================

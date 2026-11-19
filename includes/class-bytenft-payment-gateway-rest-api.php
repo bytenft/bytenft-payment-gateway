@@ -190,7 +190,27 @@ class BYTENFT_PAYMENT_GATEWAY_REST_API
 		// -------------------------
 		// 4. ENGINE CALL
 		// -------------------------
-		if (!empty($api_order_status)) {
+		/**
+		 * GET is unauthenticated on purpose - it is the URL the customer's
+		 * browser is redirected back to - so a status in its query string is
+		 * only acted on when this order has a payment session of our own to
+		 * report on. That is decided from local order meta alone, never from
+		 * anything the request carries, so the redirect contract with the
+		 * payment page is unchanged. Authenticated POST webhooks are trusted
+		 * as before, and an untrusted GET still redirects the customer - it
+		 * just does not write state.
+		 */
+		$trusted = ($method === 'POST')
+			|| !empty($order->get_meta('_bytenft_pay_id'));
+
+		if (!$trusted) {
+			ByteNFT_Payment_Gateway_Logger::warning(
+				"ByteNFT REDIRECT UNTRUSTED | Order #{$order_id} | no ByteNFT payment session on this order, state not written",
+				$log_context
+			);
+		}
+
+		if (!empty($api_order_status) && $trusted) {
 
 			$result = BYTENFT_PAYMENT_ENGINE::handle_event(
 				$order_id,
